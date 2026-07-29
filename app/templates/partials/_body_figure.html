@@ -1,14 +1,19 @@
 {#
-  Body outline used by the weekly summary.
+  Body outline used by the weekly summary and the home page.
 
-  Usage:  {% import "partials/_body_figure.html" as body %}
+  Usage:  {% import "partials/_body_figure.html" as body with context %}
           {{ body.figure("front") }}
+          {{ body.figure("front", demo={"chest": ("trained", 0.7)}) }}
 
-  Each trainable region is an SVG path with `class="muscle"` and a
-  `data-muscle` slug. `app/static/js/summary.js` sets a `--level` custom
-  property (0–1) on every region and toggles `.is-worked` / `.is-over`, which
-  shades it along the green or red volume ramp (see `.muscle.is-worked` and
-  `.muscle.is-over` in css/styles.css).
+  Each trainable region is an SVG path with `class="muscle"` and a `data-muscle`
+  slug. `app/static/js/summary.js` sets a `--level` custom property (0–1) on
+  every region and toggles `.is-worked` / `.is-over`, which shades it along the
+  green or red volume ramp (see `.muscle.is-worked` and `.muscle.is-over` in
+  css/input.css).
+
+  `demo` bakes that same grading into the markup as `state`/`level` pairs, for
+  surfaces with no JS — the home page uses it to show an illustrative week.
+  Summary passes nothing and lets summary.js paint real data.
 
   The two views share no muscle groups:
 
@@ -22,14 +27,41 @@
   so they light up together.
 #}
 
-{% macro figure(view) %}
-<figure class="body-figure">
+{# Region geometry, as (muscle slug, element id, path) per view. Kept as data so
+   adding a group is one row and the markup below stays a single loop. #}
+{% set REGIONS = {
+  "front": [
+    ("chest",  "front-chest-left",  "M67,86 C79,78 92,77 98,84 L98,124 L70,124 Z"),
+    ("chest",  "front-chest-right", "M133,86 C121,78 108,77 102,84 L102,124 L130,124 Z"),
+    ("abs",    "front-abs-upper",   "M82,130 L118,130 L119,166 L81,166 Z"),
+    ("abs",    "front-abs-lower",   "M81,170 L119,170 L122,204 L78,204 Z"),
+    ("biceps", "front-biceps-left", "M60,88 L46,92 L38,140 L53,144 L60,112 Z"),
+    ("biceps", "front-biceps-right","M140,88 L154,92 L162,140 L147,144 L140,112 Z"),
+    ("quads",  "front-quads-left",  "M74,216 L98,216 L97,298 L76,298 Z"),
+    ("quads",  "front-quads-right", "M126,216 L102,216 L103,298 L124,298 Z"),
+  ],
+  "back": [
+    ("back",       "back-traps",          "M100,70 L138,82 L132,106 L100,98 L68,106 L62,82 Z"),
+    ("back",       "back-lats",           "M67,110 L133,110 L126,158 L100,170 L74,158 Z"),
+    ("triceps",    "back-triceps-left",   "M60,88 L46,92 L38,140 L53,144 L60,112 Z"),
+    ("triceps",    "back-triceps-right",  "M140,88 L154,92 L162,140 L147,144 L140,112 Z"),
+    ("hamstrings", "back-hamstrings-left","M74,216 L98,216 L97,298 L76,298 Z"),
+    ("hamstrings", "back-hamstrings-right","M126,216 L102,216 L103,298 L124,298 Z"),
+  ],
+} %}
+
+{# `flex flex-col` is load-bearing: daisyUI's card component sets
+   `.card figure { display: flex }` with no direction, so inside a card the
+   caption would otherwise sit beside the silhouette instead of beneath it. #}
+{% macro figure(view, demo=None) %}
+<figure class="m-0 flex flex-col items-center text-center">
   <svg viewBox="0 0 200 440" role="img"
        aria-labelledby="body-{{ view }}-title body-{{ view }}-desc"
-       class="body-svg" data-view="{{ view }}">
+       class="body-svg mx-auto" data-view="{{ view }}">
     <title id="body-{{ view }}-title">{{ view | capitalize }} view of the body</title>
     <desc id="body-{{ view }}-desc">
-      Muscle groups trained at least once this week are filled red.
+      Muscle groups deepen from light to dark green as their weekly set target is
+      approached, then turn red past it.
     </desc>
 
     <g class="body-base">
@@ -55,79 +87,16 @@
     </g>
 
     <g class="body-muscles">
-      {% if view == "front" %}
-
-      {# Two pectorals, split at the sternum. #}
-      <path class="muscle" data-muscle="chest" id="front-chest-left"
-            d="M67,86 C79,78 92,77 98,84 L98,124 L70,124 Z">
-        <title>{{ muscle_labels['chest'] }}</title>
-      </path>
-      <path class="muscle" data-muscle="chest" id="front-chest-right"
-            d="M133,86 C121,78 108,77 102,84 L102,124 L130,124 Z">
-        <title>{{ muscle_labels['chest'] }}</title>
-      </path>
-
-      {# Abdominals: upper and lower blocks, obliques left as silhouette. #}
-      <path class="muscle" data-muscle="abs" id="front-abs-upper"
-            d="M82,130 L118,130 L119,166 L81,166 Z">
-        <title>{{ muscle_labels['abs'] }}</title>
-      </path>
-      <path class="muscle" data-muscle="abs" id="front-abs-lower"
-            d="M81,170 L119,170 L122,204 L78,204 Z">
-        <title>{{ muscle_labels['abs'] }}</title>
-      </path>
-
-      <path class="muscle" data-muscle="biceps" id="front-biceps-left"
-            d="M60,88 L46,92 L38,140 L53,144 L60,112 Z">
-        <title>{{ muscle_labels['biceps'] }}</title>
-      </path>
-      <path class="muscle" data-muscle="biceps" id="front-biceps-right"
-            d="M140,88 L154,92 L162,140 L147,144 L140,112 Z">
-        <title>{{ muscle_labels['biceps'] }}</title>
-      </path>
-
-      <path class="muscle" data-muscle="quads" id="front-quads-left"
-            d="M74,216 L98,216 L97,298 L76,298 Z">
-        <title>{{ muscle_labels['quads'] }}</title>
-      </path>
-      <path class="muscle" data-muscle="quads" id="front-quads-right"
-            d="M126,216 L102,216 L103,298 L124,298 Z">
-        <title>{{ muscle_labels['quads'] }}</title>
-      </path>
-
-      {% else %}
-
-      {# Trapezius across the shoulders, then the lats tapering to the waist. #}
-      <path class="muscle" data-muscle="back" id="back-traps"
-            d="M100,70 L138,82 L132,106 L100,98 L68,106 L62,82 Z">
-        <title>{{ muscle_labels['back'] }}</title>
-      </path>
-      <path class="muscle" data-muscle="back" id="back-lats"
-            d="M67,110 L133,110 L126,158 L100,170 L74,158 Z">
-        <title>{{ muscle_labels['back'] }}</title>
-      </path>
-
-      <path class="muscle" data-muscle="triceps" id="back-triceps-left"
-            d="M60,88 L46,92 L38,140 L53,144 L60,112 Z">
-        <title>{{ muscle_labels['triceps'] }}</title>
-      </path>
-      <path class="muscle" data-muscle="triceps" id="back-triceps-right"
-            d="M140,88 L154,92 L162,140 L147,144 L140,112 Z">
-        <title>{{ muscle_labels['triceps'] }}</title>
-      </path>
-
-      <path class="muscle" data-muscle="hamstrings" id="back-hamstrings-left"
-            d="M74,216 L98,216 L97,298 L76,298 Z">
-        <title>{{ muscle_labels['hamstrings'] }}</title>
-      </path>
-      <path class="muscle" data-muscle="hamstrings" id="back-hamstrings-right"
-            d="M126,216 L102,216 L103,298 L124,298 Z">
-        <title>{{ muscle_labels['hamstrings'] }}</title>
-      </path>
-
-      {% endif %}
+      {% for muscle, region_id, path in REGIONS[view] %}
+        {% set grade = (demo or {}).get(muscle) %}
+        <path class="muscle{{ ' is-worked' if grade }}{{ ' is-over' if grade and grade[0] == 'over' }}"
+              data-muscle="{{ muscle }}" id="{{ region_id }}" d="{{ path }}"
+              {% if grade %}style="--level: {{ grade[1] }}"{% endif %}>
+          <title>{{ muscle_labels[muscle] }}</title>
+        </path>
+      {% endfor %}
     </g>
   </svg>
-  <figcaption>{{ view | capitalize }}</figcaption>
+  <figcaption class="type-label text-secondary mt-3">{{ view | capitalize }}</figcaption>
 </figure>
 {% endmacro %}

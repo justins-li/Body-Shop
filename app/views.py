@@ -1,13 +1,18 @@
 """HTML page routes.
 
-Three pages, matching the product spec:
+Four pages:
 
-* ``/``        — month calendar of logged workouts
-* ``/log``     — input form for date / exercise / sets
-* ``/summary`` — weekly summary with the muscle-coverage body map
+* ``/``         — home: what the app is, and the way in
+* ``/calendar`` — month calendar of logged workouts
+* ``/log``      — input form for date / exercise / sets
+* ``/summary``  — weekly summary with the muscle-coverage body map
 
 Pages are server-rendered shells; the dynamic parts are filled in by the
-JavaScript modules in ``app/static/js`` talking to the JSON API.
+JavaScript modules in ``app/static/js`` talking to the JSON API. ``/`` is the
+exception — it is static, reads nothing, and is the one page that renders
+identically for a visitor and a user. When auth arrives it becomes the
+signed-out half of a split (see docs/ROADMAP.md, Phase 4); the calendar already
+lives at its own URL so that change stays additive.
 """
 
 from __future__ import annotations
@@ -46,6 +51,18 @@ def _requested_date() -> date:
 
 
 @bp.get("/")
+def home_page():
+    """Landing page. Static — no API calls, no JS module."""
+    day = _requested_date()
+    return render_template(
+        "home.html",
+        page="home",
+        selected_date=day,
+        exercise_count=len(all_exercises()),
+    )
+
+
+@bp.get("/calendar")
 def calendar_page():
     """Month calendar. Clicking a day shows what was logged that day."""
     day = _requested_date()

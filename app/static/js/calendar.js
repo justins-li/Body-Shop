@@ -66,7 +66,7 @@ function renderGrid() {
     number.textContent = String(day.getDate());
 
     const dot = document.createElement("span");
-    dot.className = "dot";
+    dot.className = "day-dot";
 
     cell.append(number, dot);
     cell.setAttribute(

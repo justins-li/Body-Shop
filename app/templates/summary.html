@@ -4,54 +4,77 @@
 {% block title %}Weekly summary · Body Shop{% endblock %}
 
 {% block content %}
-<section class="page-head">
-  <h1>Weekly summary</h1>
-  <p class="lede">
-    Muscle groups deepen from light to dark green as you work towards their weekly
-    set target, then turn red for every set past it.
+<div class="wrap pt-16 pb-4">
+  <p class="type-label text-secondary mb-5">Weekly summary</p>
+  <h1 class="type-display text-[clamp(2rem,5vw,3.25rem)] mb-5">Muscle coverage</h1>
+  <p class="type-lede">
+    Groups deepen from pale to dark green as they work towards their weekly set
+    target, then turn red for every set past it.
   </p>
-</section>
+</div>
 
-<section class="card week-switcher" aria-label="Week navigation">
-  <button class="icon-btn" id="prev-week" type="button" aria-label="Previous week">‹</button>
-  <div class="week-range">
-    <span class="week-label" id="week-label" aria-live="polite">
-      {{ week_start.strftime('%b %d') }} – {{ week_end.strftime('%b %d, %Y') }}
-    </span>
-    <span class="week-meta muted" id="week-meta">&nbsp;</span>
-  </div>
-  <button class="icon-btn" id="next-week" type="button" aria-label="Next week">›</button>
-</section>
-
-<div class="layout-summary">
-  <section class="card body-card" aria-labelledby="body-heading">
-    <h2 id="body-heading" class="card-title">Muscle coverage</h2>
-    <div class="body-figures">
-      {{ body.figure("front") }}
-      {{ body.figure("back") }}
+<div class="wrap pb-8">
+  <section class="card bg-base-100 border hairline mb-6" aria-label="Week navigation">
+    <div class="card-body flex-row items-center justify-center gap-6 py-5 sm:px-7 sm:gap-10">
+      <button class="btn btn-circle btn-outline border-base-content/25 text-base shrink-0"
+              id="prev-week" type="button" aria-label="Previous week">‹</button>
+      <div class="text-center min-w-0">
+        <span class="type-display block text-base" id="week-label" aria-live="polite">
+          {{ week_start.strftime('%b %d') }} – {{ week_end.strftime('%b %d, %Y') }}
+        </span>
+        <span class="type-label text-secondary" id="week-meta">&nbsp;</span>
+      </div>
+      <button class="btn btn-circle btn-outline border-base-content/25 text-base shrink-0"
+              id="next-week" type="button" aria-label="Next week">›</button>
     </div>
-    <p class="legend">
-      <span class="swatch swatch-rest"></span> not yet trained
-      <span class="swatch swatch-scale swatch-scale-train"></span> 1 set → weekly target
-      <span class="swatch swatch-scale swatch-scale-over"></span> past target
-    </p>
   </section>
 
-  <section class="card" aria-labelledby="breakdown-heading">
-    <h2 id="breakdown-heading" class="card-title">Sets by muscle group</h2>
-    <ul class="muscle-list" id="muscle-list">
-      {% for muscle in muscle_groups %}
-      <li class="muscle-row" data-muscle="{{ muscle }}">
-        <span class="muscle-name">{{ muscle_labels[muscle] }}</span>
-        <span class="muscle-bar"><span class="muscle-bar-fill"></span></span>
-        <span class="muscle-sets">0 / {{ muscle_targets[muscle] }}</span>
-      </li>
-      {% endfor %}
-    </ul>
+  <div class="grid items-start gap-6 lg:grid-cols-2">
+    <section class="card bg-base-100 border hairline" aria-labelledby="body-heading">
+      <div class="card-body gap-7 sm:p-7">
+        <h2 id="body-heading" class="type-display text-lg m-0">Body map</h2>
 
-    <h3 class="card-subtitle">This week's entries</h3>
-    <div id="week-entries" class="day-entries"><p class="muted">Loading…</p></div>
-  </section>
+        <div class="grid grid-cols-2 gap-4 justify-items-center">
+          {{ body.figure("front") }}
+          {{ body.figure("back") }}
+        </div>
+
+        {# Short labels so the three keys stay on one line at card width — the
+           lede above already explains the ramp in full. #}
+        <p class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5
+                  border-t hairline pt-5 m-0 type-label text-secondary">
+          <span class="flex items-center gap-2"><span class="swatch swatch-rest"></span> untrained</span>
+          <span class="flex items-center gap-2"><span class="swatch swatch-scale swatch-scale-train"></span> to target</span>
+          <span class="flex items-center gap-2"><span class="swatch swatch-scale swatch-scale-over"></span> past target</span>
+        </p>
+      </div>
+    </section>
+
+    <section class="card bg-base-100 border hairline" aria-labelledby="breakdown-heading">
+      <div class="card-body gap-6 sm:p-7">
+        <h2 id="breakdown-heading" class="type-display text-lg m-0">Sets by muscle group</h2>
+
+        <ul class="list-none m-0 p-0 grid gap-3.5" id="muscle-list">
+          {% for muscle in muscle_groups %}
+          <li class="muscle-row text-sm" data-muscle="{{ muscle }}">
+            <span class="font-semibold tracking-tight">{{ muscle_labels[muscle] }}</span>
+            <span class="muscle-bar"><span class="muscle-bar-fill"></span></span>
+            <span class="muscle-sets text-right tabular-nums text-secondary">
+              0 / {{ muscle_targets[muscle] }}
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+
+        <div class="border-t hairline pt-6">
+          <h3 class="type-label text-secondary mb-4">This week's entries</h3>
+          <div id="week-entries" class="grid gap-2">
+            <p class="text-sm text-secondary m-0">Loading…</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
 </div>
 {% endblock %}
 

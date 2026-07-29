@@ -1,0 +1,495 @@
+/* ==========================================================================
+   Body Shop — stylesheet source.
+
+   THIS is the file you edit. `styles.css` next to it is the compiled output and
+   is overwritten on every build; changes made there are lost.
+
+       python tools/fetch_css_toolchain.py                    # once
+       tools/tailwindcss -i app/static/css/input.css \
+                         -o app/static/css/styles.css --watch  # while working
+
+   Sections: 1) sources  2) theme pair  3) shared tokens  4) base  5) components
+   ========================================================================== */
+
+/* 1) Sources --------------------------------------------------------------
+   `source(none)` disables automatic scanning so the globs below are the whole
+   story — otherwise Tailwind walks the repo and finds class-like strings in
+   tools/daisyui. The JS glob matters: the page modules toggle state classes at
+   runtime, and Tailwind only sees classes it can read as literal text. Anything
+   built by string interpolation would be silently purged, which is why every
+   JS-driven state lives in section 5 as a named class rather than a utility. */
+@import "tailwindcss" source(none);
+@source "../../templates/**/*.html";
+@source "../js/**/*.js";
+
+@plugin "../../../tools/daisyui" {
+  themes: false; /* Two hand-written themes below; none of the 35 stock ones. */
+}
+
+/* 2) Theme pair -----------------------------------------------------------
+   Warm cream and warm near-black, adapted from the Jesko Jets palette: the page
+   is #fff8ed, the ink is #312726, and there is no chromatic accent at all. The
+   only saturated colour in the interface is the volume ramp in section 3 — which
+   means the muscle heatmap is the most colourful thing on screen, exactly where
+   the product wants the eye to go.
+
+   depth/noise are 0 and shadows are unused throughout: separation comes from
+   hairline borders at 10–20% ink, the way the reference does it. */
+@plugin "../../../tools/daisyui/theme" {
+  name: "bodyshop";
+  default: true;
+  color-scheme: light;
+
+  --color-base-100: #fffdf8; /* raised surfaces (cards) */
+  --color-base-200: #fff8ed; /* page */
+  --color-base-300: #ead9c2; /* hairlines, untrained fills */
+  --color-base-content: #312726;
+
+  --color-primary: #312726;
+  --color-primary-content: #fff8ed;
+  --color-secondary: #7a716e;
+  --color-secondary-content: #fff8ed;
+  --color-accent: #312726;
+  --color-accent-content: #fff8ed;
+  --color-neutral: #312726;
+  --color-neutral-content: #fff8ed;
+
+  --color-info: #7a716e;
+  --color-info-content: #fff8ed;
+  --color-success: #1ba64b;
+  --color-success-content: #fff8ed;
+  --color-warning: #ffa800;
+  --color-warning-content: #312726;
+  --color-error: #e23d3d;
+  --color-error-content: #fff8ed;
+
+  --radius-selector: 9999px;
+  --radius-field: 0.75rem;
+  --radius-box: 1.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@plugin "../../../tools/daisyui/theme" {
+  name: "bodyshop-dark";
+  prefersdark: true;
+  color-scheme: dark;
+
+  --color-base-100: #231d1c;
+  --color-base-200: #191413;
+  --color-base-300: #3a2f2d;
+  --color-base-content: #f4ebdf;
+
+  --color-primary: #fff8ed;
+  --color-primary-content: #231d1c;
+  --color-secondary: #a89b96;
+  --color-secondary-content: #191413;
+  --color-accent: #fff8ed;
+  --color-accent-content: #231d1c;
+  --color-neutral: #f4ebdf;
+  --color-neutral-content: #191413;
+
+  --color-info: #a89b96;
+  --color-info-content: #191413;
+  --color-success: #37c46b;
+  --color-success-content: #191413;
+  --color-warning: #ffb833;
+  --color-warning-content: #191413;
+  --color-error: #f06b6b;
+  --color-error-content: #191413;
+
+  --radius-selector: 9999px;
+  --radius-field: 0.75rem;
+  --radius-box: 1.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* 3) Shared tokens ------------------------------------------------------- */
+@theme {
+  /* Archivo is a variable font with a width axis, which is what makes it a
+     usable stand-in for the reference's GT America Extended/Expanded. Width is
+     applied with Tailwind's `font-stretch-*` utilities, so there is one family
+     here and the display voice is a utility, not a second webfont. */
+  --font-sans: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Volume scale. Elements on the scale carry `--level` (0–1, written by
+     summary.js) and mix between the two ends of whichever ramp their state
+     selects. Kept as real tokens rather than utilities because the mix is
+     computed: see the note in section 5. */
+  --color-rest: #ead9c2;
+  --color-train-light: #d5ecdb;
+  --color-train-dark: #0f6e33;
+  --color-over-light: #f9dada;
+  --color-over-dark: #a82a2a;
+  /* Readable-on-background versions of the two ramps, for text. */
+  --color-train-accent: #0f6e33;
+  --color-over-accent: #c02f2f;
+
+  --spacing-wrap: 76rem;
+}
+
+/* The ramp endpoints are theme-dependent: a pale green that reads as "barely
+   trained" on cream would read as "nearly done" against near-black. `@layer
+   base` beats `@layer theme`, so these win over the values above. */
+@layer base {
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="bodyshop"]) {
+      --color-rest: #3a2f2d;
+      --color-train-light: #c7ead2;
+      --color-train-dark: #15833f;
+      --color-over-light: #f7d5d5;
+      --color-over-dark: #b32e2e;
+      --color-train-accent: #59c983;
+      --color-over-accent: #ef8888;
+    }
+  }
+
+  [data-theme="bodyshop-dark"] {
+    --color-rest: #3a2f2d;
+    --color-train-light: #c7ead2;
+    --color-train-dark: #15833f;
+    --color-over-light: #f7d5d5;
+    --color-over-dark: #b32e2e;
+    --color-train-accent: #59c983;
+    --color-over-accent: #ef8888;
+  }
+}
+
+/* 4) Base ---------------------------------------------------------------- */
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-base-200);
+    font-stretch: 104%;
+    letter-spacing: -0.011em;
+  }
+
+  /* Tight tracking on headings is most of the reference's voice — it runs
+     -0.032em on small text down to -0.08em on display sizes. */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.045em;
+    line-height: 1.02;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-base-content);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  /* log.js hides the validation box with the `hidden` attribute, but it is also
+     a daisyUI `.alert`, whose `display: grid` outranks the UA sheet's
+     `[hidden] { display: none }`. Without this the error box never hides. */
+  [hidden] {
+    display: none !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* 5) Components ----------------------------------------------------------
+   Two things live here rather than as utilities in the templates:
+
+   a) The volume-scale colour mixing, which Tailwind cannot express. `--level`
+      is a continuous 0–1 value, and quantising it into fixed classes would
+      visibly band the gradient.
+   b) Every class the JS modules toggle. Utilities would work, but swapping
+      whole utility lists from JS is unreadable and one typo purges silently;
+      a named class keeps the state vocabulary in CSS where it can be seen.
+
+   Static structure stays in the templates as utilities. */
+@layer components {
+  /* -- Typography voices ------------------------------------------------ */
+  .type-display {
+    font-stretch: 112%;
+    font-weight: 700;
+    letter-spacing: -0.055em;
+    line-height: 0.94;
+    text-wrap: balance;
+  }
+
+  .type-label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+
+  .type-lede {
+    font-size: 1.0625rem;
+    line-height: 1.55;
+    letter-spacing: -0.014em;
+    color: var(--color-secondary);
+    max-width: 62ch;
+  }
+
+  /* -- Layout ----------------------------------------------------------- */
+  .wrap {
+    width: 100%;
+    max-width: var(--spacing-wrap);
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+  }
+
+  .hairline {
+    border-color: color-mix(in srgb, var(--color-base-content) 14%, transparent);
+  }
+
+  /* -- Calendar day cells (state toggled by calendar.js) ---------------- */
+  .day-cell {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 10%, transparent);
+    border-radius: 0.85rem;
+    background-color: var(--color-base-100);
+    font-size: 0.9rem;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  }
+  .day-cell:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+  .day-cell.is-outside {
+    opacity: 0.34;
+  }
+  .day-cell.is-today {
+    border-color: var(--color-base-content);
+    font-weight: 700;
+  }
+  .day-cell.is-selected {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-primary-content);
+    font-weight: 700;
+  }
+
+  .day-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 9999px;
+    background-color: transparent;
+  }
+  .day-cell.has-entries .day-dot {
+    background-color: var(--color-train-dark);
+  }
+  .day-cell.is-selected.has-entries .day-dot {
+    background-color: var(--color-primary-content);
+  }
+
+  /* -- Toast (visibility toggled by ui.js) ------------------------------ */
+  .toast-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 1.75rem;
+    z-index: 60;
+    transform: translate(-50%, 175%);
+    padding: 0.7rem 1.35rem;
+    border-radius: 9999px;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    background-color: var(--color-base-100);
+    font-size: 0.875rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.28s ease, opacity 0.28s ease;
+  }
+  .toast-bar.is-visible {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+  .toast-bar.is-error {
+    border-color: var(--color-error);
+    color: var(--color-error);
+  }
+
+  /* -- Body map --------------------------------------------------------- */
+  .body-svg {
+    width: 100%;
+    max-width: 200px;
+    height: auto;
+    display: block;
+  }
+
+  .body-base > * {
+    fill: color-mix(in srgb, var(--color-rest) 55%, var(--color-base-100));
+    stroke: color-mix(in srgb, var(--color-base-content) 22%, transparent);
+    stroke-width: 1.5;
+  }
+
+  .muscle {
+    --level: 0;
+    fill: var(--color-rest);
+    stroke: color-mix(in srgb, var(--color-base-content) 28%, transparent);
+    stroke-width: 1.5;
+    transition: fill 0.35s ease, stroke 0.35s ease;
+  }
+  /* `.is-over` must stay below `.is-worked`: a group past its target carries
+     both classes, and the red ramp has to win. */
+  .muscle.is-worked {
+    fill: color-mix(in srgb, var(--color-train-dark) calc(var(--level) * 100%), var(--color-train-light));
+    stroke: color-mix(in srgb, var(--color-train-dark) 70%, #000);
+  }
+  .muscle.is-over {
+    fill: color-mix(in srgb, var(--color-over-dark) calc(var(--level) * 100%), var(--color-over-light));
+    stroke: color-mix(in srgb, var(--color-over-dark) 70%, #000);
+  }
+
+  /* -- Per-muscle breakdown rows ---------------------------------------- */
+  .muscle-row {
+    --level: 0;
+    display: grid;
+    /* First column fits the longest label ("Hamstrings") without wrapping. */
+    grid-template-columns: 6.5rem minmax(0, 1fr) 4.75rem;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .muscle-bar {
+    height: 6px;
+    border-radius: 9999px;
+    background-color: var(--color-rest);
+    overflow: hidden;
+  }
+  .muscle-bar-fill {
+    display: block;
+    height: 100%;
+    width: 0;
+    border-radius: 9999px;
+    background-color: var(--color-rest);
+    transition: width 0.4s ease, background-color 0.35s ease;
+  }
+  .muscle-row.is-worked .muscle-bar-fill {
+    background-color: color-mix(in srgb, var(--color-train-dark) calc(var(--level) * 100%), var(--color-train-light));
+  }
+  .muscle-row.is-over .muscle-bar-fill {
+    background-color: color-mix(in srgb, var(--color-over-dark) calc(var(--level) * 100%), var(--color-over-light));
+  }
+  .muscle-row.is-worked .muscle-sets {
+    color: var(--color-train-accent);
+    font-weight: 600;
+  }
+  .muscle-row.is-over .muscle-sets {
+    color: var(--color-over-accent);
+  }
+
+  /* -- Legend swatches -------------------------------------------------- */
+  .swatch {
+    display: inline-block;
+    width: 0.85rem;
+    height: 0.85rem;
+    border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+    vertical-align: -2px;
+  }
+  .swatch-rest {
+    background-color: var(--color-rest);
+  }
+  .swatch-scale {
+    width: 3.25rem;
+  }
+  .swatch-scale-train {
+    background: linear-gradient(90deg, var(--color-train-light), var(--color-train-dark));
+  }
+  .swatch-scale-over {
+    background: linear-gradient(90deg, var(--color-over-light), var(--color-over-dark));
+  }
+
+  /* -- Exercise picker (checked state is CSS-only, no JS) --------------- */
+  .exercise-option {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.8rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+    border-radius: 0.85rem;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .exercise-option:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 40%, transparent);
+  }
+  .exercise-option:has(input:checked) {
+    border-color: var(--color-base-content);
+    background-color: color-mix(in srgb, var(--color-base-content) 5%, transparent);
+  }
+
+  /* -- Entry rows (built by ui.js) -------------------------------------- */
+  .entry {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.75rem 0.95rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 10%, transparent);
+    border-radius: 0.85rem;
+  }
+  .entry-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .entry-name {
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+  .entry-meta {
+    font-size: 0.78rem;
+    color: var(--color-secondary);
+  }
+  .entry-sets {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-stretch: 112%;
+    white-space: nowrap;
+  }
+  .entry-delete {
+    border: 0;
+    background: transparent;
+    color: var(--color-secondary);
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0.25rem 0.4rem;
+    border-radius: 6px;
+  }
+  .entry-delete:hover {
+    color: var(--color-error);
+    background-color: color-mix(in srgb, var(--color-error) 12%, transparent);
+  }
+
+  .empty {
+    padding: 1.15rem;
+    border: 1px dashed color-mix(in srgb, var(--color-base-content) 22%, transparent);
+    border-radius: 0.85rem;
+    text-align: center;
+    color: var(--color-secondary);
+    font-size: 0.875rem;
+  }
+}

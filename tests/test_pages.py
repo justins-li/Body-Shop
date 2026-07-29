@@ -1,4 +1,4 @@
-"""Smoke tests for the three HTML pages."""
+"""Smoke tests for the four HTML pages."""
 
 import re
 
@@ -10,15 +10,39 @@ from app.exercises import MUSCLE_GROUPS
 @pytest.mark.parametrize(
     ("path", "marker"),
     [
-        ("/", b"Calendar"),
-        ("/log", b"Log a workout"),
-        ("/summary", b"Weekly summary"),
+        ("/", b"Every set."),
+        ("/calendar", b"What you trained"),
+        ("/log", b"New entry"),
+        ("/summary", b"Sets by muscle group"),
     ],
 )
 def test_pages_render(client, path, marker):
+    """Each marker is unique to its page — the nav links appear on all four."""
     response = client.get(path)
     assert response.status_code == 200
     assert marker in response.data
+
+
+def test_home_page_needs_no_api(client):
+    """`/` is static: it must not depend on a page module or the JSON API."""
+    body = client.get("/").data.decode()
+    assert "js/calendar.js" not in body
+    assert "js/summary.js" not in body
+
+
+def test_home_page_body_map_is_pre_graded(client):
+    """The macro's `demo` argument bakes grading into the markup, since the home
+    page runs no JS to paint it."""
+    body = client.get("/").data.decode()
+    assert 'class="muscle is-worked"' in body
+    assert "--level:" in body
+
+
+def test_summary_body_map_is_not_pre_graded(client):
+    """Summary passes no `demo`, so summary.js owns every region's state."""
+    body = client.get("/summary").data.decode()
+    assert "is-worked" not in body
+    assert "--level:" not in body
 
 
 def test_log_page_lists_every_exercise(client):

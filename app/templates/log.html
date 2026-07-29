@@ -2,63 +2,80 @@
 {% block title %}Log a workout · Body Shop{% endblock %}
 
 {% block content %}
-<section class="page-head">
-  <h1>Log a workout</h1>
-  <p class="lede">Pick a date, choose a movement, and record how many sets you finished.</p>
-</section>
+<div class="wrap pt-16 pb-4">
+  <p class="type-label text-secondary mb-5">New entry</p>
+  <h1 class="type-display text-[clamp(2rem,5vw,3.25rem)] mb-5">Log a workout</h1>
+  <p class="type-lede">Pick a date, choose a movement, and record how many sets you finished.</p>
+</div>
 
-<div class="layout-split">
-  <section class="card" aria-labelledby="form-heading">
-    <h2 id="form-heading" class="card-title">New entry</h2>
+<div class="wrap grid items-start gap-6 pb-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+  <section class="card bg-base-100 border hairline" aria-labelledby="form-heading">
+    <div class="card-body gap-7 sm:p-7">
+      <h2 id="form-heading" class="type-display text-lg m-0">Entry details</h2>
 
-    <form id="entry-form" class="form" novalidate>
-      <div class="field">
-        <label for="entry-date">Date</label>
-        <input type="date" id="entry-date" name="date"
-               value="{{ selected_date.isoformat() }}" required>
-      </div>
+      <form id="entry-form" novalidate class="grid gap-7">
+        <div>
+          <label class="type-label text-secondary block mb-2.5" for="entry-date">Date</label>
+          <input type="date" id="entry-date" name="date" required
+                 value="{{ selected_date.isoformat() }}"
+                 class="input w-full bg-base-200 border hairline">
+        </div>
 
-      <fieldset class="field">
-        <legend>Exercise</legend>
-        <div class="exercise-options">
-          {% for exercise in exercises %}
-          <label class="exercise-option">
-            <input type="radio" name="exercise_id" value="{{ exercise.id }}"
-                   {{ 'checked' if loop.first }} required>
-            <span class="exercise-body">
-              <span class="exercise-name">{{ exercise.name }}</span>
-              <span class="muscle-tags">
-                {% for muscle in exercise.muscles %}
-                  <span class="tag">{{ muscle_labels[muscle] }}</span>
-                {% endfor %}
+        <fieldset class="border-0 p-0 m-0">
+          <legend class="type-label text-secondary mb-2.5 p-0">Exercise</legend>
+          <div class="grid gap-2.5">
+            {% for exercise in exercises %}
+            <label class="exercise-option bg-base-200">
+              <input type="radio" name="exercise_id" value="{{ exercise.id }}" required
+                     {{ 'checked' if loop.first }}
+                     class="radio radio-sm border-base-content/35">
+              <span class="flex flex-col gap-1.5 min-w-0">
+                <span class="font-semibold tracking-tight">{{ exercise.name }}</span>
+                <span class="flex flex-wrap gap-1.5">
+                  {% for muscle in exercise.muscles %}
+                    <span class="badge badge-sm type-label px-2.5 border-base-content/15
+                                 bg-base-content/6 text-secondary">
+                      {{ muscle_labels[muscle] }}
+                    </span>
+                  {% endfor %}
+                </span>
               </span>
-            </span>
-          </label>
-          {% endfor %}
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <div>
+          <label class="type-label text-secondary block mb-2.5" for="entry-sets">Sets</label>
+          <div class="flex items-center gap-3">
+            <button type="button" class="btn btn-circle btn-outline border-base-content/25 text-base"
+                    data-step="-1" aria-label="One fewer set">−</button>
+            <input type="number" id="entry-sets" name="sets" value="3" min="1" max="100" required
+                   class="input w-24 text-center bg-base-200 border hairline font-semibold tabular-nums">
+            <button type="button" class="btn btn-circle btn-outline border-base-content/25 text-base"
+                    data-step="1" aria-label="One more set">+</button>
+          </div>
         </div>
-      </fieldset>
 
-      <div class="field">
-        <label for="entry-sets">Sets</label>
-        <div class="stepper">
-          <button type="button" class="icon-btn" data-step="-1" aria-label="One fewer set">−</button>
-          <input type="number" id="entry-sets" name="sets" value="3" min="1" max="100" required>
-          <button type="button" class="icon-btn" data-step="1" aria-label="One more set">+</button>
+        <p class="alert alert-error text-sm py-2.5 px-4 rounded-xl m-0"
+           id="form-error" role="alert" hidden></p>
+
+        <div class="flex flex-wrap gap-2.5">
+          <button type="submit" class="btn btn-primary rounded-full h-11 px-6 border-0">Add entry</button>
+          <a class="btn btn-outline rounded-full h-11 px-6 hairline" id="view-summary"
+             href="{{ url_for('views.summary_page') }}">Weekly summary</a>
         </div>
-      </div>
-
-      <p class="form-error" id="form-error" role="alert" hidden></p>
-
-      <div class="card-actions">
-        <button type="submit" class="btn btn-primary">Add entry</button>
-        <a class="btn btn-ghost" id="view-summary" href="{{ url_for('views.summary_page') }}">Weekly summary</a>
-      </div>
-    </form>
+      </form>
+    </div>
   </section>
 
-  <aside class="card" aria-labelledby="entries-heading">
-    <h2 id="entries-heading" class="card-title">Logged on <span id="entries-date"></span></h2>
-    <div id="day-entries" class="day-entries"><p class="muted">Loading…</p></div>
+  <aside class="card bg-base-100 border hairline" aria-labelledby="entries-heading">
+    <div class="card-body gap-5 sm:p-7">
+      <h2 id="entries-heading" class="type-display text-lg m-0">
+        Logged on <span id="entries-date"></span>
+      </h2>
+      <div id="day-entries" class="grid gap-2"><p class="text-sm text-secondary m-0">Loading…</p></div>
+    </div>
   </aside>
 </div>
 {% endblock %}
