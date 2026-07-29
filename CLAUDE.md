@@ -8,13 +8,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 pip install -r requirements-dev.txt   # runtime + pytest
-python run.py                         # dev server on 127.0.0.1:5000
+python run.py                         # dev server on 127.0.0.1:5000 (migrates first)
 pytest                                # full suite (quiet mode via pyproject addopts)
 pytest tests/test_api.py::test_name    # single test
-flask --app app init-db               # drop and recreate the schema (destroys data)
-flask --app app remap-exercises       # one-off: move pre-Phase-2 exercise ids onto the catalog
+BODYSHOP_TEST_DATABASE_URL=postgresql://... pytest   # same suite, against real Postgres
+flask --app app upgrade-db            # apply migrations — the deploy step
+flask --app app init-db               # drop everything and migrate up (destroys data; dev only)
+flask --app app stamp-db 0001         # for a database that predates migrations
 gunicorn "wsgi:application"           # production entry point — NB: gunicorn is not in requirements.txt, install it separately
 ```
+
+Migrations are plain Alembic, so its CLI works too and reads the same
+`DATABASE_URL` the app does (`alembic revision -m "..." --autogenerate`,
+`alembic history`, `alembic downgrade -1`).
 
 Exercise catalog, only when changing the pinned source or the muscle mapping:
 
@@ -30,7 +36,7 @@ tools/tailwindcss -i app/static/css/input.css -o app/static/css/styles.css --min
 tools/tailwindcss ... --watch          # while working
 ```
 
-CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs `pytest -q` on Python 3.10–3.13, then boots the app via `create_app("testing")` and asserts `GET /` returns 200. There is no linter or formatter configured, and **CI does not build CSS** — the compiled stylesheet is committed.
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs `pytest -q` on Python 3.10–3.13, then boots the app via `create_app("testing")` and asserts `GET /` returns 200. A second job re-runs the same suite against a `postgres:16` service container and round-trips the migration chain both ways — the SQLite job cannot catch a dialect difference by construction. There is no linter or formatter configured, and **CI does not build CSS** — the compiled stylesheet is committed.
 
 ## Read-before-edit protocol
 
@@ -43,7 +49,7 @@ The docs in this repo are specifications, not summaries — they state *why* the
 | Moving logic between layers, adding a module under `app/`, or changing what a layer owns | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the layer-ownership table | The table, plus the Architecture section here |
 | Adding an exercise, a muscle group, or changing grading/targets | [app/exercises.py](app/exercises.py) and [tools/build_exercise_catalog.py](tools/build_exercise_catalog.py), then the volume-scale and body-map sections of [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | [docs/API.md](docs/API.md) (slug list + summary payload) and the invariants below |
 | Editing the SVG body map | The header comment in [app/templates/partials/_body_figure.html](app/templates/partials/_body_figure.html) — it documents which gaps are deliberate and which regions must not overlap | That comment, plus the body-map table in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| Schema changes | [app/schema.sql](app/schema.sql) and the Phase 3 notes in [docs/ROADMAP.md](docs/ROADMAP.md) | Data-model sections in both docs |
+| Schema changes | [app/tables.py](app/tables.py) and the existing revisions in [migrations/versions/](migrations/versions/) | The metadata **and** a new revision, in the same commit — plus the data-model sections in both docs |
 | Anything about commits, branches, or pushing | The Git and GitHub section below | — |
 
 Two standing rules that fall out of this:
@@ -55,11 +61,11 @@ Two standing rules that fall out of this:
 
 Flask + vanilla ES modules; Tailwind v4 + daisyUI for styling. Layers, strictly one-directional:
 
-`app/api.py` (HTTP parsing/status codes) → `app/services/` (rules) → `app/models.py` (all SQL) → SQLite.
+`app/api.py` (HTTP parsing/status codes) → `app/services/` (rules) → `app/models.py` (all SQL, as SQLAlchemy Core) → SQLite **or** Postgres, chosen by `DATABASE_URL`.
 
 [app/views.py](app/views.py) renders four server-side shells (`/`, `/calendar`, `/log`, `/summary`); everything dynamic is fetched by the page's JS module from the same `/api` the tests exercise, so the HTML can't diverge from the API. Each page's JS module pairs with a template of the same name; [app/static/js/api.js](app/static/js/api.js) is the only place `fetch` is called. `/` is the exception — a static landing page with no JS module and no API calls.
 
-Full layer-ownership table and rationale live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); endpoint reference in [docs/API.md](docs/API.md) — keep both updated when changing those surfaces. Planned direction is specified in phase order in [docs/ROADMAP.md](docs/ROADMAP.md): Postgres + migrations, **per-set weight and reps**, auth, Vercel, routines and progress tracking, AI-assisted custom exercises, then mobile/watch/app-store — plus post-launch candidates (auto-progression, social, nutrition, recovery) that are parked with reasons. Phases 1 (Tailwind/daisyUI) and 2 (873-exercise catalog, 12 muscle groups) are done; Phase 9 (images) landed inside Phase 2 with the catalog. Several remaining phases deliberately reverse invariants below (Phase 4 replaces the flat `sets` count), so check it before assuming a constraint still holds.
+Full layer-ownership table and rationale live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); endpoint reference in [docs/API.md](docs/API.md) — keep both updated when changing those surfaces. Planned direction is specified in phase order in [docs/ROADMAP.md](docs/ROADMAP.md): **per-set weight and reps**, auth, Vercel, routines and progress tracking, AI-assisted custom exercises, then mobile/watch/app-store — plus post-launch candidates (auto-progression, social, nutrition, recovery) that are parked with reasons. Phases 1 (Tailwind/daisyUI), 2 (873-exercise catalog, 12 muscle groups) and 3 (Alembic + Postgres) are done; Phase 9 (images) landed inside Phase 2 with the catalog. Several remaining phases deliberately reverse invariants below (Phase 4 replaces the flat `sets` count), so check it before assuming a constraint still holds.
 
 ### Invariants worth knowing before editing
 
@@ -68,19 +74,25 @@ Full layer-ownership table and rationale live in [docs/ARCHITECTURE.md](docs/ARC
 - **Two hand-written daisyUI themes, `bodyshop` (default, light) and `bodyshop-dark` (`prefersdark`).** All 35 stock themes are off. The palette is deliberately achromatic — cream `#fff8ed`, warm ink `#312726`, warm grey `#7a716e` — so *the volume ramp is the only saturated colour in the app*. Don't introduce an accent hue; it competes with the heatmap for attention.
 - **Static structure is utilities in templates; JS-toggled state is a named class in `input.css`'s `@layer components`.** Tailwind only sees classes it can read as literal text, so a class built by interpolation (`` `is-${state}` ``) is silently purged. Rather than safelisting, every runtime-toggled class (`.is-worked`, `.is-over`, `.day-cell.is-selected`, `.toast-bar.is-visible`) is hand-written CSS. The colour mixing has to stay hand-written regardless — see below.
 - **Don't put `<figure>` inside a daisyUI `card` without `flex-col`.** daisyUI sets `.card figure { display: flex }` with no direction, which lays a figcaption out *beside* its figure. The body-map macro passes `flex flex-col` for this reason.
-- **SQL only in [app/models.py](app/models.py).** Services and routes never touch `get_db()`.
+- **SQL only in [app/models.py](app/models.py).** Services and routes never touch `get_db()`. Queries are SQLAlchemy Core expressions, not strings — that is what lets one layer serve both dialects, and it is why enforcing this invariant before Phase 3 made the port contained.
+- **[app/tables.py](app/tables.py) is the schema; [migrations/](migrations/) is how a database gets there.** `schema.sql` is gone. Editing the metadata changes no existing database, so **a metadata change needs an Alembic revision in the same commit** — `tests/test_migrations.py` compares the two with Alembic's own autogenerate diff and fails when they disagree.
+- **Nothing in `create_app` opens a connection or runs DDL.** `ensure_db()` was deleted, not gated: it applied the schema on every boot, which crashes on a read-only filesystem and leaves a fresh deploy with an unversioned schema. The dev convenience lives in [run.py](run.py), which migrates before serving. Adding a side effect back to the factory breaks Phase 6.
+- **`DATABASE_URL` picks the backend**, normalised in `config.py` so a provider's `postgres://` string works as pasted. Postgres gets `NullPool` and `prepare_threshold=None` — a transaction-mode pooler cannot carry prepared statements, and `None` is what disables them (`0` means "prepare immediately", the opposite).
+- **Production refuses to boot** on a placeholder `SECRET_KEY` or a SQLite `DATABASE_URL`. The check runs in `create_app` against the *resolved* config, so `instance/config.py` can satisfy it but not bypass it — check the resolved value, never the class attribute.
+- **SQLite has no date types, so a type-changing migration must not `CAST`.** Alembic's `batch_alter_table` inserts one whenever type affinity changes, and `CAST('2026-07-28' AS DATE)` is `CAST(... AS NUMERIC)`, which prefix-parses to the integer `2026`. Revision `0003` branches by dialect for this reason: Postgres converts with `USING`, SQLite re-declares the column and copies the bytes. Any future type change has the same trap.
+- **Constraint names in migrations are bare tokens** (`sets_positive`, not `ck_workout_entry_sets_positive`). Alembic applies the metadata's `naming_convention` on top of whatever is passed, so a finished name comes out double-prefixed.
 - **[app/exercises.py](app/exercises.py) is the single source of truth, but the catalog is *data*.** `EXERCISES` drives the `/log` picker, `validate_entry`'s accept-list and summary aggregation simultaneously — but its 873 rows are loaded from [app/data/exercises.json](app/data/exercises.json), vendored from [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (Unlicense) by `tools/build_exercise_catalog.py` at a pinned commit. **Never hand-edit the JSON**: change the pin or the mapping in the generator and re-run it. The loader validates at import (unique ids, known muscle slugs, non-empty `primary`, exactly two images) and raises `CatalogError` rather than returning a partial catalog.
 - **A *new muscle group*** needs entries in `MUSCLE_GROUPS`/`MUSCLE_LABELS`/`MUSCLE_TARGETS`, a mapping in the generator's `MUSCLE_MAP`, and an SVG path with a matching `data-muscle` slug in [_body_figure.html](app/templates/partials/_body_figure.html) — no JS changes.
 - **The front and back figures show disjoint muscle groups** — front: chest, abs, shoulders, biceps, forearms, quads; back: back, traps, triceps, glutes, hamstrings, calves. `.body-base` draws a complete silhouette and muscle regions overlay it, so a group can be several paths with anatomical gaps between them (they light up together, since selection is on `data-muscle`, not id). **Regions within a view must not overlap** — they paint in order, so an overlap hides one group's colour behind another's.
 - **`/log` renders no exercises server-side.** At 873 movements the radio list is gone: `views.log_page` passes only a count, and `log.js` fetches `/api/exercises` once and drives a recent/search/browse picker client-side. `GET /api/exercises` is deliberately the *light* shape (no instructions, no images); `GET /api/exercises/<id>` serves the rest.
-- **Dates are ISO-8601 strings end to end.** Stored as TEXT so SQLite's lexicographic `BETWEEN` is chronologically correct, and passed to JSON unconverted. The backend never does time-zone conversion. In JS, parse with `new Date(y, m - 1, d)`, never `new Date(iso)` — the latter is UTC and shifts the day backwards west of Greenwich ([app/static/js/ui.js](app/static/js/ui.js)).
-- **Sets are weighted by how directly a movement trains a group, so per-muscle totals are floats.** A `primary` muscle takes the whole set, a `secondary` muscle half (`PRIMARY_WEIGHT` / `SECONDARY_WEIGHT`): 3 sets of bench press add 3 to chest and 1.5 to triceps and shoulders. `worked` flips true at any non-zero contribution. Render with `format_sets()` in Python or `formatSets()` in [ui.js](app/static/js/ui.js) — `12.5`, but `12` not `12.0`. `schema.sql` is unaffected; only the aggregate is fractional.
+- **Dates are ISO-8601 strings at the API boundary, and a real `DATE` column at rest.** Phase 3 converted `entry_date` from TEXT; on SQLite the stored form is still `YYYY-MM-DD`, so the lexicographic `BETWEEN` remains chronologically correct. Dates cross into `models.py` as `datetime.date` and leave it as ISO strings (`to_dict`, `sets_by_date`). **The backend never does time-zone conversion.** In JS, parse with `new Date(y, m - 1, d)`, never `new Date(iso)` — the latter is UTC and shifts the day backwards west of Greenwich ([app/static/js/ui.js](app/static/js/ui.js)).
+- **Sets are weighted by how directly a movement trains a group, so per-muscle totals are floats.** A `primary` muscle takes the whole set, a `secondary` muscle half (`PRIMARY_WEIGHT` / `SECONDARY_WEIGHT`): 3 sets of bench press add 3 to chest and 1.5 to triceps and shoulders. `worked` flips true at any non-zero contribution. Render with `format_sets()` in Python or `formatSets()` in [ui.js](app/static/js/ui.js) — `12.5`, but `12` not `12.0`. The schema is unaffected — `sets` is still an integer column; only the aggregate is fractional.
 - **Movements outside `VOLUME_CATEGORIES` grade as zero.** The catalog carries stretches, cardio and plyometrics alongside strength work. They are loggable, but contribute no sets and never mark a group `worked` — a hamstring stretch must not shade the body map. `/log` says so on the chosen exercise rather than letting it be silent.
-- **Exercise ids are free-exercise-db's** (`Barbell_Squat`, `Sit-Up`), not slugs we coin. The four hand-written ids that predate the catalog are listed in `RETIRED_EXERCISE_IDS` and migrated by `flask --app app remap-exercises`.
+- **Exercise ids are free-exercise-db's** (`Barbell_Squat`, `Sit-Up`), not slugs we coin. The four hand-written ids that predate the catalog are listed in `RETIRED_EXERCISE_IDS` and carried across by Alembic revision `0002`, which holds its own frozen copy of the mapping — a migration must not import a constant a later commit can change.
 - **Colour is a volume scale, graded server-side.** `grade()` in [app/services/summary.py](app/services/summary.py) maps sets against the group's weekly `MUSCLE_TARGETS` value (20 large / 10 small) to a `state` (`rest`/`trained`/`over`) plus an `intensity` 0–1 *within that state's ramp* — green light→dark up to target, then red light→dark across the next `target // 2` sets. The front end grades nothing: `summary.js` writes `intensity` to a `--level` custom property and toggles `.is-worked`/`.is-over`; CSS mixes between `--color-train-light`/`--color-train-dark` and `--color-over-light`/`--color-over-dark` with `color-mix`. **This cannot become utilities** — `--level` is continuous, and quantising it into fixed classes visibly bands the gradient. `.is-over` must stay after `.is-worked` in the stylesheet — an over-target group carries both classes.
 - **The body-map macro takes an optional `demo` argument** mapping muscle → `(state, level)`, which bakes grading into the markup for surfaces that run no JS. Only `/` uses it; `/summary` passes nothing so `summary.js` owns every region. Tests assert both halves of that split.
 - **All four pages share `?date=YYYY-MM-DD`,** so navigation preserves the day being viewed.
-- **One append-only table** (`workout_entry`), no `user_id`, no auth, no migrations. Schema changes currently mean re-running `init-db`.
+- **One append-only table** (`workout_entry`), no `user_id`, no auth. Migrations exist as of Phase 3, so a schema change is a revision rather than a re-`init-db`.
 
 ## Conventions
 

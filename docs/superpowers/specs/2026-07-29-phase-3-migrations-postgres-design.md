@@ -38,6 +38,16 @@ its lane.
    same reason. **The ISO-8601 rule survives where it was actually load-bearing:**
    the API still speaks `YYYY-MM-DD` strings in both directions, and the backend
    still performs no time-zone conversion.
+
+   > **Corrected during implementation.** This was specced as one
+   > `batch_alter_table` call. That silently destroys the data:
+   > `SQLiteImpl.cast_for_batch_migrate` adds a `CAST` to the table-copy whenever type
+   > affinity changes, and `CAST('2026-07-28' AS DATE)` in SQLite is
+   > `CAST(… AS NUMERIC)`, which prefix-parses to the integer `2026`. Revision `0003`
+   > branches by dialect instead — Postgres converts with `USING`, SQLite re-declares
+   > the columns and copies values verbatim. The claim below about passing the CHECK
+   > constraint through `table_args` was also wrong: SQLAlchemy **does** reflect SQLite
+   > CHECK constraints, so doing that produced a duplicate.
 3. **`remap-exercises` is deleted, folded into revision `0002`.** The roadmap says
    fold *or* delete; folding leaves one mechanism for changing exercise ids
    instead of two.
@@ -61,6 +71,10 @@ The naming convention is not decoration: SQLite's `batch_alter_table` rebuilds a
 table and must be able to name the constraints it recreates. Phase 5 adds a
 column with a `REFERENCES` clause to this table, which is exactly the operation
 that needs it.
+
+One consequence found in implementation: **Alembic applies this convention on top of
+whatever name a revision passes**, so revisions must pass bare tokens
+(`sets_positive`) rather than finished names, or the result is double-prefixed.
 
 ```python
 workout_entry = sa.Table(
@@ -108,7 +122,7 @@ works with no environment variables in dev. `render_as_batch=True` and
 | --- | --- |
 | `0001` | Baseline: `workout_entry` exactly as `schema.sql` had it, so an existing database can be `alembic stamp 0001`'d and carried forward |
 | `0002` | Data: rewrites the four retired exercise ids, replacing the `remap-exercises` command |
-| `0003` | `entry_date` → `DATE`, `created_at` → `timestamptz`, via `batch_alter_table` |
+| `0003` | `entry_date` → `DATE`, `created_at` → `timestamptz`, branching by dialect |
 
 Revision `0002` **inlines its own copy** of the id mapping rather than importing
 `exercises.RETIRED_EXERCISE_IDS`. A migration is a historical record; importing a

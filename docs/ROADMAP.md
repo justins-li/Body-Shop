@@ -9,10 +9,11 @@ doing most of the work: *anything that will be re-done later should be built lat
 Tailwind is first because every remaining phase adds UI, and UI built before the
 migration gets styled twice.
 
-Current state: **Phases 1 and 2 are done, and Phase 9 landed with Phase 2.** Flask +
-Jinja + vanilla ES modules, styled with Tailwind v4 + daisyUI (CSS build step, still
-no JS dependencies), one SQLite table, no auth, no migrations, **873 exercises with
-images across 12 muscle groups**. See [ARCHITECTURE.md](ARCHITECTURE.md).
+Current state: **Phases 1, 2 and 3 are done, and Phase 9 landed with Phase 2.** Flask
++ Jinja + vanilla ES modules, styled with Tailwind v4 + daisyUI (CSS build step, still
+no JS dependencies), one append-only table on **SQLite or Postgres with Alembic
+migrations**, no auth, **873 exercises with images across 12 muscle groups**. See
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
@@ -36,23 +37,24 @@ this before anything is built on top of the flat count.** The weekly muscle-cove
 this app is built around keeps working unchanged; sets-per-muscle is derived from the
 child rows instead of a column.
 
-### 2. Vercel cannot host the app as it exists today
+### 2. Vercel could not host the app as it existed — *resolved in Phase 3*
 
 Vercel serverless functions have an **ephemeral filesystem** — only `/tmp` is writable,
 and it does not survive between invocations. `instance/bodyshop.sqlite3` would be
 recreated empty on every cold start, silently losing every workout.
 
-It is actually worse than silent data loss: `create_app` would **crash on import**.
-Two lines in [`app/__init__.py`](../app/__init__.py) touch the filesystem at factory time —
-`Path(app.instance_path).mkdir(parents=True, exist_ok=True)` and, at the end, a
-`db.ensure_db()` inside an app context that opens a connection and runs `schema.sql` if
-`workout_entry` is missing. Both must become conditional on a file-backed database before
-the app can boot anywhere read-only. `ensure_db()` is also the thing that conflicts with
-Alembic below — see Phase 3.
+It was worse than silent data loss: `create_app` would **crash on import**. Two lines in
+[`app/__init__.py`](../app/__init__.py) touched the filesystem at factory time — an
+unconditional `mkdir` of the instance folder, and a `db.ensure_db()` inside an app context
+that opened a connection and ran `schema.sql` if `workout_entry` was missing.
 
-**SQLite must become hosted Postgres before the app goes on the internet.** This is a
-hard blocker on auth, the stack decision, and deployment simultaneously, which is why
-Phase 3 exists and why Phases 5–6 sit behind it.
+Both are gone. The factory now runs no DDL and reaches the `mkdir` only when falling back
+to the SQLite development default, which production refuses to do at all. `ensure_db()`
+was deleted rather than made conditional, because it conflicted with Alembic as well: it
+gave a fresh deployment an unversioned schema that no revision could stamp.
+
+**SQLite had to become hosted Postgres before the app went on the internet**, which is why
+Phase 3 came first and why Phases 5–6 sat behind it.
 
 ### 3. Tailwind reverses a deliberate architectural choice
 
@@ -70,12 +72,16 @@ through Phase 6.
 The reversal turned out narrower than feared: the build step is **CSS-only and
 npm-free**, and JS is still served exactly as written. See Phase 1 below.
 
-### 4. Auth and the set model are both impossible without migrations
+### 4. Auth and the set model were both impossible without migrations — *resolved in Phase 3*
 
-`schema.sql` is applied once and `init-db` drops everything. Survivable while the
-database is one laptop; data loss the moment there are accounts. Alembic has to land
-before the `user` table does — and before the `workout_set` table, which is the more
+`schema.sql` was applied once and `init-db` dropped everything. Survivable while the
+database is one laptop; data loss the moment there are accounts. Alembic had to land
+before the `user` table did — and before the `workout_set` table, which is the more
 invasive of the two changes.
+
+Both are now revisions rather than rewrites. Phase 3 also set the metadata's constraint
+`naming_convention` for this specific reason: SQLite cannot `ALTER` most things, and
+Alembic's batch mode can only recreate constraints it can name.
 
 ---
 
@@ -87,7 +93,7 @@ Phase 1  Tailwind + DaisyUI ──┬──▶ Phase 2  Exercise taxonomy ──
                               └──▶ (all later UI)               └──▶ Phase 10 Mobile + watch + stores
 
 Phase 3  Migrations + Postgres ──┬──▶ Phase 4  Set-level logging ──▶ Phase 7  Training essentials
-                                 │                                        │
+   ✅ done                       │                                        │
                                  └──▶ Phase 5  Auth ──┬──▶ Phase 6  Vercel deploy ──▶ Phase 10
                                                       └──▶ Phase 8  AI custom exercises
 
@@ -98,9 +104,9 @@ Phase 3  Migrations + Postgres ──┬──▶ Phase 4  Set-level logging ─
    in-app account-deletion endpoint, both of which must be decided in Phase 5.
 ```
 
-Phases 1–2 and Phase 3 are independent and can run in parallel. There are two critical
-paths: **3 → 5 → 6** to be on the internet, and **3 → 4 → 7** to be competitive. They
-converge at Phase 10.
+Phases 1–2 and Phase 3 were independent and ran in parallel. With Phase 3 landed, both
+critical paths now start at their next link: **5 → 6** to be on the internet, and
+**4 → 7** to be competitive. They converge at Phase 10.
 
 ---
 
@@ -305,36 +311,81 @@ them read as a movement rather than a pose.
 ### Left for later
 
 - **Data migration for existing rows** shipped as `flask --app app remap-exercises`
-  (`squat` → `Barbell_Squat`, and three more). Phase 3's note about renamed ids is
-  therefore already handled for the four that existed.
+  (`squat` → `Barbell_Squat`, and three more), which Phase 3 folded into Alembic
+  revision `0002` and deleted. Renamed ids are handled for the four that existed.
 - **Per-exercise secondary weights** instead of a flat 0.5.
 - **Delt granularity** — front/side/rear, if the single `shoulders` group proves too
   coarse.
 
 ---
 
-## Phase 3 — Foundations: migrations and Postgres
+## Phase 3 — Foundations: migrations and Postgres ✅ *done*
 
-**Depends on:** nothing — runs in parallel with Phases 1–2. Placed here because it blocks
-Phases 4 and 5 and nothing else. No user-visible change.
+**Depended on:** nothing — ran in parallel with Phases 1–2. Placed here because it blocks
+Phases 4 and 5 and nothing else. No user-visible change, and no endpoint or payload
+moved, which is the check that it stayed in its lane.
 
-| Task | Detail |
+Design spec: [2026-07-29-phase-3-migrations-postgres-design.md](superpowers/specs/2026-07-29-phase-3-migrations-postgres-design.md).
+
+### What shipped
+
+| Task | As built |
 | --- | --- |
-| Introduce migrations | Alembic. Baseline the current `workout_entry` schema as revision 1, then never hand-edit `schema.sql` again. Reduce `init-db` to a dev-only convenience. **Delete or gate `db.ensure_db()` in the same change** — `create_app` calls it on every boot and it runs `schema.sql` whenever `workout_entry` is missing, so a fresh deploy silently gets an unversioned schema that Alembic has no revision to stamp. It is the single biggest conflict with migrations, and it is easy to miss because nothing calls it explicitly. |
-| Abstract the data layer | `app/models.py` is already the only place SQL lives, so this is contained — but it is raw `sqlite3` with `?` placeholders. Move to SQLAlchemy Core, or `psycopg` with `%s`. **This is the payoff for enforcing the SQL-only-in-models.py invariant.** |
-| Provision Postgres | Neon or Supabase (both have usable free tiers and serverless-friendly pooling). Keep SQLite working locally via a `DATABASE_URL` both backends understand. |
-| Connection pooling | Serverless + Postgres needs a pooler (PgBouncer, Neon's built-in, Supabase's). Without it, concurrent lambdas exhaust connections. |
-| Secret hygiene | `BODYSHOP_SECRET_KEY` defaults to `dev-secret-change-me`. Make `ProductionConfig` raise at startup if it is unset or still the default. Note there is a **second** source: `create_app` runs `app.config.from_pyfile("config.py", silent=True)` against the instance folder, which can override the env var without appearing in the repo. Decide whether that stays before writing the check, or the check is bypassable. |
+| Introduce migrations | Plain Alembic, three revisions, `migrations/` at the repo root. No Flask-Migrate — it wraps a CLI we would otherwise call directly. `env.py` resolves `DATABASE_URL` from app config, so `alembic upgrade head` and `flask --app app upgrade-db` cannot disagree. `init-db` is now a dev-only reset that refuses to run under production config. |
+| Delete `ensure_db()` | **Deleted, not gated.** `create_app` now opens no connection, runs no DDL, and touches disk only for the SQLite dev default. `run.py` migrates before serving, so `python run.py` is still zero-setup, while `wsgi.py` and Phase 6's entry point import the factory and never migrate. |
+| Abstract the data layer | SQLAlchemy Core. The deciding argument was that **Alembic depends on SQLAlchemy anyway**, so `psycopg`-with-`%s` meant installing it regardless and then hand-rolling `lastrowid` vs `RETURNING`, `AUTOINCREMENT` vs `IDENTITY` and `datetime('now')` vs `now()` beside it. `get_db()` kept its name and returns a Core `Connection`, so the SQL-only-in-`models.py` rule reads unchanged — and that rule is why the port touched one file. |
+| Schema source of truth | `app/schema.sql` is gone; `app/tables.py` holds the `MetaData`, with a constraint `naming_convention` so Phase 5's `batch_alter_table` has names to work with. |
+| Provision Postgres | Supabase, reached as plain Postgres over `DATABASE_URL`. Provider strings are normalised in `config.py`, since `postgres://` is what every provider prints and SQLAlchemy rejects it. |
+| Connection pooling | `NullPool` plus `prepare_threshold=None` for Postgres. The pooler is the pool; a second one inside a serverless function exhausts connection limits at trivial traffic. |
+| Secret hygiene | Production raises `ConfigError` on a placeholder `SECRET_KEY` **or** a SQLite `DATABASE_URL`. The instance `config.py` **stays** — it is a legitimate way to hold a secret outside the repo — so the check moved instead: it runs in `create_app` against the *resolved* config, which the instance file can satisfy but not bypass. |
+| Data migration | `remap-exercises` deleted, folded into revision `0002`, which carries its own frozen copy of the mapping. A migration that imported `RETIRED_EXERCISE_IDS` would do different things depending on when it ran. |
+| Test impact | Per-test SQLite file in `tmp_path` kept as the default. `BODYSHOP_TEST_DATABASE_URL` points the same suite at real Postgres, with the schema built by the migrations; CI adds a `postgres:16` job. |
 
-**Test impact:** keep the per-test SQLite file in `tmp_path` — it is fast and the
-isolation is genuinely good. Add a CI job running the suite against a Postgres service
-container so dialect differences surface. The `entry_date BETWEEN` lexicographic trick
-relies on TEXT dates and should be revisited against a real `DATE` column.
+### Where it diverged from this plan
 
-**Data migration note:** Phase 2 renamed every exercise id (`squat` → `Barbell_Squat`),
-and shipped `flask --app app remap-exercises` to carry existing rows across. That command
-is a one-off written against raw SQL — **fold it into the Alembic baseline or delete it**
-when migrations land, rather than leaving two mechanisms for changing exercise ids.
+**1. Three revisions, not one baseline.** The plan said "baseline the current schema as
+revision 1". `0001` does exactly that, but the TEXT-date question below needed its own
+revision, and `0002` is the folded-in data migration. Slightly redundant on a fresh
+Postgres — `0001` creates a TEXT column that `0003` converts — and worth it: an existing
+local database can be `stamp-db 0001`'d and carried forward, and `0003` exercised the
+SQLite rebuild path before Phase 5 has to depend on it.
+
+**2. The `entry_date BETWEEN` question resolved as "convert it".** The plan flagged the
+lexicographic trick for revisiting. It is now a real `DATE`. The trick was never the
+problem — on SQLite the stored form is still `'YYYY-MM-DD'`, so the comparison remains
+correct — but on Postgres a TEXT date has no date semantics at all, and doing this later
+would be another migration over a bigger table.
+
+**3. `batch_alter_table` turned out to be unusable for that conversion, and dangerously
+so.** Alembic's `SQLiteImpl.cast_for_batch_migrate` adds a `CAST` to its table-copy
+whenever type affinity changes. SQLite has no date types, so `CAST('2026-07-28' AS DATE)`
+is `CAST(… AS NUMERIC)` — which prefix-parses to the integer `2026`. The first
+implementation silently destroyed every date and timestamp in the table; the test written
+for the conversion caught it. `0003` branches by dialect instead: Postgres converts with
+`USING`, SQLite re-declares the columns and copies the bytes untouched.
+
+This is worth carrying into Phase 4, which changes column types again.
+
+**4. Two smaller traps, both now written into CLAUDE.md.** Alembic applies the metadata's
+`naming_convention` *on top of* whatever constraint name a revision passes, so a
+fully-qualified name comes out double-prefixed — pass bare tokens. And SQLAlchemy **does**
+reflect SQLite CHECK constraints, contrary to the usual advice about `table_args`, so
+passing one explicitly to a batch operation creates a duplicate.
+
+**5. `python-dotenv` became a dependency**, which the plan did not anticipate. Flask's CLI
+loads `.env` natively when it is installed, so `flask --app app upgrade-db` reads the same
+configuration `run.py` does. `.env.example` is committed and documents which Supabase
+connection string belongs where — the transaction pooler for the app, the session pooler
+for migrations.
+
+### Left for later
+
+- **`postgres://` normalisation covers three prefixes**, not every provider spelling that
+  might appear.
+- **`NullPool` unconditionally on Postgres.** Right for serverless, mildly wasteful under
+  a long-lived gunicorn process. Revisit if Phase 6 does not end up on Vercel.
+- **No `DELETE`-side ownership checks yet** — that is Phase 5's `user_id` sweep, and it is
+  the phase where `delete_entry` stops being global.
 
 ---
 
@@ -390,8 +441,11 @@ Comparable to Phase 5's `user_id` sweep, and touching mostly the same functions:
   since there are no external consumers before Phase 6 deploys.
 - **`log.js` + `log.html`** — the radio-and-stepper form becomes a set grid: a row per set
   with weight/reps inputs, prefilled from the last time this exercise was logged.
-- **`schema.sql`, `tests/`** — `sets INTEGER NOT NULL CHECK (sets > 0)` goes away; the
-  `add` fixture in `conftest.py` needs a set-list signature.
+- **`app/tables.py` + a new revision, `tests/`** — the `sets` column and its
+  `sets > 0` check go away; the `add` fixture in `conftest.py` needs a set-list
+  signature. Note Phase 3's finding before writing that revision: a type or column
+  change on SQLite cannot go through `batch_alter_table` if affinity changes, or
+  Alembic's `CAST` corrupts the data.
 
 ### Ship in this phase, not later
 
@@ -942,7 +996,7 @@ whether anyone looks at the result twice.
 | --- | --- | --- | --- |
 | 1 | Tailwind + DaisyUI ✅ | — | Soft dependency of every later UI surface; cheapest at three pages |
 | 2 | Exercise catalog, 12 muscle groups, picker, images ✅ | 1 | Highest-value work independent of infrastructure; defines the vocabulary Phase 8 emits into. Absorbed Phase 9 |
-| 3 | Migrations + Postgres | — | Blocks 4, 5 and 6; runs parallel to 1–2 |
+| 3 | Migrations + Postgres ✅ | — | Blocked 4, 5 and 6; ran parallel to 1–2 |
 | 4 | **Set-level logging: weight, reps, RPE** | 3 | The gate on the whole competitive feature set; everything in Phase 7 reads it |
 | 5 | Auth, `user_id`, CSRF, rate limiting | 3 | Needs migrations and a real database |
 | 6 | Vercel deploy, CI gates | 3, 5 | Critical path to being online; don't expose an unauthenticated app |
@@ -970,7 +1024,7 @@ whether anyone looks at the result twice.
    Still open as a refinement: one flat number stands in for a spectrum, and per-exercise
    weights are possible once there is evidence for them.
 5. **Existing data on migration** — wipe, or backfill to a seed account? *(Phase 2's four
-   retired ids are already handled by `remap-exercises`; this is now only about Phase 5's
+   retired ids are handled by revision `0002`; this is now only about Phase 5's
    `user_id`.)*
 6. ~~**Delt granularity**~~ — **answered: one `shoulders` group.** The facets preserve
    front/side/rear, so splitting later is a data change plus SVG paths, not a re-model.

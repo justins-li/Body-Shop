@@ -17,8 +17,16 @@ browser  ──fetch──▶  app/api.py        (HTTP: parse, serialise, status
                      app/models.py     (SQL: validation + queries, all of it)
                           │
                           ▼
-                     SQLite (instance/bodyshop.sqlite3)
+                     SQLAlchemy Core   (app/db.py: engine, request-scoped connection)
+                          │
+                          ▼
+                     SQLite (instance/bodyshop.sqlite3) or Postgres
 ```
+
+Which backend is in use is decided entirely by `DATABASE_URL`, and nothing above
+`app/db.py` knows the difference. Core is what buys that: the dialect decides
+`lastrowid` versus `RETURNING`, `AUTOINCREMENT` versus `IDENTITY`, and how a
+`DATE` is stored, so `models.py` expresses queries once.
 
 `app/views.py` renders four server-side shells; everything dynamic is fetched by
 the page's JavaScript module from the same `/api` the tests exercise. That means the
@@ -35,7 +43,10 @@ why it is worth having before auth exists.
 | `app/data/exercises.json` | The catalog data itself — 873 vendored movements. | Be hand-edited; it is generated output. |
 | `tools/build_exercise_catalog.py` | Fetching the pinned source and mapping its vocabulary onto ours. | Run at import, in CI, or at request time. |
 | `app/exercises.py` | Loading and validating the catalog, the muscle groups, targets and volume weights. | Touch the database. |
-| `app/models.py` | Every SQL statement, plus input validation. | Know about HTTP or Jinja. |
+| `app/tables.py` | The schema, as SQLAlchemy `MetaData`. Source of truth for both dialects. | Change any existing database — that needs a migration. |
+| `migrations/` | How a database reaches the schema `tables.py` describes. Revisions are append-only history. | Import app constants that a later commit could change. |
+| `app/db.py` | The engine, request-scoped connections, and the migration commands. | Contain queries. |
+| `app/models.py` | Every SQL statement, plus input validation. | Know about HTTP or Jinja, or know which dialect it is on. |
 | `app/services/weeks.py` | Week/month boundary maths. | Query the database. |
 | `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses. |
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
@@ -165,8 +176,8 @@ Counting secondaries in full would inflate every accessory group — pressing al
 would fill the triceps target twice over — and ignoring them entirely would
 under-report real work. Totals are therefore floats; `format_sets()` in
 `exercises.py` and `formatSets()` in `ui.js` render them (`12.5`, but `12` not
-`12.0`). `schema.sql` is untouched: `sets` still stores whole sets performed, and
-only the per-muscle aggregate is fractional.
+`12.0`). The schema is untouched: `sets` is still an integer column storing whole
+sets performed, and only the per-muscle aggregate is fractional.
 
 The page answers "how much work did this muscle get", not "how many sets did I
 perform" — `total_sets` in the weekly payload still answers the latter.
@@ -222,16 +233,41 @@ before there was anything to overlay.
 
 ## Data model
 
-One table. Entries are append-only rows; there is no per-day "workout" record,
-which keeps logging a single insert and makes range queries trivial.
+One table, defined in [`app/tables.py`](../app/tables.py). Entries are append-only
+rows; there is no per-day "workout" record, which keeps logging a single insert
+and makes range queries trivial.
 
 ```sql
-workout_entry(id, entry_date TEXT, exercise_id TEXT, sets INTEGER, created_at TEXT)
+workout_entry(id, entry_date DATE, exercise_id TEXT, sets INTEGER, created_at TIMESTAMPTZ)
 ```
 
-`entry_date` is stored as an ISO-8601 string, so SQLite's lexicographic `BETWEEN`
-comparison is also a correct chronological comparison, and the value needs no
-conversion on the way to JSON.
+`entry_date` was TEXT until Phase 3. On SQLite the stored form is still
+`'YYYY-MM-DD'` — SQLite has no date type, so a `DATE` column is a declaration over
+the same text — which means the lexicographic `BETWEEN` that range queries rely on
+is still a correct chronological comparison. On Postgres it is a real date. Either
+way `models.py` passes and receives `datetime.date`, and converts to ISO-8601
+strings at its edge.
+
+### Migrations
+
+`app/tables.py` says what the schema *is*; `migrations/versions/` is how a
+database gets there. The two can disagree — editing the metadata changes no
+existing database — so `tests/test_migrations.py` compares them using Alembic's
+own autogenerate diff and fails if a revision is missing.
+
+| Revision | Does |
+| --- | --- |
+| `0001` | The schema as the original hand-written `schema.sql` built it. A database predating Alembic is `stamp-db 0001`'d onto the chain rather than rebuilt. |
+| `0002` | Moves the four pre-Phase-2 exercise ids onto the catalog. Replaced the `remap-exercises` command. |
+| `0003` | `entry_date` → `DATE`, `created_at` → `TIMESTAMPTZ`. |
+
+`0003` is worth reading before writing another type change. It **cannot** use
+Alembic's `batch_alter_table`: `SQLiteImpl.cast_for_batch_migrate` adds a `CAST` to
+its table-copy whenever type affinity changes, and SQLite resolves
+`CAST('2026-07-28' AS DATE)` as `CAST(… AS NUMERIC)`, which prefix-parses to the
+integer `2026`. It branches by dialect instead — Postgres converts with `USING`,
+SQLite re-declares the columns and copies the values untouched, because the values
+are already in the form a `DATE` column reads back.
 
 ## Dates and time zones
 
@@ -255,17 +291,31 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
 - `tests/test_pages.py` — the four pages render and contain every muscle region, and
   `/log` ships a picker shell rather than the catalog. Page markers are chosen to be
   unique to their page, since the nav links appear on all four.
+- `tests/test_migrations.py` — that the migration chain builds exactly what
+  `tables.py` describes, that the data migration moves every retired id, that the
+  `DATE` conversion preserves real dates, and that the chain downgrades.
+- `tests/test_config.py` — URL normalisation, and that production refuses to boot on
+  a placeholder secret or a SQLite database.
 
 Each test gets a fresh SQLite file in pytest's `tmp_path`, so tests are isolated and
 run in any order.
+
+Setting `BODYSHOP_TEST_DATABASE_URL` runs the same suite against a real Postgres
+instead, where the schema is built by the migrations rather than from the metadata —
+so that run also verifies the migration chain on the dialect it matters on. CI does
+this on a `postgres:16` service container. Isolation there is a `TRUNCATE` between
+tests rather than a fresh database: one round trip instead of a schema rebuild,
+which is the difference between seconds and minutes against a hosted database.
 
 ## Deliberate limitations
 
 - **Single user.** There is no auth and no `user_id` column; the database is
   whoever's machine it runs on. Adding accounts means a `user` table and a foreign
   key on `workout_entry`.
-- **No migrations.** `schema.sql` is applied once; schema changes currently mean
-  re-running `init-db`. Introduce Alembic before the data matters.
+- **No connection pooling of our own on Postgres.** `NullPool` is deliberate: both
+  Supabase and Neon put a pooler in front, and a second pool inside a serverless
+  function exhausts connection limits at trivial traffic. Under a long-lived
+  process (gunicorn) this trades a little latency for that safety.
 - **Sets only.** No weight or reps — `workout_entry` stores a bare count, so 3 sets at
   60kg and 3 sets at 140kg are the same row. This blocks 1RM estimates, PR detection,
   progress graphs and plate calculators, and is scheduled as
