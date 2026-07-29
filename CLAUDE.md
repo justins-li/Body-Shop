@@ -51,7 +51,7 @@ Full layer-ownership table and rationale live in [docs/ARCHITECTURE.md](docs/ARC
 
 - **Commit messages:** present tense, one logical change per commit ([CONTRIBUTING.md](CONTRIBUTING.md)). The subject line says what changed; the body says *why*, and is worth writing whenever the reasoning isn't obvious from the diff.
 - **Never add attribution trailers.** No `Co-Authored-By:`, no "Generated with" footers — GitHub renders co-authors as contributors on the PR, and the user does not want that.
-- **Branch, don't commit to `main`.** Prefix by intent, as in `planning/roadmap`.
+- **Work directly on `main`.** Justin asked for this on 2026-07-29; don't create a feature branch or open a PR unless he asks for one.
 - **Run the suite before committing.** CI only runs `pytest -q`, so a green local run is the whole signal.
 - **`gh` is not installed**, so PRs, issues and reviews cannot be created from here — say so rather than improvising, and offer `winget install --id GitHub.cli`. Plain `git` works normally; `origin` is set.
 - Rewriting published history needs the user's approval — the permission rules block it by default.
