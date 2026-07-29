@@ -125,9 +125,9 @@ new movement introduces a *new* muscle group, also add it to `MUSCLE_GROUPS`,
 
 ## Roadmap
 
-The full technical plan — Tailwind/DaisyUI, a ~180-exercise catalog with images,
-accounts, Postgres and Vercel hosting — is in [docs/ROADMAP.md](docs/ROADMAP.md).
-Smaller items not covered there:
+The full technical plan, in execution order — Tailwind/DaisyUI, a ~180-exercise catalog,
+Postgres, accounts, Vercel hosting, then AI-assisted custom exercises — is in
+[docs/ROADMAP.md](docs/ROADMAP.md). Smaller items not covered there:
 
 - [ ] A hinge movement (deadlift / leg curl) so quads and hamstrings can differ
 - [ ] Per-set weight and reps
