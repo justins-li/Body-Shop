@@ -44,3 +44,14 @@ Full layer-ownership table and rationale live in [docs/ARCHITECTURE.md](docs/ARC
 - JS: ES modules, zero dependencies — keep it that way.
 - CSS: use the design tokens at the top of `styles.css` rather than new hex values.
 - Tests: each gets a fresh SQLite file in `tmp_path` via the `app`/`client`/`add` fixtures in [tests/conftest.py](tests/conftest.py), so order never matters.
+
+## Git and GitHub
+
+**Claude drives git in this repo** — branching, committing, pulling and pushing. Don't hand the user a command to run when you can run it; don't ask them to write a commit message.
+
+- **Commit messages:** present tense, one logical change per commit ([CONTRIBUTING.md](CONTRIBUTING.md)). The subject line says what changed; the body says *why*, and is worth writing whenever the reasoning isn't obvious from the diff.
+- **Never add attribution trailers.** No `Co-Authored-By:`, no "Generated with" footers — GitHub renders co-authors as contributors on the PR, and the user does not want that.
+- **Branch, don't commit to `main`.** Prefix by intent, as in `planning/roadmap`.
+- **Run the suite before committing.** CI only runs `pytest -q`, so a green local run is the whole signal.
+- **`gh` is not installed**, so PRs, issues and reviews cannot be created from here — say so rather than improvising, and offer `winget install --id GitHub.cli`. Plain `git` works normally; `origin` is set.
+- Rewriting published history needs the user's approval — the permission rules block it by default.
