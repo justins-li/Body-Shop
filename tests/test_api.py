@@ -54,6 +54,24 @@ def test_recent_exercises_are_empty_before_anything_is_logged(client):
     assert client.get("/api/exercises/recent").get_json()["exercises"] == []
 
 
+def test_recent_exercises_carry_their_use_count(client, add):
+    """The picker ranks browse and search by this, not just the recent list."""
+    add("2026-07-26", SQUAT, 3)
+    add("2026-07-27", SQUAT, 3)
+    add("2026-07-28", PULLUP, 4)
+
+    recent = client.get("/api/exercises/recent").get_json()["exercises"]
+    assert {e["id"]: e["uses"] for e in recent} == {SQUAT: 2, PULLUP: 1}
+
+
+def test_catalog_payload_carries_a_rank_with_the_staples_first(client):
+    """"Common lifts first" has to survive the wire; the picker sorts on it."""
+    exercises = client.get("/api/exercises").get_json()["exercises"]
+    ranked = sorted(exercises, key=lambda e: e["rank"])
+    assert ranked[0]["id"] == BENCH
+    assert [e["id"] for e in ranked[:3]] == [BENCH, SQUAT, "Barbell_Deadlift"]
+
+
 def test_create_and_list_entry(client, add):
     response = add("2026-07-28", SQUAT, 4)
     assert response.status_code == 201

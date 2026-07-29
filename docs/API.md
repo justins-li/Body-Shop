@@ -30,7 +30,8 @@ it once and filters client-side, and including them quadruples the payload. Use
       "level": "beginner",
       "force": "push",
       "mechanic": "compound",
-      "counts_toward_volume": true
+      "counts_toward_volume": true,
+      "rank": 0
     }
   ]
 }
@@ -47,6 +48,7 @@ it once and filters client-side, and including them quadruples the payload. Use
 | `force` | `push`, `pull`, `static` or `null`. |
 | `mechanic` | `compound`, `isolation` or `null`. |
 | `counts_toward_volume` | `false` for stretching, cardio and plyometrics — still loggable, but graded as zero sets. |
+| `rank` | How prominently to offer the movement, **lower first**. Not a field of the source data: it is Body Shop's "common lifts first" ordering (`STAPLE_EXERCISE_IDS` in `app/exercises.py`). `0`–~130 are the curated staples in order; `1000+` is everything else, ordered by `mechanic`, `level` and `equipment`, with zero-volume categories last. Sort on it; do not read meaning into the number. |
 
 The twelve muscle group slugs are `chest`, `abs`, `shoulders`, `biceps`, `forearms`,
 `quads`, `back`, `traps`, `triceps`, `glutes`, `hamstrings` and `calves`.
@@ -66,8 +68,16 @@ cannot be derived from the catalog payload.
 | --- | --- | --- |
 | `limit` | `12` | Clamped to 1–50. |
 
-Same object shape as `GET /api/exercises`. Returns an empty list before anything has
-been logged.
+Same object shape as `GET /api/exercises`, **plus `uses`** — how many entries have been
+logged against that exercise:
+
+```json
+{ "exercises": [ { "id": "Barbell_Squat", "uses": 14, "rank": 1, "…": "…" } ] }
+```
+
+`/log` asks for 50, lists the first 12, and keeps the rest for their counts: `uses`
+outranks `rank` in browse and search, so your own movements lead every list. Returns an
+empty list before anything has been logged.
 
 ---
 
@@ -89,6 +99,7 @@ One exercise in full: everything above, plus its instructions and image URLs.
     "force": "push",
     "mechanic": "compound",
     "counts_toward_volume": true,
+    "rank": 1,
     "instructions": [
       "This exercise is best performed inside a squat rack for safety purposes. …",
       "…"

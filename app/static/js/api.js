@@ -46,7 +46,9 @@ export async function fetchExercises() {
 }
 
 /**
- * Recently logged exercises, most recent first.
+ * Recently logged exercises, most recent first, each carrying `uses` — how many
+ * times it has been logged. The picker ranks browse and search by that count,
+ * so it asks for more than it lists.
  * Reads entry history, so it cannot come from the catalog payload.
  */
 export async function fetchRecentExercises(limit = 12) {

@@ -104,6 +104,37 @@ rather than the pattern/modifier split the roadmap originally sketched — deriv
 patterns for 873 movements by hand is the error-prone data entry that adopting a
 dataset was meant to avoid.
 
+### Ranking is ours, and lives in code
+
+What the source does **not** carry is any notion of how common a movement is, and
+alphabetical order at 873 rows is actively hostile: browsing chest opened with
+"Alternating Floor Press" and "Around The Worlds", the bench press sat mid-list, and
+pushups — 70th of 147 — fell past the picker's row cap where browsing could not reach
+them at all.
+
+So `Exercise.rank` exists (**lower sorts first**), in two tiers that never interleave:
+
+| Tier | Rank | Ordered by |
+| --- | --- | --- |
+| Staples | `0`–`len(STAPLE_EXERCISE_IDS) - 1` | Position in `STAPLE_EXERCISE_IDS` — a curated list, most common first |
+| Everything else | `UNRANKED_RANK_BASE` (1000) upward | `mechanic`, then `level`, then whether the equipment is gym-standard; zero-volume categories take a flat 400 penalty and land last |
+
+Two decisions worth keeping:
+
+- **It is in `exercises.py`, not in the JSON.** The catalog is generated from a pinned
+  upstream commit and never hand-edited; a popularity ordering is an editorial
+  judgement about lifters rather than a fact about the source, and keeping it in code
+  means revising it does not mean regenerating the catalog.
+- **Every staple id is checked at import**, raising `CatalogError`. A rename upstream
+  would otherwise silently demote a staple to the bottom of every browse list, which is
+  precisely the failure the ranking exists to prevent.
+
+`rank` rides on the light payload, and `/log` sorts by *history first, then rank*:
+`GET /api/exercises/recent` returns `uses` per movement, and a movement you have logged
+outranks one the staple list merely believes is popular. The tiers stay disjoint so no
+combination of facets can lift an obscure movement above a named staple — a property
+`tests/test_exercises.py` asserts directly.
+
 ### Images
 
 Each movement carries exactly two photographs, its start and end position. They are
@@ -246,7 +277,9 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
 
 - `tests/test_weeks.py` — boundary maths, no app needed.
 - `tests/test_exercises.py` — the catalog's contract: known slugs, unique ids, two
-  frames each, no muscle both primary and secondary, and the volume weights.
+  frames each, no muscle both primary and secondary, the volume weights, and the
+  ranking's invariants (every staple id resolves, the tiers do not interleave, every
+  muscle group has a staple).
 - `tests/test_summary.py` — the muscle-coverage and volume-grading rules, both as
   pure functions and through the database.
 - `tests/test_models.py` — the data layer's non-API surface: the retired-id remap and

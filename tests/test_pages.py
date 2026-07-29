@@ -57,6 +57,23 @@ def test_log_page_renders_a_picker_shell_not_the_catalog(client):
     assert body.count('data-panel="') == 3
 
 
+def test_log_page_leads_with_recent_and_browse_and_demotes_search(client):
+    """Browse is a way in; search is a fallback, so it is only an icon."""
+    body = client.get("/log").data.decode()
+    tabs = re.findall(r'data-tab="(\w+)"', body)
+    assert tabs == ["recent", "browse", "search"]
+
+    # The two named tabs carry visible labels; search carries a glyph and an
+    # accessible name only.
+    assert ">Recent</button>" in body
+    assert ">Browse</button>" in body
+    assert 'class="picker-tab picker-tab-icon' in body
+    assert "Search all 873 movements" in body
+
+    # Recent is still what opens.
+    assert body.count('aria-selected="true"') == 1
+
+
 def test_log_page_browse_offers_every_muscle_group(client):
     body = client.get("/log").data.decode()
     for muscle in MUSCLE_GROUPS:

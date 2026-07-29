@@ -292,6 +292,24 @@ All three access paths shipped: **Recent** (default, from entry history), **Sear
 **Browse** (muscle → equipment). The selected movement shows its two frames cross-fading
 in CSS — `steps(1)` on stacked `<img>` elements, no JS timer — plus its instructions.
 
+**Revised after the fact: the three paths are not equals.** Giving them three identical
+tabs made search look like the primary way in, when searching a catalog nobody has
+memorised is the *narrow* case — it only works if you already know the name. Browse is
+how you shop for a movement and the only path a first-time user can succeed on, so
+Recent and Browse now carry the labelled tabs and search is reduced to a magnifier icon.
+
+The deeper problem was that browse did not deserve promotion as built. It sorted
+alphabetically and truncated at 40 rows, which put "Alternating Floor Press" at the top
+of chest and pushups (70th of 147) beyond reach entirely. Fixed by `Exercise.rank`
+(see ARCHITECTURE.md — curated staples, then facet-derived order, zero-volume categories
+last), by ranking your own logged movements above both, and by replacing the silent cap
+with a "Show all 147" footer. Browse is also indexed by muscle at load instead of
+re-scanning 873 rows per dropdown change.
+
+Not done, and the obvious next step: **the body map as the picker** — tapping a region on
+the figure to browse that group, reusing the `_body_figure.html` macro. It needs a
+selectable variant of the macro and mobile layout work, and `rank` was the prerequisite.
+
 ### Images (formerly Phase 9)
 
 The licensing question that gated Phase 9 dissolved: free-exercise-db is public domain,

@@ -106,6 +106,179 @@ VOLUME_CATEGORIES: frozenset[str] = frozenset(
 CATALOG_PATH = Path(__file__).parent / "data" / "exercises.json"
 
 
+#: The movements most lifters actually program, most common first.
+#:
+#: free-exercise-db carries **no popularity signal** — only ``equipment``,
+#: ``category``, ``level``, ``force`` and ``mechanic`` — so "common lifts first"
+#: has to be asserted somewhere, and alphabetical order is actively hostile at
+#: 873 rows: browsing chest led with "Alternating Floor Press" and "Around The
+#: Worlds" while the bench press sat mid-list and pushups fell past the row cap
+#: entirely.
+#:
+#: This lives in code, not in ``exercises.json``, on purpose. The JSON is
+#: generated from a pinned upstream commit and is never hand-edited (see
+#: ``tools/build_exercise_catalog.py``); a ranking is *our* editorial judgement
+#: about lifters, not a fact about the source data, and putting it here means
+#: revising it does not mean regenerating the catalog. Order within the tuple is
+#: the ranking — index 0 outranks index 1 — and every id is checked against the
+#: catalog at import, so a rename upstream fails loudly instead of silently
+#: demoting a staple.
+STAPLE_EXERCISE_IDS: tuple[str, ...] = (
+    # The barbell core: the lifts a beginner's programme is built out of.
+    "Barbell_Bench_Press_-_Medium_Grip",
+    "Barbell_Squat",
+    "Barbell_Deadlift",
+    "Standing_Military_Press",
+    "Bent_Over_Barbell_Row",
+    "Pullups",
+    "Romanian_Deadlift",
+    "Barbell_Incline_Bench_Press_-_Medium_Grip",
+    "Front_Squat_Clean_Grip",
+    "Chin-Up",
+    "Dips_-_Triceps_Version",
+    "Pushups",
+    # Dumbbell, cable and machine mainstays for the upper body.
+    "Dumbbell_Bench_Press",
+    "Incline_Dumbbell_Press",
+    "Dumbbell_Shoulder_Press",
+    "Arnold_Dumbbell_Press",
+    "One-Arm_Dumbbell_Row",
+    "Seated_Cable_Rows",
+    "Wide-Grip_Lat_Pulldown",
+    "Close-Grip_Front_Lat_Pulldown",
+    "Bent_Over_Two-Dumbbell_Row",
+    "T-Bar_Row_with_Handle",
+    "Barbell_Shoulder_Press",
+    "Seated_Barbell_Military_Press",
+    "Machine_Shoulder_Military_Press",
+    "Machine_Bench_Press",
+    "Leverage_Chest_Press",
+    "Cable_Crossover",
+    "Dumbbell_Flyes",
+    "Incline_Dumbbell_Flyes",
+    "Butterfly",
+    "Decline_Barbell_Bench_Press",
+    "Close-Grip_Barbell_Bench_Press",
+    "Dips_-_Chest_Version",
+    "Straight-Arm_Pulldown",
+    "V-Bar_Pulldown",
+    # Legs, hips and calves.
+    "Leg_Press",
+    "Leg_Extensions",
+    "Lying_Leg_Curls",
+    "Seated_Leg_Curl",
+    "Dumbbell_Lunges",
+    "Barbell_Lunge",
+    "Barbell_Walking_Lunge",
+    "Split_Squat_with_Dumbbells",
+    "Goblet_Squat",
+    "Dumbbell_Squat",
+    "Bodyweight_Squat",
+    "Hack_Squat",
+    "Smith_Machine_Squat",
+    "Barbell_Full_Squat",
+    "Box_Squat",
+    "Stiff-Legged_Barbell_Deadlift",
+    "Barbell_Hip_Thrust",
+    "Barbell_Glute_Bridge",
+    "Single_Leg_Glute_Bridge",
+    "Glute_Ham_Raise",
+    "Good_Morning",
+    "Hyperextensions_Back_Extensions",
+    "Pull_Through",
+    "Glute_Kickback",
+    "One-Legged_Cable_Kickback",
+    "Step-up_with_Knee_Raise",
+    "Standing_Calf_Raises",
+    "Seated_Calf_Raise",
+    "Standing_Barbell_Calf_Raise",
+    "Standing_Dumbbell_Calf_Raise",
+    "Calf_Press_On_The_Leg_Press_Machine",
+    "Donkey_Calf_Raises",
+    # Arms.
+    "Barbell_Curl",
+    "Hammer_Curls",
+    "Incline_Hammer_Curls",
+    "Preacher_Curl",
+    "Concentration_Curls",
+    "Cable_Hammer_Curls_-_Rope_Attachment",
+    "Cable_Preacher_Curl",
+    "Alternate_Incline_Dumbbell_Curl",
+    "Close-Grip_EZ_Bar_Curl",
+    "Standing_Dumbbell_Reverse_Curl",
+    "Triceps_Pushdown",
+    "Triceps_Pushdown_-_Rope_Attachment",
+    "EZ-Bar_Skullcrusher",
+    "Cable_Rope_Overhead_Triceps_Extension",
+    "Dumbbell_One-Arm_Triceps_Extension",
+    "Tricep_Dumbbell_Kickback",
+    "Bench_Dips",
+    # Delts, traps and forearms.
+    "Side_Lateral_Raise",
+    "Seated_Side_Lateral_Raise",
+    "Front_Dumbbell_Raise",
+    "Face_Pull",
+    "Reverse_Flyes",
+    "Cable_Rear_Delt_Fly",
+    "Upright_Barbell_Row",
+    "Barbell_Shrug",
+    "Dumbbell_Shrug",
+    "Cable_Shrugs",
+    "Farmers_Walk",
+    "Wrist_Roller",
+    "Palms-Up_Barbell_Wrist_Curl_Over_A_Bench",
+    "Palms-Down_Wrist_Curl_Over_A_Bench",
+    # Abs.
+    "Crunches",
+    "Sit-Up",
+    "Plank",
+    "Hanging_Leg_Raise",
+    "Cable_Crunch",
+    "Russian_Twist",
+    "Ab_Crunch_Machine",
+    "Air_Bike",
+    "Decline_Crunch",
+    "Cross-Body_Crunch",
+    "Leg_Pull-In",
+    "Side_Bridge",
+    "Mountain_Climbers",
+    # Olympic and kettlebell work: common in the gym, rarer in a log.
+    "Clean_and_Jerk",
+    "Clean",
+    "Snatch",
+    "Power_Snatch",
+    "Hang_Clean",
+    "Push_Press",
+    "Dumbbell_Clean",
+    "One-Arm_Kettlebell_Swings",
+    "Kettlebell_Thruster",
+)
+
+#: Staple id → its rank, which is simply its position in the tuple above.
+_STAPLE_RANKS: dict[str, int] = {
+    exercise_id: index for index, exercise_id in enumerate(STAPLE_EXERCISE_IDS)
+}
+
+#: Where non-staple ranks begin, leaving the staple list room to grow.
+UNRANKED_RANK_BASE = 1000
+
+#: Equipment a commercial gym has. Everything else — foam rolls, exercise
+#: balls, medicine balls, "other" — sorts behind it.
+COMMON_EQUIPMENT: frozenset[str] = frozenset(
+    {"barbell", "dumbbell", "body only", "none", "cable", "machine", "kettlebells"}
+)
+
+#: Rank penalties for the facets the dataset *does* carry, applied to
+#: non-staples. Small numbers: they order movements within a tier, and must
+#: never let an unusual movement overtake a named staple.
+_MECHANIC_PENALTY: dict[str | None, int] = {"compound": 0, "isolation": 30}
+_LEVEL_PENALTY: dict[str, int] = {"beginner": 0, "intermediate": 15, "expert": 45}
+
+#: Applied to stretches, cardio and plyometrics, which grade as zero volume and
+#: are almost never what someone browsing a muscle group is looking for.
+_NON_VOLUME_PENALTY = 400
+
+
 #: The four hand-written ids this catalog replaced, and their equivalents.
 #:
 #: Applied by ``flask --app app remap-exercises`` so a database logged against
@@ -164,6 +337,33 @@ class Exercise:
         """Whether sets of this movement are graded on the body map."""
         return self.category in VOLUME_CATEGORIES
 
+    @property
+    def rank(self) -> int:
+        """How prominently to offer this movement. **Lower sorts first.**
+
+        Two tiers. A movement named in :data:`STAPLE_EXERCISE_IDS` takes its
+        index there, so the curated order is the ranking. Everything else starts
+        at :data:`UNRANKED_RANK_BASE` and is ordered by the facets the dataset
+        does carry — compound before isolation, gym equipment before exercise
+        balls, beginner before expert, and everything that grades as zero volume
+        last.
+
+        The gap between the tiers is deliberate: no combination of facets can
+        lift an unranked movement above a staple.
+        """
+        staple = _STAPLE_RANKS.get(self.id)
+        if staple is not None:
+            return staple
+
+        rank = UNRANKED_RANK_BASE
+        if not self.counts_toward_volume:
+            rank += _NON_VOLUME_PENALTY
+        rank += _MECHANIC_PENALTY.get(self.mechanic, 60)
+        rank += _LEVEL_PENALTY.get(self.level, 15)
+        if self.equipment not in COMMON_EQUIPMENT:
+            rank += 120
+        return rank
+
     def weight_for(self, muscle: str) -> float:
         """Return this movement's volume weight for ``muscle``.
 
@@ -197,6 +397,7 @@ class Exercise:
             "force": self.force,
             "mechanic": self.mechanic,
             "counts_toward_volume": self.counts_toward_volume,
+            "rank": self.rank,
         }
 
     def to_detail_dict(self, image_base: str = "") -> dict:
@@ -259,6 +460,18 @@ def _load_catalog(path: Path = CATALOG_PATH) -> dict[str, Exercise]:
             )
 
         catalog[exercise.id] = exercise
+
+    # A staple id that no longer resolves would silently demote a common lift to
+    # the bottom of every browse list, which is exactly the failure this ranking
+    # exists to prevent — so it is an import-time error, not a shrug.
+    unknown_staples = [i for i in STAPLE_EXERCISE_IDS if i not in catalog]
+    if unknown_staples:
+        raise CatalogError(
+            f"STAPLE_EXERCISE_IDS names ids not in the catalog: {unknown_staples}. "
+            "The upstream pin probably renamed them; fix the list in exercises.py."
+        )
+    if len(_STAPLE_RANKS) != len(STAPLE_EXERCISE_IDS):
+        raise CatalogError("STAPLE_EXERCISE_IDS contains duplicates.")
 
     return catalog
 

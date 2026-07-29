@@ -17,6 +17,8 @@ from app.exercises import (
     RETIRED_EXERCISE_IDS,
     SECONDARY_WEIGHT,
     VOLUME_CATEGORIES,
+    STAPLE_EXERCISE_IDS,
+    UNRANKED_RANK_BASE,
     all_exercises,
     format_sets,
     get_exercise,
@@ -116,3 +118,61 @@ def test_detail_dict_tolerates_a_trailing_slash_on_the_base():
 )
 def test_format_sets_drops_a_trailing_zero(value, expected):
     assert format_sets(value) == expected
+
+
+# ---- Ranking ---------------------------------------------------------------
+
+
+def test_every_staple_id_exists():
+    """A rename upstream must not silently demote a staple to the bottom."""
+    for exercise_id in STAPLE_EXERCISE_IDS:
+        assert get_exercise(exercise_id) is not None, exercise_id
+
+
+def test_staple_ids_are_unique():
+    assert len(set(STAPLE_EXERCISE_IDS)) == len(STAPLE_EXERCISE_IDS)
+
+
+def test_staples_rank_in_the_order_they_are_listed():
+    ranks = [get_exercise(i).rank for i in STAPLE_EXERCISE_IDS]
+    assert ranks == sorted(ranks)
+    assert ranks == list(range(len(STAPLE_EXERCISE_IDS)))
+
+
+def test_no_facet_combination_lifts_an_unranked_movement_above_a_staple():
+    """The two tiers must not interleave, or 'common lifts first' stops holding."""
+    worst_staple = max(get_exercise(i).rank for i in STAPLE_EXERCISE_IDS)
+    unranked = [e for e in all_exercises() if e.id not in STAPLE_EXERCISE_IDS]
+    assert worst_staple < UNRANKED_RANK_BASE <= min(e.rank for e in unranked)
+
+
+def test_every_muscle_group_has_a_staple_that_trains_it_primarily():
+    """Browse opens on a ranked list for all 12 groups, not just the popular ones."""
+    covered = {m for i in STAPLE_EXERCISE_IDS for m in get_exercise(i).primary}
+    assert covered == set(MUSCLE_GROUPS)
+
+
+def test_zero_volume_movements_rank_behind_every_strength_movement():
+    """A hamstring stretch must not lead a hamstrings browse list."""
+    unranked = [e for e in all_exercises() if e.id not in STAPLE_EXERCISE_IDS]
+    graded = [e.rank for e in unranked if e.counts_toward_volume]
+    ungraded = [e.rank for e in unranked if not e.counts_toward_volume]
+    assert max(graded) < min(ungraded)
+
+
+def test_browse_order_leads_with_the_obvious_lifts():
+    """The ordering log.js applies, asserted end to end for chest."""
+    chest = [e for e in all_exercises() if "chest" in e.muscles]
+    chest.sort(key=lambda e: (0 if "chest" in e.primary else 1, e.rank, e.name))
+    assert [e.name for e in chest[:4]] == [
+        "Barbell Bench Press - Medium Grip",
+        "Barbell Incline Bench Press - Medium Grip",
+        "Pushups",
+        "Dumbbell Bench Press",
+    ]
+    # Pushups used to sit 70th of 147 alphabetically, past the picker's row cap.
+    assert chest.index(get_exercise("Pushups")) < 40
+
+
+def test_light_payload_carries_the_rank_the_picker_sorts_by():
+    assert get_exercise("Barbell_Squat").to_dict()["rank"] == 1
