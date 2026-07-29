@@ -11,16 +11,55 @@ from dataclasses import dataclass, field
 from typing import Iterable
 
 #: Muscle groups rendered on the body outline, in display order.
-MUSCLE_GROUPS: tuple[str, ...] = ("chest", "back", "biceps", "triceps", "legs")
+#:
+#: Front view shows chest, abs, biceps and quads; the back view shows back,
+#: triceps and hamstrings.  No group appears in both figures, so the two
+#: silhouettes carry genuinely different information.
+MUSCLE_GROUPS: tuple[str, ...] = (
+    "chest",
+    "abs",
+    "back",
+    "biceps",
+    "triceps",
+    "quads",
+    "hamstrings",
+)
 
 #: Human readable labels for the muscle group slugs above.
 MUSCLE_LABELS: dict[str, str] = {
     "chest": "Chest",
+    "abs": "Abs",
     "back": "Back",
     "biceps": "Biceps",
     "triceps": "Triceps",
-    "legs": "Legs",
+    "quads": "Quads",
+    "hamstrings": "Hamstrings",
 }
+
+
+#: Weekly set target for a large muscle group.
+LARGE_MUSCLE_TARGET = 20
+
+#: Weekly set target for a small muscle group, which recovers on less volume.
+SMALL_MUSCLE_TARGET = 10
+
+#: Sets per week each group is aiming for.  Reaching the target is the darkest
+#: green; going past it starts the red overshoot scale (see
+#: :func:`app.services.summary.grade`).
+MUSCLE_TARGETS: dict[str, int] = {
+    "chest": LARGE_MUSCLE_TARGET,
+    "abs": SMALL_MUSCLE_TARGET,
+    "back": LARGE_MUSCLE_TARGET,
+    "biceps": SMALL_MUSCLE_TARGET,
+    "triceps": SMALL_MUSCLE_TARGET,
+    "quads": LARGE_MUSCLE_TARGET,
+    "hamstrings": LARGE_MUSCLE_TARGET,
+}
+
+
+def target_for(muscle: str) -> int:
+    """Return the weekly set target for ``muscle``."""
+    return MUSCLE_TARGETS.get(muscle, LARGE_MUSCLE_TARGET)
 
 
 @dataclass(frozen=True)
@@ -41,7 +80,10 @@ EXERCISES: dict[str, Exercise] = {
     for exercise in (
         Exercise("bench_press", "Bench press", ("triceps", "chest")),
         Exercise("pull_ups", "Pull ups", ("biceps", "back")),
-        Exercise("squat", "Squat", ("legs",)),
+        # A squat counts for the whole thigh until a hinge movement
+        # (deadlift / leg curl) is added to separate the two.
+        Exercise("squat", "Squat", ("quads", "hamstrings")),
+        Exercise("sit_ups", "Sit ups", ("abs",)),
     )
 }
 

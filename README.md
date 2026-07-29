@@ -3,14 +3,23 @@
 > Log your workouts on a calendar and see, at a glance, which muscle groups you actually trained this week.
 
 Body Shop is a small Flask + vanilla JS web app. You pick a date, log how many sets
-of an exercise you did, and the weekly summary paints a body outline: every muscle
-group you hit for **at least one set** turns red.
+of an exercise you did, and the weekly summary paints a body outline: each muscle
+group deepens from **light green** at one set to **dark green** at its weekly set
+target, then runs **light to dark red** for every set past it.
+
+Targets are 20 sets a week for the large groups (chest, back, quads, hamstrings)
+and 10 for the small ones (abs, biceps, triceps).
 
 ```
 Bench press → triceps + chest
 Pull ups    → biceps + back
-Squat       → legs
+Squat       → quads + hamstrings
+Sit ups     → abs
 ```
+
+The front figure shows chest, abs, biceps and quads; the back figure shows back,
+triceps and hamstrings. No group appears on both, so the two outlines tell you
+different things.
 
 ## Pages
 
@@ -18,7 +27,7 @@ Squat       → legs
 | --- | --- | --- |
 | **Calendar** | `/` | Month grid of your training. Days with logged sets are dotted; click one to see what you did. |
 | **Log workout** | `/log` | Pick date → exercise → sets. Shows and deletes the entries for that day. |
-| **Weekly summary** | `/summary` | Front/back body map with worked muscle groups filled red, plus a set count per group. |
+| **Weekly summary** | `/summary` | Front/back body map shaded by weekly volume, plus each group's sets against its target. |
 
 All three pages share a `?date=YYYY-MM-DD` query parameter, so navigating between
 them keeps the day you were looking at.
@@ -109,15 +118,16 @@ Exercise("overhead_press", "Overhead press", ("shoulders", "triceps")),
 ```
 
 The input form, API validation and weekly summary all read from that dict. If the
-new movement introduces a *new* muscle group, also add it to `MUSCLE_GROUPS` /
-`MUSCLE_LABELS` and draw a region for it in
+new movement introduces a *new* muscle group, also add it to `MUSCLE_GROUPS`,
+`MUSCLE_LABELS` and `MUSCLE_TARGETS`, then draw a region for it in
 `app/templates/partials/_body_figure.html` with a matching `data-muscle` attribute.
 
 ## Roadmap
 
+- [ ] A hinge movement (deadlift / leg curl) so quads and hamstrings can differ
 - [ ] Per-set weight and reps
 - [ ] Multi-user accounts
-- [ ] Set-count intensity (deeper red for more volume)
+- [ ] Per-user set targets instead of the fixed 20/10 split
 - [ ] Export to CSV
 
 ## Contributing

@@ -6,7 +6,10 @@
 {% block content %}
 <section class="page-head">
   <h1>Weekly summary</h1>
-  <p class="lede">Every muscle group you trained at least one set for this week turns red.</p>
+  <p class="lede">
+    Muscle groups deepen from light to dark green as you work towards their weekly
+    set target, then turn red for every set past it.
+  </p>
 </section>
 
 <section class="card week-switcher" aria-label="Week navigation">
@@ -28,8 +31,9 @@
       {{ body.figure("back") }}
     </div>
     <p class="legend">
-      <span class="swatch swatch-worked"></span> trained this week
       <span class="swatch swatch-rest"></span> not yet trained
+      <span class="swatch swatch-scale swatch-scale-train"></span> 1 set → weekly target
+      <span class="swatch swatch-scale swatch-scale-over"></span> past target
     </p>
   </section>
 
@@ -40,7 +44,7 @@
       <li class="muscle-row" data-muscle="{{ muscle }}">
         <span class="muscle-name">{{ muscle_labels[muscle] }}</span>
         <span class="muscle-bar"><span class="muscle-bar-fill"></span></span>
-        <span class="muscle-sets">0 sets</span>
+        <span class="muscle-sets">0 / {{ muscle_targets[muscle] }}</span>
       </li>
       {% endfor %}
     </ul>

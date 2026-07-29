@@ -1,9 +1,11 @@
 /**
  * Weekly summary page — paints the body map and the per-muscle breakdown.
  *
- * A muscle group turns red (`.is-worked`) as soon as the week contains at
- * least one set of an exercise that targets it, which is exactly what the
- * server reports in `summary.muscles[<group>].worked`.
+ * Colour is a volume scale, not a yes/no: light green at one set deepening to
+ * dark green at the group's weekly target, then light-to-dark red once the
+ * target is passed. The server does the grading — each group arrives with a
+ * `state` (`rest` | `trained` | `over`) and an `intensity` from 0 to 1 within
+ * that state's ramp. All this module does is hand those to CSS.
  */
 
 import { fetchWeeklySummary } from "./api.js";
@@ -11,35 +13,51 @@ import { $, addDays, formatDate, renderEntries, retargetLinks, syncUrlDate, toas
 
 let anchorIso; // Any date inside the week being displayed.
 
-/** Colour every SVG region belonging to a worked muscle group. */
+/**
+ * Apply a group's grade to one element: `--level` drives the colour mix, and
+ * the classes pick which ramp CSS mixes along.
+ */
+function applyGrade(element, info) {
+  element.style.setProperty("--level", info ? info.intensity : 0);
+  element.classList.toggle("is-worked", Boolean(info && info.worked));
+  element.classList.toggle("is-over", Boolean(info && info.state === "over"));
+}
+
+/** Describe a group's weekly volume for the region's tooltip. */
+function describe(info, fallbackLabel) {
+  if (!info) return fallbackLabel;
+  if (!info.worked) return `${info.label}: no sets this week (target ${info.target})`;
+
+  const sets = `${info.sets} of ${info.target} sets`;
+  const detail = info.exercises.join(", ");
+  return info.state === "over"
+    ? `${info.label}: ${sets} — ${info.over} over target (${detail})`
+    : `${info.label}: ${sets} (${detail})`;
+}
+
+/** Shade every SVG region according to its group's weekly volume. */
 function paintBody(muscles) {
   document.querySelectorAll(".muscle").forEach((region) => {
     const info = muscles[region.dataset.muscle];
-    const worked = Boolean(info && info.worked);
-    region.classList.toggle("is-worked", worked);
+    applyGrade(region, info);
 
-    const label = info ? info.label : region.dataset.muscle;
     const title = region.querySelector("title");
-    if (title) {
-      title.textContent = worked
-        ? `${label}: ${info.sets} sets (${info.exercises.join(", ")})`
-        : `${label}: no sets this week`;
-    }
+    if (title) title.textContent = describe(info, region.dataset.muscle);
   });
 }
 
-/** Fill the "sets by muscle group" list, scaled against the busiest group. */
+/** Fill the "sets by muscle group" list, each bar scaled against its target. */
 function renderBreakdown(muscles) {
-  const counts = Object.values(muscles).map((m) => m.sets);
-  const max = Math.max(1, ...counts);
-
   document.querySelectorAll(".muscle-row").forEach((row) => {
     const info = muscles[row.dataset.muscle];
     if (!info) return;
-    row.classList.toggle("is-worked", info.worked);
-    row.querySelector(".muscle-bar-fill").style.width = `${(info.sets / max) * 100}%`;
-    row.querySelector(".muscle-sets").textContent =
-      `${info.sets} ${info.sets === 1 ? "set" : "sets"}`;
+    applyGrade(row, info);
+
+    // The bar tops out at the target; overshoot shows as colour, not length.
+    const progress = Math.min(1, info.sets / info.target);
+    row.querySelector(".muscle-bar-fill").style.width = `${progress * 100}%`;
+    row.querySelector(".muscle-sets").textContent = `${info.sets} / ${info.target}`;
+    row.title = describe(info, row.dataset.muscle);
   });
 }
 
@@ -50,8 +68,15 @@ function renderHeader(summary) {
 
   const worked = summary.muscles_worked.length;
   const total = Object.keys(summary.muscles).length;
-  $("#week-meta").textContent =
-    `${summary.total_sets} sets · ${worked} of ${total} muscle groups trained`;
+  const parts = [
+    `${summary.total_sets} sets`,
+    `${worked} of ${total} muscle groups trained`,
+    `${summary.muscles_at_target.length} at target`,
+  ];
+  if (summary.muscles_over.length) {
+    parts.push(`${summary.muscles_over.length} over`);
+  }
+  $("#week-meta").textContent = parts.join(" · ");
 }
 
 async function load() {

@@ -6,7 +6,7 @@ import pytest
 def test_exercise_catalog(client):
     data = client.get("/api/exercises").get_json()
     ids = {e["id"] for e in data["exercises"]}
-    assert ids == {"bench_press", "pull_ups", "squat"}
+    assert ids == {"bench_press", "pull_ups", "squat", "sit_ups"}
 
     bench = next(e for e in data["exercises"] if e["id"] == "bench_press")
     assert bench["muscles"] == ["triceps", "chest"]
@@ -18,7 +18,7 @@ def test_create_and_list_entry(client, add):
     entry = response.get_json()["entry"]
     assert entry["sets"] == 4
     assert entry["exercise_name"] == "Squat"
-    assert entry["muscles"] == ["legs"]
+    assert entry["muscles"] == ["quads", "hamstrings"]
 
     listed = client.get("/api/entries?date=2026-07-28").get_json()["entries"]
     assert len(listed) == 1
@@ -77,8 +77,20 @@ def test_weekly_summary_endpoint(client, add):
     summary = client.get("/api/summary/week?date=2026-07-28").get_json()
     assert summary["week_start"] == "2026-07-27"
     assert summary["muscles"]["chest"]["worked"] is True
-    assert summary["muscles"]["legs"]["worked"] is False
+    assert summary["muscles"]["quads"]["worked"] is False
+    assert summary["muscles"]["abs"]["worked"] is False
     assert summary["total_sets"] == 3
+
+
+def test_weekly_summary_grades_volume_against_each_target(client, add):
+    add("2026-07-28", "bench_press", 12)
+
+    summary = client.get("/api/summary/week?date=2026-07-28").get_json()
+    chest, triceps = summary["muscles"]["chest"], summary["muscles"]["triceps"]
+
+    assert (chest["target"], chest["state"], chest["intensity"]) == (20, "trained", 0.6)
+    assert (triceps["target"], triceps["state"], triceps["over"]) == (10, "over", 2)
+    assert summary["muscles_over"] == ["triceps"]
 
 
 def test_week_bounds_endpoint(client):

@@ -20,6 +20,17 @@
   --worked-soft: rgba(239, 68, 68, 0.22);
   --rest: #1f2937;
 
+  /* Volume scale: one set → weekly target, then target → deep overshoot.
+     Elements on the scale carry `--level` (0–1, set by summary.js) and mix
+     between the two ends of whichever ramp their state selects. */
+  --train-light: #bbf7d0;
+  --train-dark: #15803d;
+  --over-light: #fecaca;
+  --over-dark: #b91c1c;
+  /* Readable-on-background versions of the two ramps, for text. */
+  --train-accent: #4ade80;
+  --over-accent: #f87171;
+
   --radius: 14px;
   --radius-sm: 9px;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
@@ -39,6 +50,8 @@
     --accent: #0284c7;
     --accent-strong: #0369a1;
     --rest: #e2e8f0;
+    --train-accent: #15803d;
+    --over-accent: #b91c1c;
     --shadow: 0 10px 26px rgba(16, 24, 40, 0.08);
   }
 }
@@ -458,14 +471,21 @@ input[type="date"], input[type="number"] {
   stroke-width: 1.5;
 }
 .muscle {
+  --level: 0;
   fill: var(--rest);
   stroke: var(--border-strong);
   stroke-width: 1.5;
   transition: fill 0.35s ease, stroke 0.35s ease;
 }
+/* `.is-over` must stay below `.is-worked`: a group past its target carries
+   both classes, and the red ramp wins. */
 .muscle.is-worked {
-  fill: var(--worked);
-  stroke: color-mix(in srgb, var(--worked) 70%, #000);
+  fill: color-mix(in srgb, var(--train-dark) calc(var(--level) * 100%), var(--train-light));
+  stroke: color-mix(in srgb, var(--train-dark) 70%, #000);
+}
+.muscle.is-over {
+  fill: color-mix(in srgb, var(--over-dark) calc(var(--level) * 100%), var(--over-light));
+  stroke: color-mix(in srgb, var(--over-dark) 70%, #000);
 }
 
 .legend {
@@ -485,13 +505,20 @@ input[type="date"], input[type="number"] {
   vertical-align: -2px;
   margin-right: 0.35rem;
 }
-.swatch-worked { background: var(--worked); }
 .swatch-rest { background: var(--rest); }
+.swatch-scale {
+  width: 3.2rem;
+  border-radius: 4px;
+}
+.swatch-scale-train { background: linear-gradient(90deg, var(--train-light), var(--train-dark)); }
+.swatch-scale-over { background: linear-gradient(90deg, var(--over-light), var(--over-dark)); }
 
 .muscle-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
 .muscle-row {
+  --level: 0;
   display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr) 4.5rem;
+  /* First column fits the longest label ("Hamstrings") without wrapping. */
+  grid-template-columns: 6.5rem minmax(0, 1fr) 4.5rem;
   align-items: center;
   gap: 0.75rem;
   font-size: 0.9rem;
@@ -508,11 +535,18 @@ input[type="date"], input[type="number"] {
   height: 100%;
   width: 0;
   border-radius: 999px;
-  background: var(--worked);
-  transition: width 0.4s ease;
+  background: var(--rest);
+  transition: width 0.4s ease, background 0.35s ease;
+}
+.muscle-row.is-worked .muscle-bar-fill {
+  background: color-mix(in srgb, var(--train-dark) calc(var(--level) * 100%), var(--train-light));
+}
+.muscle-row.is-over .muscle-bar-fill {
+  background: color-mix(in srgb, var(--over-dark) calc(var(--level) * 100%), var(--over-light));
 }
 .muscle-sets { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
-.muscle-row.is-worked .muscle-sets { color: var(--worked); font-weight: 600; }
+.muscle-row.is-worked .muscle-sets { color: var(--train-accent); font-weight: 600; }
+.muscle-row.is-over .muscle-sets { color: var(--over-accent); }
 
 /* 6) Responsive & motion ------------------------------------------------- */
 @media (max-width: 880px) {
@@ -523,7 +557,7 @@ input[type="date"], input[type="number"] {
   .header-inner { justify-content: center; }
   .nav { width: 100%; justify-content: center; }
   .day-cell { font-size: 0.8rem; }
-  .muscle-row { grid-template-columns: 4.5rem minmax(0, 1fr) 3.8rem; }
+  .muscle-row { grid-template-columns: 5.6rem minmax(0, 1fr) 3.8rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
