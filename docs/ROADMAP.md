@@ -746,6 +746,13 @@ app are the same list:
 - Local rest-timer notifications
 - A home-screen widget showing weekly muscle coverage
 
+On-device camera work — *Computer-vision form tracking* under **Post-launch candidates**
+— would clear 4.2 more decisively than any of the above, since it is a capability a
+website structurally cannot have. It is also far more expensive than all of them
+combined, so it is not a reason to choose a route; it is a reason to make sure the route
+chosen here does not foreclose it. Route B and route C both keep it open; route A (PWA)
+does not.
+
 If mobile is a first-class surface rather than a checkbox, **C is the honest answer**, and
 it moots the Next.js question from Phase 6 — React Native becomes the client and Flask
 stays the API it already is.
@@ -852,8 +859,8 @@ as its own project, not a phase.
 
 Mostly unclaimed in this category — competitors are knocked specifically for not reading
 sleep or HRV. Depends on watch integration from Phase 10 for the data, and on
-auto-progression above for something to actually adapt. Furthest out, and the most
-speculative: it only works if the adaptation is good enough to trust.
+auto-progression above for something to actually adapt. The most speculative of the
+adaptation items: it only works if the adaptation is good enough to trust.
 
 ### Conversational AI coaching
 
@@ -863,6 +870,69 @@ Distinct from Phase 8, which classifies exercise names. Competitors ship *algori
 progression marketed as AI; a genuine conversational coach over the user's own history is
 the differentiated version. Wants Phase 7's history to be worth reasoning about, and it
 inherits every cost control and prompt-injection concern already specced in Phase 8.
+
+### Computer-vision form tracking
+
+- [ ] Barbell path tracing from phone video, with velocity per rep
+
+**The largest engineering effort on this page, and the one with the clearest
+differentiator at the end of it.** Bar path is the standard diagnostic for the three
+main lifts — a squat that drifts forward out of the hole and a bench that bar-paths in a
+straight vertical line are both visible in a trace and invisible in a set log. Nothing in
+the category ships it without hardware.
+
+**Depends on Phase 10, hard.** It needs a camera, and it needs inference *on device* —
+uploading gym video is the wrong answer on latency, cost and privacy simultaneously (see
+below). That makes it a native-client feature, which means route C or a Capacitor shell
+with a real plugin, not a web page. It also wants Phase 4's set model to attach results
+to: a trace belongs to a `workout_set`, not to a day.
+
+#### Trace before judgement
+
+Two very different products get called "form checking", and only one of them is a
+reasonable thing to build:
+
+| | Barbell path tracing | Form correction |
+| --- | --- | --- |
+| What it does | Tracks the plate across frames, draws the path, derives velocity | Tells the user their knees cave or their depth is short |
+| How hard | Tractable — a high-contrast circular plate is close to the easy case for object tracking | Full pose estimation plus a model of correct technique **per lift, per body proportion** |
+| If it is wrong | A wobbly line | Someone changes how they lift under a load, on bad advice |
+
+**Ship the trace, not the verdict.** The path and the velocity numbers are measurements;
+the user supplies the interpretation, exactly as they do with a mirror or a coach's
+video. Prescriptive form correction is close to injury advice, it is wrong often enough
+at the tails of body proportion to matter, and being confidently wrong about it is worse
+than being silent. If it is ever built, it belongs behind explicit hedging and never as
+an auto-generated cue mid-set.
+
+#### What falls out of the same data, nearly free
+
+Once a plate is tracked frame to frame, **mean concentric velocity per rep** is
+arithmetic. That is velocity-based training, which today requires a linear position
+transducer costing a few hundred dollars — and it feeds auto-progression above with a
+better signal than "did they hit the target reps": velocity loss across a set is a
+readable proxy for proximity to failure. Rep counting and rough tempo come along too, and
+rep counting is what makes the capture worth turning on for people who do not care about
+bar path at all.
+
+#### Constraints worth deciding before any of it
+
+- **Never upload frames.** Gym video contains other people who did not consent to being
+  recorded, let alone processed. On-device inference (Apple Vision / ML Kit / MediaPipe)
+  keeps that contained, and it is also the only version that is free per use — unlike
+  Phase 8, this would otherwise be a per-rep server cost.
+- **Store the trace, not the video.** A path is a short time series and compresses to
+  almost nothing; video is unbounded storage and an unbounded retention question. Keep
+  the video local and optional.
+- **It has to work in a real gym** — bad light, a phone propped against a water bottle,
+  the lifter partly occluded, plates that are black on a black floor. This is where the
+  effort actually goes, and it is not visible in a demo shot in good conditions.
+- **Degrade to nothing gracefully.** If tracking fails, the set is still logged by hand.
+  The camera must never be on the critical path to recording a workout.
+
+The cheap precursor, if this ever wants proving out before the native client exists:
+accept an uploaded video for a *single* set, trace it server-side offline, and see
+whether anyone looks at the result twice.
 
 ---
 
@@ -880,7 +950,7 @@ inherits every cost control and prompt-injection concern already specced in Phas
 | 8 | AI custom exercises | 2, 5, 6 | Needs the vocabulary, per-user ownership, and key management — and its value depends on the catalog's measured miss rate. **A 873-entry catalog raises the bar for this being worth building** |
 | 9 | Exercise images ✅ | — | Shipped inside Phase 2: free-exercise-db is public domain, so its images arrived with its data |
 | 10 | Mobile + watch + store distribution | 2, 4, 5, 6, 7 | Consumes everything before it — but dictates Phase 5's auth design and Phase 4's id strategy, so decide both early |
-| — | Post-launch candidates | 10 | Auto-progression, social, nutrition, recovery, AI coaching — product decisions, not build tasks |
+| — | Post-launch candidates | 10 | Auto-progression, social, nutrition, recovery, AI coaching, CV bar-path tracing — product decisions, not build tasks |
 
 ---
 
