@@ -10,24 +10,54 @@ Tailwind is first because every remaining phase adds UI, and UI built before the
 migration gets styled twice.
 
 Current state: Flask + Jinja + vanilla ES modules, no build step, no JS dependencies,
-one SQLite table, no auth, no migrations, 4 exercises, 7 muscle groups. See
-[ARCHITECTURE.md](ARCHITECTURE.md).
+one SQLite table, no auth, no migrations, 4 exercises, 7 muscle groups, and **sets only —
+no weight or reps**. See [ARCHITECTURE.md](ARCHITECTURE.md).
+
+Phases 1–10 are specified below. Features that are competitively real but not yet
+scheduled — auto-progression, social, nutrition, recovery-aware training, AI coaching —
+are parked in *Post-launch candidates* with the reasoning for why they wait.
 
 ---
 
-## Three conflicts that shape the ordering
+## Four conflicts that shape the ordering
 
-### 1. Vercel cannot host the app as it exists today
+### 1. The data model cannot express a set
+
+`workout_entry` stores `(entry_date, exercise_id, sets)`. There is **no weight, no reps,
+no per-set row** — "3 sets of bench press" is the entire record, and 3 sets at 60kg is
+indistinguishable from 3 sets at 140kg.
+
+This is the single largest gap against every competitor in the category, and it is
+load-bearing for most of the table-stakes feature set: previous-values-inline, 1RM
+estimates, PR detection, per-exercise progress graphs, plate calculators, volume-load
+charts, warm-up calculators and RPE all read weight and reps per set. None of them can be
+prototyped against the current schema.
+
+It was filed as a README to-do ("Per-set weight and reps") alongside genuinely small items
+like CSV export. It is not a small item — it is a foundation, and **Phase 4 exists to fix
+this before anything is built on top of the flat count.** The weekly muscle-coverage map
+this app is built around keeps working unchanged; sets-per-muscle is derived from the
+child rows instead of a column.
+
+### 2. Vercel cannot host the app as it exists today
 
 Vercel serverless functions have an **ephemeral filesystem** — only `/tmp` is writable,
 and it does not survive between invocations. `instance/bodyshop.sqlite3` would be
 recreated empty on every cold start, silently losing every workout.
 
+It is actually worse than silent data loss: `create_app` would **crash on import**.
+Two lines in [`app/__init__.py`](../app/__init__.py) touch the filesystem at factory time —
+`Path(app.instance_path).mkdir(parents=True, exist_ok=True)` and, at the end, a
+`db.ensure_db()` inside an app context that opens a connection and runs `schema.sql` if
+`workout_entry` is missing. Both must become conditional on a file-backed database before
+the app can boot anywhere read-only. `ensure_db()` is also the thing that conflicts with
+Alembic below — see Phase 3.
+
 **SQLite must become hosted Postgres before the app goes on the internet.** This is a
 hard blocker on auth, the stack decision, and deployment simultaneously, which is why
-Phase 3 exists and why Phases 4–5 sit behind it.
+Phase 3 exists and why Phases 5–6 sit behind it.
 
-### 2. Tailwind reverses a deliberate architectural choice
+### 3. Tailwind reverses a deliberate architectural choice
 
 `CLAUDE.md`, `CONTRIBUTING.md` and `ARCHITECTURE.md` all state the no-build-step,
 no-JS-dependencies invariant as intentional. Tailwind requires a build step. That is a
@@ -38,41 +68,48 @@ isn't working from a stale invariant.
 The good news: **DaisyUI is pure CSS.** Its components (`btn`, `card`, `modal`, `stat`,
 `drawer`) are class names, not React components. They work directly in Jinja templates
 with no JS framework, which is what makes Phase 1 cheap and what keeps Flask viable
-through Phase 5.
+through Phase 6.
 
-### 3. Auth is impossible without migrations
+### 4. Auth and the set model are both impossible without migrations
 
 `schema.sql` is applied once and `init-db` drops everything. Survivable while the
 database is one laptop; data loss the moment there are accounts. Alembic has to land
-before the `user` table does.
+before the `user` table does — and before the `workout_set` table, which is the more
+invasive of the two changes.
 
 ---
 
 ## Dependency graph
 
 ```
-Phase 1  Tailwind + DaisyUI ──┬──▶ Phase 2  Exercise taxonomy ──┬──▶ Phase 6  AI custom exercises
-                              │                                 ├──▶ Phase 7  Images (+ licensing)
-                              └──▶ (all later UI)               └──▶ Phase 8  Mobile + app stores
+Phase 1  Tailwind + DaisyUI ──┬──▶ Phase 2  Exercise taxonomy ──┬──▶ Phase 8  AI custom exercises
+                              │                                 ├──▶ Phase 9  Images (+ licensing)
+                              └──▶ (all later UI)               └──▶ Phase 10 Mobile + watch + stores
 
-Phase 3  Migrations + Postgres ──▶ Phase 4  Auth ──┬──▶ Phase 5  Vercel deploy ──▶ Phase 8
-                                                   └──▶ Phase 6  AI custom exercises
+Phase 3  Migrations + Postgres ──┬──▶ Phase 4  Set-level logging ──▶ Phase 7  Training essentials
+                                 │                                        │
+                                 └──▶ Phase 5  Auth ──┬──▶ Phase 6  Vercel deploy ──▶ Phase 10
+                                                      └──▶ Phase 8  AI custom exercises
 
-   Phase 8 reaches backwards: it requires token auth (not cookie sessions) and an
-   in-app account-deletion endpoint, both of which must be decided in Phase 4.
+   Phase 4 is the other hard gate: Phase 7 and most of the competitive feature set read
+   weight and reps per set, so nothing in that list can be built before it lands.
+
+   Phase 10 reaches backwards: it requires token auth (not cookie sessions) and an
+   in-app account-deletion endpoint, both of which must be decided in Phase 5.
 ```
 
-Phases 1–2 and Phase 3 are independent and can run in parallel. The critical path to
-being on the internet is **3 → 4 → 5**.
+Phases 1–2 and Phase 3 are independent and can run in parallel. There are two critical
+paths: **3 → 5 → 6** to be on the internet, and **3 → 4 → 7** to be competitive. They
+converge at Phase 10.
 
 ---
 
 ## Phase 1 — Tailwind + DaisyUI
 
 **Depends on:** nothing. **First because it is a soft dependency of everything else** —
-Phases 2, 4 and 6 each add UI surfaces (exercise picker, login/signup, AI verification
-modal), and every one of them would need re-styling if Tailwind landed later. The app is
-three pages today; this is the cheapest it will ever be.
+Phases 2, 4, 5, 7 and 8 each add UI surfaces (exercise picker, the set grid, login/signup,
+routines and charts, AI verification modal), and every one of them would need re-styling if
+Tailwind landed later. The app is three pages today; this is the cheapest it will ever be.
 
 ### Build setup
 
@@ -83,13 +120,26 @@ npm install -D tailwindcss daisyui
 npx tailwindcss -i app/static/css/input.css -o app/static/css/styles.css --watch
 ```
 
-Content globs must cover `app/templates/**/*.html` **and** `app/static/js/**/*.js`,
-because `summary.js` toggles classes at runtime. Any class that only appears in a JS
-string must be written out in full or safelisted — Tailwind's scanner does not evaluate
-template literals, so `` `is-${state}` `` would be silently purged.
+Content globs must cover `app/templates/**/*.html` **and** `app/static/js/**/*.js`.
+Two whole UI surfaces exist only as JS-constructed DOM and appear in no template:
 
-Commit the compiled `styles.css` (a Python deployment should not depend on npm at build
-time) and add `app/static/css/input.css` as the real source.
+- `ui.js::renderEntries` builds every entry row — `entry`, `entry-main`, `entry-name`,
+  `entry-meta`, `entry-sets`, `entry-delete`, `empty`.
+- `calendar.js::render` builds every day cell — `day-cell`, `is-outside`, `is-today`,
+  `is-selected`, `has-entries`, `dot`.
+
+Plus the state classes `is-worked`/`is-over` (`summary.js`) and `is-error`/`is-visible`
+(`ui.js::toast`). All of these are **literal strings today**, so the JS glob is enough —
+no safelist needed. Keep it that way: the moment a class is assembled as `` `is-${state}` ``
+Tailwind's scanner stops seeing it and it is silently purged. Restyling the entry list and
+the calendar grid means editing JS, not templates — budget for that, it is the part of
+Phase 1 that is not "mechanical".
+
+**Do not point the compiler's `-o` at `styles.css` while it is still the source.** The
+command above overwrites the hand-written 568-line stylesheet on its first run. Order the
+first commit: copy the existing file to `app/static/css/input.css`, wrap the parts being
+kept in `@layer components`, *then* start compiling to `styles.css`. Commit the compiled
+output (a Python deployment should not depend on npm at build time).
 
 ### Migration order
 
@@ -134,16 +184,20 @@ block, along with the SVG body-map geometry. Everything else can go.
 ### Homepage
 
 There is no signed-out surface today — `/` is the calendar. Build the visual redesign of
-the three existing pages here; the **landing page lands in Phase 4**, when auth creates
+the three existing pages here; the **landing page lands in Phase 5**, when auth creates
 the signed-out/signed-in split that gives it a purpose.
 
 ---
 
 ## Phase 2 — Exercise catalog and muscle map
 
-**Depends on:** Phase 1 (so the picker is styled once). **Highest product value of the
-seven**, independent of all infrastructure work, and it defines the vocabulary the AI
-feature in Phase 6 must emit into — which is why it precedes it.
+**Depends on:** Phase 1 (so the picker is styled once). **The highest-value phase that is
+independent of all infrastructure work**, and it defines the vocabulary the AI feature in
+Phase 8 must emit into — which is why it precedes it.
+
+Coordinate with Phase 4: both rebuild the `/log` page. If Phase 4 is close behind, build
+the picker into the set-grid form rather than the current radio list, and skip the
+intermediate version.
 
 ### The scaling problem
 
@@ -203,9 +257,19 @@ PRIMARY_WEIGHT = 1.0
 SECONDARY_WEIGHT = 0.5
 ```
 
-This makes `sets` a float, needs display rounding (`12.5 / 20`), changes the "a set counts
-once per muscle group it targets" invariant in CLAUDE.md, and churns every integer
-assertion in `tests/test_summary.py`. Worth doing, but not a drop-in.
+This makes `sets` a float, needs display rounding (`12.5 / 20`), and changes the "a set
+counts once per muscle group it targets" invariant in CLAUDE.md. Worth doing, but not a
+drop-in — the weighting is applied **at aggregation**, so the blast radius is:
+
+- `summarise_entries` in `services/summary.py` — `bucket["sets"] += entry.sets` becomes a
+  weighted add, and `over`/`grade()` inherit the float.
+- `summary.js` — `renderBreakdown` writes `${info.sets} / ${info.target}` straight into
+  the DOM, so `12.5 / 20` needs formatting there, not just in Python.
+- `docs/API.md` — every `sets` value in the documented `/api/summary/week` payload.
+- `tests/test_summary.py` — roughly a dozen integer equality assertions.
+
+**`schema.sql` does not change.** `sets INTEGER NOT NULL CHECK (sets > 0)` stores what the
+user actually did; only the per-muscle aggregate is fractional. Don't migrate the column.
 
 ### Muscle map expansion
 
@@ -214,6 +278,25 @@ entries. Suggested split, preserving the disjoint-views rule:
 
 - **Front:** chest, abs, biceps, forearms, quads, shoulders
 - **Back:** back, traps, triceps, glutes, hamstrings, calves
+
+Three of the five additions are not "add a path" — they are edits to existing decisions:
+
+- **`traps` is currently *inside* `back`.** The path `id="back-traps"` carries
+  `data-muscle="back"`. Splitting it out means reassigning that path's slug, which
+  silently reduces every historical `back` count — a data-comparability change, not just
+  a rendering one.
+- **`glutes`, `calves` and `forearms` are documented as *deliberate* silhouette gaps.**
+  The header comment in `_body_figure.html` and the body-map section of
+  [ARCHITECTURE.md](ARCHITECTURE.md) both name them as intentionally untracked overlay
+  gaps ("sternum, ribs, obliques, glutes, lower back, shins"). Like Tailwind in Phase 1,
+  this is a **reversal of a stated decision** — update both documents plus the CLAUDE.md
+  invariant in the same change, or the next session works from a stale rule.
+- **`shoulders` has no geometry to overlay.** The base silhouette runs the torso from
+  `y=82` straight into the upper-arm paths at `y=84`; there is no deltoid shape to sit on
+  top of. This one needs new `.body-base` geometry, not just a `.muscle` path.
+
+`tests/test_pages.py` asserts every muscle region renders, so it fails loudly on a
+half-finished map — which is the behaviour you want here.
 
 Keep `shoulders` as **one** group initially even though the list distinguishes front/side/
 rear raises. The facet data preserves the distinction, so splitting into three delt
@@ -225,7 +308,7 @@ Three access paths, serving different moments:
 
 1. **Recent / frequent** — the default view and **the single biggest efficiency win**.
    Most people cycle through 10–20 movements; this is the 90% path. Works off entry
-   history, so it improves again once Phase 4 makes history per-user.
+   history, so it improves again once Phase 5 makes history per-user.
 2. **Search** — fuzzy match over name + pattern + equipment. Typing "incl db" should find
    "Dumbbell incline bench press". Client-side filtering over a ~180-entry JSON payload is
    sufficient; no search backend.
@@ -243,11 +326,11 @@ Phases 4 and 5 and nothing else. No user-visible change.
 
 | Task | Detail |
 | --- | --- |
-| Introduce migrations | Alembic. Baseline the current `workout_entry` schema as revision 1, then never hand-edit `schema.sql` again. Reduce `init-db` to a dev-only convenience. |
+| Introduce migrations | Alembic. Baseline the current `workout_entry` schema as revision 1, then never hand-edit `schema.sql` again. Reduce `init-db` to a dev-only convenience. **Delete or gate `db.ensure_db()` in the same change** — `create_app` calls it on every boot and it runs `schema.sql` whenever `workout_entry` is missing, so a fresh deploy silently gets an unversioned schema that Alembic has no revision to stamp. It is the single biggest conflict with migrations, and it is easy to miss because nothing calls it explicitly. |
 | Abstract the data layer | `app/models.py` is already the only place SQL lives, so this is contained — but it is raw `sqlite3` with `?` placeholders. Move to SQLAlchemy Core, or `psycopg` with `%s`. **This is the payoff for enforcing the SQL-only-in-models.py invariant.** |
 | Provision Postgres | Neon or Supabase (both have usable free tiers and serverless-friendly pooling). Keep SQLite working locally via a `DATABASE_URL` both backends understand. |
 | Connection pooling | Serverless + Postgres needs a pooler (PgBouncer, Neon's built-in, Supabase's). Without it, concurrent lambdas exhaust connections. |
-| Secret hygiene | `BODYSHOP_SECRET_KEY` defaults to `dev-secret-change-me`. Make `ProductionConfig` raise at startup if it is unset or still the default. |
+| Secret hygiene | `BODYSHOP_SECRET_KEY` defaults to `dev-secret-change-me`. Make `ProductionConfig` raise at startup if it is unset or still the default. Note there is a **second** source: `create_app` runs `app.config.from_pyfile("config.py", silent=True)` against the instance folder, which can override the env var without appearing in the repo. Decide whether that stays before writing the check, or the check is bypassable. |
 
 **Test impact:** keep the per-test SQLite file in `tmp_path` — it is fast and the
 isolation is genuinely good. Add a CI job running the suite against a Postgres service
@@ -260,7 +343,84 @@ wipe (fine pre-launch — it is your own data) or write the id remap as revision
 
 ---
 
-## Phase 4 — Secure user login
+## Phase 4 — Set-level logging: weight, reps and RPE
+
+**Depends on:** Phase 3 (this is a destructive schema change and wants Alembic), Phase 1
+(the set grid is the most interaction-heavy surface in the app). Coordinate with Phase 2 —
+both rewrite `/log`.
+
+**Why this early:** it is the gate on the entire competitive feature set. Previous-values-
+inline, PR detection, 1RM estimates, per-exercise progress graphs, plate and warm-up
+calculators, and volume-load charts are all reads over `(weight, reps)` per set. Building
+Phase 7 without this is impossible; building it after means rewriting the log page twice.
+
+### Schema
+
+One child table, keeping `workout_entry` as the parent so the weekly summary keeps working:
+
+```sql
+CREATE TABLE workout_set (
+    id          INTEGER PRIMARY KEY,
+    entry_id    INTEGER NOT NULL REFERENCES workout_entry(id) ON DELETE CASCADE,
+    set_index   INTEGER NOT NULL,          -- 1-based, order within the entry
+    weight      REAL,                      -- NULL for bodyweight movements
+    reps        INTEGER,
+    rpe         REAL,                      -- NULL unless the user logs it
+    set_type    TEXT NOT NULL DEFAULT 'normal',  -- normal | warmup | drop | failure
+    UNIQUE (entry_id, set_index)
+);
+CREATE INDEX idx_workout_set_entry ON workout_set (entry_id);
+```
+
+`workout_entry.sets` becomes **derived, not stored** — it is `COUNT(*)` over the child
+rows where `set_type != 'warmup'`. Warm-up sets are logged but must not count toward
+weekly volume, or the muscle map inflates the moment anyone logs properly.
+
+Two options for the existing column: drop it and compute, or keep it as a denormalised
+cache. **Drop it.** The write path is one insert per workout, the read path is already
+aggregating, and a cache that can disagree with its source is exactly the bug this app's
+single-source-of-truth design exists to avoid.
+
+### Blast radius
+
+Comparable to Phase 5's `user_id` sweep, and touching mostly the same functions:
+
+- **`models.py`** — `add_entry` takes a list of sets, not an int. `_row_to_entry` needs a
+  join or a second query. `validate_entry`'s `1 <= sets <= 100` rule splits into per-set
+  validation (weight ≥ 0, reps 1–1000, RPE 1–10 in 0.5 steps).
+- **`services/summary.py`** — `bucket["sets"] += entry.sets` still works if `entry.sets`
+  stays a derived property, which is the cheapest way to keep the muscle map untouched.
+- **`api.py` / `docs/API.md`** — `POST /api/entries` takes a `sets` array instead of an
+  integer. **This is a breaking API change**; it is also the last good moment to make one,
+  since there are no external consumers before Phase 6 deploys.
+- **`log.js` + `log.html`** — the radio-and-stepper form becomes a set grid: a row per set
+  with weight/reps inputs, prefilled from the last time this exercise was logged.
+- **`schema.sql`, `tests/`** — `sets INTEGER NOT NULL CHECK (sets > 0)` goes away; the
+  `add` fixture in `conftest.py` needs a set-list signature.
+
+### Ship in this phase, not later
+
+These are cheap once the data exists and are what make the model feel worth it:
+
+| Feature | Why it belongs here |
+| --- | --- |
+| **Previous values inline** | Prefill each set row from the last session of that exercise. The single highest-rated logging feature in the category, and it is one indexed query. |
+| **Rest timer** | Starts on set save. Pure client-side JS; no schema, no backend. Native notifications come in Phase 10. |
+| **Set types** | Already in the schema above — warmup/normal/drop/failure. Free once the column exists, and warm-up exclusion is a correctness requirement, not a nicety. |
+| **Plate calculator** | Pure function of weight and bar weight. No storage, no API. |
+
+Defer 1RM, PRs and charts to Phase 7 — they want history to read against, and history only
+accumulates after this ships.
+
+### Migration note
+
+Existing rows have a set count and nothing else. Backfill one `workout_set` per counted
+set with `NULL` weight and reps; the muscle map is unchanged and the history stays
+truthful about what was actually known. Do **not** invent weights.
+
+---
+
+## Phase 5 — Secure user login
 
 **Depends on:** Phase 3 (migrations + Postgres), Phase 1 (login/signup pages styled once).
 
@@ -278,6 +438,13 @@ ALTER TABLE workout_entry ADD COLUMN user_id INTEGER NOT NULL REFERENCES "user"(
 CREATE INDEX workout_entry_user_date ON workout_entry (user_id, entry_date);
 ```
 
+**That `ALTER TABLE` does not run on SQLite** — and local dev stays SQLite, so this is not
+a Postgres-only detail. SQLite refuses to add a `NOT NULL` column with no default, *and*
+refuses to add a column with a `REFERENCES` clause and a non-NULL default. Both rules
+apply to an empty table, so "wipe first" does not rescue it. Alembic's `batch_alter_table`
+is the portable answer: it rebuilds the table under SQLite and emits a plain `ALTER` under
+Postgres. Otherwise add the column nullable, backfill, then tighten.
+
 ### Blast radius
 
 **Every function in `app/models.py` needs a `user_id` parameter and every query a
@@ -285,6 +452,11 @@ CREATE INDEX workout_entry_user_date ON workout_entry (user_id, entry_date);
 `delete_entry` are all currently global. `delete_entry` is the dangerous one — without an
 ownership check it is an IDOR letting any user delete any row by guessing an id. This is
 mechanical but must be exhaustive; one missed clause is a data leak.
+
+`workout_set` from Phase 4 does **not** need its own `user_id` — ownership flows through
+`entry_id`. But any query that reaches sets directly (the previous-values prefill, the
+Phase 7 progress charts) must join back to `workout_entry` and filter there. A set query
+that skips the join is the same IDOR wearing a different hat.
 
 ### Requirements
 
@@ -307,9 +479,9 @@ The **signed-out homepage** lands here, since auth is what creates the split: si
 
 ---
 
-## Phase 5 — Stack decision and Vercel deployment
+## Phase 6 — Stack decision and Vercel deployment
 
-**Depends on:** Phases 3 and 4. Placed before the AI feature deliberately: deployment is
+**Depends on:** Phases 3 and 5. Placed before the AI feature deliberately: deployment is
 the critical path to your stated goal, and features are cheaper to add to a deployed app
 than deployment is to add to a feature-rich app.
 
@@ -341,15 +513,49 @@ Serve `app/static/` from Vercel's CDN, not Flask. Everything is already env-driv
 (`BODYSHOP_*` in `config.py`) — add `DATABASE_URL`, set `BODYSHOP_CONFIG=production`, and
 set a real `BODYSHOP_SECRET_KEY` in Vercel's dashboard, never in the repo.
 
-Extend `.github/workflows/ci.yml` to run the suite against Postgres as well as SQLite, and
-gate production deploys on it passing.
+Audit `requirements.txt` while you are here: it pins Flask and nothing else, but CLAUDE.md
+documents `gunicorn "wsgi:application"` as the production entry point and gunicorn is not
+listed. Either add it or drop the claim — on Vercel neither `wsgi.py` nor gunicorn is used,
+since the platform imports the app object directly.
+
+Gate production deploys on the Postgres CI job added in Phase 3.
 
 ---
 
-## Phase 6 — AI-assisted custom exercises
+## Phase 7 — Training essentials
 
-**Depends on:** Phase 2 (the vocabulary the model classifies *into*), Phase 4 (custom
-exercises are per-user by definition), Phase 5 (API key management is deployment config).
+**Depends on:** Phase 4 (every item here reads weight and reps), Phase 1, and — for the
+per-user variants — Phase 5. Placed immediately after deployment because this is the
+**competitive-parity phase**: the items below are table stakes in this category, not
+differentiators. Shipping without them reads as a prototype next to Hevy or Strong.
+
+Sequenced within the phase by cost-to-value, cheapest first. The first three are days of
+work each; routines are the expensive one.
+
+| Feature | Shape | Notes |
+| --- | --- | --- |
+| **1RM estimates** | Pure function | Epley or Brzycki over `(weight, reps)`. No storage — compute on read, so changing formula is not a migration. Offer the formula as a setting; lifters have opinions. |
+| **PR detection** | Query + a badge | Per exercise: heaviest weight, best estimated 1RM, best volume-load. A live "new PR" toast on save is the single most-cited delight feature in the category. Cache per `(user_id, exercise_id)` only if the query proves slow — it will not at this scale. |
+| **Per-exercise progress graphs** | New page + endpoint | `GET /api/exercises/<id>/history` → weight, est. 1RM and volume-load over time. **This is the first chart in the app**; pick a rendering approach deliberately — inline SVG keeps the zero-JS-dependency rule that Phase 1 already bent, a charting library breaks it further. |
+| **Body weight and measurements** | New table | `body_metric(user_id, recorded_on, metric, value)` — long format, so adding waist/bodyfat/photos later is rows, not columns. Feeds nothing else; it is a standalone tab. |
+| **CSV export** | One endpoint | Was a README to-do. Trivial once the set model exists, and it is the honest answer to "can I leave?" — worth having before asking anyone to trust the app with a training history. |
+| **Routines / templates** | New tables + real UI | The expensive one. A routine is an ordered list of exercises with target sets/reps; starting a workout instantiates it into `workout_entry` rows. This is what makes the app repeatable rather than a diary, and it is the prerequisite for any programming feature later. Budget more than the rest of the phase combined. |
+
+### What this phase deliberately excludes
+
+**Auto-progression** — routines that advance weight week over week. It is the main axis
+competitors differentiate on (Boostcamp's 11,000+ programs, Fitbod's generated sessions,
+Hevy Trainer's auto-progression), and it is a genuine product decision rather than a
+build task: progression schemes are opinionated, and picking one wrong is worse than
+having none. Ship static routines, watch how people actually copy them forward, then see
+*Post-launch candidates*.
+
+---
+
+## Phase 8 — AI-assisted custom exercises
+
+**Depends on:** Phase 2 (the vocabulary the model classifies *into*), Phase 5 (custom
+exercises are per-user by definition), Phase 6 (API key management is deployment config).
 
 Placed last among functional phases for a product reason as well as a technical one: **the
 value of this feature is a function of how often the ~180-exercise catalog falls short.**
@@ -465,7 +671,7 @@ promoting into the main catalog.
 
 ### Abuse and cost controls
 
-- Rate-limit per user (reuse the Phase 4 Flask-Limiter setup).
+- Rate-limit per user (reuse the Phase 5 Flask-Limiter setup).
 - Cap custom exercises per account.
 - Treat the input as untrusted text — it reaches a model, so prompt injection is in scope.
   The `Literal` enum plus server-side validation contains the blast radius: the worst case
@@ -476,7 +682,7 @@ promoting into the main catalog.
 
 ---
 
-## Phase 7 — Exercise images
+## Phase 9 — Exercise images
 
 **Depends on:** Phase 2, and an unresolved licensing decision.
 
@@ -494,20 +700,21 @@ purely additive and parallelises with anything.
   [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (public domain, ~800
   exercises with images).
 
-> **This decision can move Phase 7 to Phase 2.** If you adopt free-exercise-db, the images
+> **This decision can move Phase 9 to Phase 2.** If you adopt free-exercise-db, the images
 > and the catalog data arrive together — which would eliminate most of Phase 2's data-entry
 > work *and* collapse this phase into it. Resolve licensing early even though the phase is
 > last; it is the one open question that can change the plan's shape.
 
 ---
 
-## Phase 8 — Mobile apps and store distribution
+## Phase 10 — Mobile, watch and store distribution
 
-**Depends on:** Phases 2, 4 and 5. Last because it consumes all of them — the catalog is
-what makes a mobile logger worth opening, auth is what makes it multi-device, and the
-deployed API is what it talks to.
+**Depends on:** Phases 2, 4, 5, 6 and 7. Last because it consumes all of them — the catalog
+is what makes a mobile logger worth opening, the set model is what it logs, routines are
+what it opens to, auth is what makes it multi-device, and the deployed API is what it talks
+to.
 
-**But two of its constraints have to be honoured in Phase 4, not here.** See *Decisions
+**But two of its constraints have to be honoured in Phase 5, not here.** See *Decisions
 this forces earlier* below; retrofitting either is expensive.
 
 ### The asset you already have
@@ -541,29 +748,51 @@ app are the same list:
 - A home-screen widget showing weekly muscle coverage
 
 If mobile is a first-class surface rather than a checkbox, **C is the honest answer**, and
-it moots the Next.js question from Phase 5 — React Native becomes the client and Flask
+it moots the Next.js question from Phase 6 — React Native becomes the client and Flask
 stays the API it already is.
 
 ### Offline-first is the real cost
 
 The gym is where this app gets used and where reception dies. The current design fetches
-everything from `/api` on load, which is a blank screen in a basement.
+everything from `/api` on load, which is a blank screen in a basement. This is also the
+loudest complaint category in competitor App Store reviews — "continue my workout" that
+does not work offline, forcing a restart mid-session, and history tabs that spin forever.
+**Treat offline as a headline feature, not a resilience detail.**
 
-**The append-only single-table model is unusually well suited to sync**: entries are
-immutable rows, so a client can queue inserts locally and replay them with no conflict
-resolution. Two changes make it work, both Alembic revisions rather than rewrites:
+**The append-only model is unusually well suited to sync**: entries are immutable rows,
+so a client can queue inserts locally and replay them with no conflict resolution. Three
+changes make it work, all Alembic revisions rather than rewrites:
 
 - **Client-generated ids** (UUID instead of autoincrement) so a queued entry has an
   identity before it ever reaches the server.
 - **Soft delete / tombstones** — `delete_entry` hard-deletes today, which cannot be
   replayed or ordered against a concurrent insert from another device.
+- **Entry + sets must sync as one unit.** Phase 4's parent/child split means a replayed
+  `workout_entry` with missing `workout_set` rows is a workout that silently reads as zero
+  volume. Queue the whole aggregate, not row-by-row.
+
+### Watch logging
+
+Deliberately *after* the phone app rather than alongside it — it is a second client
+against the same API, and it is worth nothing until the phone client works. Ranked by
+what actually gets used mid-set:
+
+1. **Rest timer on the wrist** — the one genuinely watch-native feature. Phase 4 ships the
+   timer logic; this moves the notification to where you can see it without unlocking.
+2. **Logging a set from the watch** with live sync to the phone, and auto-save on
+   reconnect. Needs the offline queue above to already exist.
+3. **Heart rate capture** and duration-based exercise timers.
+
+Apple Health / Health Connect write-back sits here too. Note that reading *recovery* data
+(HRV, sleep) is a different proposition — see *Post-launch candidates*.
 
 ### Decisions this forces earlier
 
 | Decision | Phase | Why mobile changes it |
 | --- | --- | --- |
-| **Token auth, not cookie sessions** | 4 | Flask-Login cookie sessions are awkward from a native client. Choose bearer tokens (JWT + refresh) or a provider with mobile SDKs (Clerk, Supabase). Converting an API from cookies to tokens later touches every endpoint and the whole CSRF design. |
-| **In-app account deletion** | 4 | **Apple Guideline 5.1.1(v) requires** any app offering account creation to offer account deletion *inside the app* — a support email does not satisfy it. Needs `DELETE /api/account` and a cascade to `workout_entry` and `custom_exercise`. |
+| **Token auth, not cookie sessions** | 5 | Flask-Login cookie sessions are awkward from a native client. Choose bearer tokens (JWT + refresh) or a provider with mobile SDKs (Clerk, Supabase). Converting an API from cookies to tokens later touches every endpoint and the whole CSRF design. |
+| **In-app account deletion** | 5 | **Apple Guideline 5.1.1(v) requires** any app offering account creation to offer account deletion *inside the app* — a support email does not satisfy it. Needs `DELETE /api/account` and a cascade to `workout_entry`, `workout_set`, `body_metric`, routines and `custom_exercise`. |
+| **Client-generated set ids** | 4 | If the set model uses autoincrement ids, the offline queue needs a migration later. Choosing UUIDs when the table is created is free; changing them afterwards is not. |
 
 One more, worth knowing before Phase 1: if you end up on route C, Tailwind/DaisyUI does
 not transfer (NativeWind ports Tailwind to React Native; DaisyUI has no RN equivalent).
@@ -581,29 +810,90 @@ the UI twice if C is the destination.
 
 ---
 
+## Post-launch candidates
+
+Deliberately unscheduled. Each is a real competitive gap, but none belongs in a plan whose
+current job is to reach a working, hosted, multi-user app — and each is a product decision
+first and a build task second. Revisit after Phase 10 ships, in roughly this order.
+
+### Auto-progression and programming
+
+**The main axis competitors differentiate on.** Hevy is a blank canvas — progression across
+weeks is the user's job — and Boostcamp attacks exactly that with pre-built programs that
+advance automatically. Phase 7 ships static routines; this is the layer that advances them.
+
+Cheap to start: linear progression (+2.5kg when all target reps are hit) is a rule over
+data Phase 4 already stores. Expensive to get right: every scheme past linear is
+opinionated, and being wrong here is worse than being absent. **Ship one scheme, make it
+visible and overridable, and only add more if people ask.**
+
+### Social
+
+- [ ] Social feed, profiles, leaderboards, shareable routine folders, Strava integration
+
+Hevy's real moat and the hardest thing here to bootstrap — a feed with no one in it is
+worse than no feed, and it is the one feature whose value is zero at launch by definition.
+It also pulls in moderation, blocking, reporting and privacy-settings work that the store
+review process will ask about. **Explicitly not a launch feature.** The cheap precursor is
+shareable read-only routine links, which needs no graph.
+
+### Nutrition tracking
+
+- [ ] Macro / calorie logging
+
+Genuinely absent from most lifting trackers, Hevy included, and reportedly the most common
+feature request in reviews of lean loggers — people resent needing a second, ad-heavy app.
+That is a real opening, but it is close to a second product: a food database, barcode
+scanning, and a daily-target model that shares almost nothing with the set model. Scope it
+as its own project, not a phase.
+
+### Recovery-aware programming
+
+- [ ] Adapt volume from HRV, sleep and resting heart rate
+
+Mostly unclaimed in this category — competitors are knocked specifically for not reading
+sleep or HRV. Depends on watch integration from Phase 10 for the data, and on
+auto-progression above for something to actually adapt. Furthest out, and the most
+speculative: it only works if the adaptation is good enough to trust.
+
+### Conversational AI coaching
+
+- [ ] Chat-based programming and form guidance
+
+Distinct from Phase 8, which classifies exercise names. Competitors ship *algorithmic*
+progression marketed as AI; a genuine conversational coach over the user's own history is
+the differentiated version. Wants Phase 7's history to be worth reasoning about, and it
+inherits every cost control and prompt-injection concern already specced in Phase 8.
+
+---
+
 ## Summary
 
 | # | Phase | Blocked by | Why here |
 | --- | --- | --- | --- |
 | 1 | Tailwind + DaisyUI | — | Soft dependency of every later UI surface; cheapest at three pages |
-| 2 | Exercise taxonomy, 12 muscle groups, picker | 1 | Highest product value; defines the vocabulary Phase 6 emits into |
-| 3 | Migrations + Postgres | — | Blocks 4 and 5; runs parallel to 1–2 |
-| 4 | Auth, `user_id`, CSRF, rate limiting | 3 | Needs migrations and a real database |
-| 5 | Vercel deploy, CI gates | 3, 4 | Critical path to being online; don't expose an unauthenticated app |
-| 6 | AI custom exercises | 2, 4, 5 | Needs the vocabulary, per-user ownership, and key management — and its value depends on the catalog's measured miss rate |
-| 7 | Exercise images | 2 + licensing | Largest asset effort, least structural risk; can start early if licensing resolves |
-| 8 | Mobile apps + store distribution | 2, 4, 5 | Consumes everything before it — but dictates Phase 4's auth design, so pick an approach early even though you build it last |
+| 2 | Exercise taxonomy, 12 muscle groups, picker | 1 | Highest-value work independent of infrastructure; defines the vocabulary Phase 8 emits into |
+| 3 | Migrations + Postgres | — | Blocks 4, 5 and 6; runs parallel to 1–2 |
+| 4 | **Set-level logging: weight, reps, RPE** | 3 | The gate on the whole competitive feature set; everything in Phase 7 reads it |
+| 5 | Auth, `user_id`, CSRF, rate limiting | 3 | Needs migrations and a real database |
+| 6 | Vercel deploy, CI gates | 3, 5 | Critical path to being online; don't expose an unauthenticated app |
+| 7 | **Training essentials: routines, PRs, 1RM, charts, export** | 4, 5 | Competitive parity, not differentiation — the app reads as a prototype without it |
+| 8 | AI custom exercises | 2, 5, 6 | Needs the vocabulary, per-user ownership, and key management — and its value depends on the catalog's measured miss rate |
+| 9 | Exercise images | 2 + licensing | Largest asset effort, least structural risk; can start early if licensing resolves |
+| 10 | Mobile + watch + store distribution | 2, 4, 5, 6, 7 | Consumes everything before it — but dictates Phase 5's auth design and Phase 4's id strategy, so decide both early |
+| — | Post-launch candidates | 10 | Auto-progression, social, nutrition, recovery, AI coaching — product decisions, not build tasks |
 
 ---
 
 ## Open decisions
 
-1. **Image licensing** — license, commission, or adopt free-exercise-db? Gates Phase 7 and
+1. **Image licensing** — license, commission, or adopt free-exercise-db? Gates Phase 9 and
    may collapse it into Phase 2. **Answer this first** despite being last in the order.
 2. **Mobile approach — PWA, Capacitor shell, or React Native?** Last to build, but
-   **answer it before Phase 4**: it decides token auth vs cookie sessions and whether an
-   in-app account-deletion endpoint is required. Route C would also make the Phase 5
-   Next.js question moot.
+   **answer it before Phase 4**: it decides token auth vs cookie sessions, whether an
+   in-app account-deletion endpoint is required, and whether `workout_set` needs
+   client-generated ids from the start. Route C would also make the Phase 6 Next.js
+   question moot.
 3. **Auth: self-hosted or provider?** Flask-Login is more code and more responsibility;
    Clerk/Supabase is faster and safer, adds a vendor, and ships mobile SDKs — which
    matters more once decision 2 is settled.
@@ -613,6 +903,14 @@ the UI twice if C is the destination.
 6. **Delt granularity** — one `shoulders` group, or split front/side/rear?
 7. **AI feature scope** — per-user custom exercises only, or a review queue that promotes
    popular ones into the shared catalog?
+8. **Does `workout_entry` survive Phase 4?** The parent/child split keeps the muscle map
+   untouched, but a single flat `workout_set` table carrying `entry_date` and `exercise_id`
+   is simpler and loses only the ability to attach a note to a whole exercise block.
+   Decide before writing the migration, not after.
+9. **Charting approach** — inline SVG or a charting library? Phase 7's progress graphs are
+   the first chart in the app, and a library is the second breach of the zero-JS-dependency
+   rule after Tailwind. Cheap to decide now, expensive to switch once several charts exist.
 
-Decisions 1 and 2 are the two that can change the plan's *shape* rather than its detail —
-worth resolving early even though both belong to late phases.
+Decisions 1 and 2 can change the plan's *shape* rather than its detail — worth resolving
+early even though both belong to late phases. Decision 8 gates Phase 4, which is now on
+the critical path for everything competitive.
