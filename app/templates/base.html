@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Body Shop{% endblock %}</title>
+  <meta name="description" content="Body Shop — log your workouts and see which muscle groups you hit each week.">
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body data-page="{{ page }}">
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="{{ url_for('views.calendar_page') }}">
+        <span class="brand-mark" aria-hidden="true">◈</span>
+        <span class="brand-name">Body<span class="brand-accent">Shop</span></span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="{{ url_for('views.calendar_page', date=selected_date.isoformat()) }}"
+           class="nav-link {{ 'is-active' if page == 'calendar' }}"
+           {{ 'aria-current=page' if page == 'calendar' }}>Calendar</a>
+        <a href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}"
+           class="nav-link {{ 'is-active' if page == 'log' }}"
+           {{ 'aria-current=page' if page == 'log' }}>Log workout</a>
+        <a href="{{ url_for('views.summary_page', date=selected_date.isoformat()) }}"
+           class="nav-link {{ 'is-active' if page == 'summary' }}"
+           {{ 'aria-current=page' if page == 'summary' }}>Weekly summary</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="wrap">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>Body Shop · logged locally in SQLite · <a href="/api/exercises">API</a></p>
+    </div>
+  </footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

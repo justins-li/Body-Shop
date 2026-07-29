@@ -1,0 +1,108 @@
+"""JSON API consumed by the front-end JavaScript.
+
+All endpoints are namespaced under ``/api`` and return JSON.  Errors use the
+shape ``{"error": "message"}`` with an appropriate status code.
+"""
+
+from __future__ import annotations
+
+from datetime import date
+
+from flask import Blueprint, current_app, jsonify, request
+
+from .exercises import all_exercises
+from .models import (
+    ValidationError,
+    add_entry,
+    delete_entry,
+    list_entries,
+    parse_date,
+    sets_by_date,
+)
+from .services.summary import weekly_summary
+from .services.weeks import month_bounds, week_bounds
+
+bp = Blueprint("api", __name__, url_prefix="/api")
+
+
+@bp.errorhandler(ValidationError)
+def _handle_validation_error(exc: ValidationError):
+    return jsonify({"error": str(exc)}), 400
+
+
+def _week_start() -> int:
+    return int(current_app.config.get("WEEK_STARTS_ON", 1))
+
+
+def _query_date(name: str, default: date | None = None) -> date:
+    raw = request.args.get(name)
+    if not raw:
+        return default if default is not None else date.today()
+    return parse_date(raw, field=name)
+
+
+@bp.get("/exercises")
+def get_exercises():
+    """List the exercise catalog and the muscles each movement trains."""
+    return jsonify({"exercises": [e.to_dict() for e in all_exercises()]})
+
+
+@bp.get("/entries")
+def get_entries():
+    """List entries, optionally filtered by ``date`` or ``start``/``end``."""
+    if "date" in request.args:
+        day = _query_date("date")
+        start = end = day
+    else:
+        start = parse_date(request.args["start"], field="start") if "start" in request.args else None
+        end = parse_date(request.args["end"], field="end") if "end" in request.args else None
+
+    entries = list_entries(start, end)
+    return jsonify({"entries": [entry.to_dict() for entry in entries]})
+
+
+@bp.post("/entries")
+def create_entry():
+    """Create a workout entry from a JSON or form-encoded body."""
+    payload = request.get_json(silent=True) or request.form
+    entry = add_entry(
+        payload.get("date"),
+        payload.get("exercise_id"),
+        payload.get("sets"),
+    )
+    return jsonify({"entry": entry.to_dict()}), 201
+
+
+@bp.delete("/entries/<int:entry_id>")
+def remove_entry(entry_id: int):
+    """Delete a workout entry by id."""
+    if not delete_entry(entry_id):
+        return jsonify({"error": "Entry not found."}), 404
+    return jsonify({"deleted": entry_id})
+
+
+@bp.get("/calendar")
+def get_calendar():
+    """Return ``{iso_date: total_sets}`` for a month (``year``/``month`` args)."""
+    today = date.today()
+    year = request.args.get("year", type=int) or today.year
+    month = request.args.get("month", type=int) or today.month
+    if not 1 <= month <= 12:
+        return jsonify({"error": "'month' must be between 1 and 12."}), 400
+
+    start, end = month_bounds(year, month)
+    return jsonify({"year": year, "month": month, "days": sets_by_date(start, end)})
+
+
+@bp.get("/summary/week")
+def get_weekly_summary():
+    """Weekly muscle-coverage summary for the week containing ``date``."""
+    day = _query_date("date")
+    return jsonify(weekly_summary(day, _week_start()))
+
+
+@bp.get("/summary/week/bounds")
+def get_week_bounds():
+    """Return the start/end dates of the week containing ``date``."""
+    start, end = week_bounds(_query_date("date"), _week_start())
+    return jsonify({"week_start": start.isoformat(), "week_end": end.isoformat()})
