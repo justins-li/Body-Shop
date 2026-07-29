@@ -107,7 +107,8 @@ Body-Shop/
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the layers fit together and
-[docs/API.md](docs/API.md) for the endpoint reference.
+[docs/API.md](docs/API.md) for the endpoint reference. [docs/ROADMAP.md](docs/ROADMAP.md)
+specifies where it's going next.
 
 ## Adding an exercise
 
@@ -124,9 +125,12 @@ new movement introduces a *new* muscle group, also add it to `MUSCLE_GROUPS`,
 
 ## Roadmap
 
+The full technical plan — Tailwind/DaisyUI, a ~180-exercise catalog with images,
+accounts, Postgres and Vercel hosting — is in [docs/ROADMAP.md](docs/ROADMAP.md).
+Smaller items not covered there:
+
 - [ ] A hinge movement (deadlift / leg curl) so quads and hamstrings can differ
 - [ ] Per-set weight and reps
-- [ ] Multi-user accounts
 - [ ] Per-user set targets instead of the fixed 20/10 split
 - [ ] Export to CSV
 
