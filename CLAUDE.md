@@ -25,7 +25,7 @@ Flask + vanilla ES modules, no build step, no JS dependencies. Layers, strictly 
 
 [app/views.py](app/views.py) renders three server-side shells (`/`, `/log`, `/summary`); everything dynamic is fetched by the page's JS module from the same `/api` the tests exercise, so the HTML can't diverge from the API. Each page's JS module pairs with a template of the same name; [app/static/js/api.js](app/static/js/api.js) is the only place `fetch` is called.
 
-Full layer-ownership table and rationale live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); endpoint reference in [docs/API.md](docs/API.md) — keep both updated when changing those surfaces. Planned direction is specified in phase order in [docs/ROADMAP.md](docs/ROADMAP.md) — Tailwind/DaisyUI, a ~180-exercise catalog, Postgres, auth, Vercel, then AI-assisted custom exercises. Several phases deliberately reverse invariants below (Tailwind ends the no-build-step rule), so check it before assuming a constraint still holds.
+Full layer-ownership table and rationale live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); endpoint reference in [docs/API.md](docs/API.md) — keep both updated when changing those surfaces. Planned direction is specified in phase order in [docs/ROADMAP.md](docs/ROADMAP.md) — Tailwind/DaisyUI, a ~180-exercise catalog, Postgres, auth, Vercel, AI-assisted custom exercises, then mobile/app-store distribution. Several phases deliberately reverse invariants below (Tailwind ends the no-build-step rule), so check it before assuming a constraint still holds.
 
 ### Invariants worth knowing before editing
 
