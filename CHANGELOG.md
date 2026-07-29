@@ -33,6 +33,13 @@ All notable changes to Body Shop are documented here. This project follows
 - `.body-base` draws a full silhouette beneath the muscle overlays, so untracked
   anatomy (sternum, obliques, glutes, lower back, shins) shows through as gaps.
 
+### Fixed
+
+- CI, which had failed on every run since the workflow was added. `pytest` aborted
+  during collection with `ModuleNotFoundError: No module named 'app'` because
+  `conftest.py` sits in `tests/`, so the repo root never reached `sys.path`.
+  `pythonpath = ["."]` in `pyproject.toml` fixes both `pytest` and `python -m pytest`.
+
 ## [0.1.0] — 2026-07-28
 
 First functional release.
