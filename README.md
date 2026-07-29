@@ -144,15 +144,15 @@ new movement introduces a *new* muscle group, also add it to `MUSCLE_GROUPS`,
 
 ## Roadmap
 
-The full technical plan, in execution order — a ~180-exercise catalog, Postgres,
-accounts, Vercel hosting, AI-assisted custom exercises, then mobile — is in
-[docs/ROADMAP.md](docs/ROADMAP.md). Phase 1 (Tailwind/DaisyUI and the home page) is
-done. Smaller items not covered there:
+The full technical plan, in execution order — Tailwind/DaisyUI, a ~180-exercise catalog,
+Postgres, **per-set weight and reps**, accounts, Vercel hosting, routines and progress
+tracking, AI-assisted custom exercises, then mobile and watch — is in
+[docs/ROADMAP.md](docs/ROADMAP.md), along with the post-launch candidates (auto-progression,
+social, nutrition) and the reasoning for why each waits. Phase 1 (Tailwind/DaisyUI and
+the home page) is done. Smaller items not covered there:
 
 - [ ] A hinge movement (deadlift / leg curl) so quads and hamstrings can differ
-- [ ] Per-set weight and reps
 - [ ] Per-user set targets instead of the fixed 20/10 split
-- [ ] Export to CSV
 
 ## Contributing
 

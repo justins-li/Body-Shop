@@ -188,7 +188,10 @@ run in any order.
   key on `workout_entry`.
 - **No migrations.** `schema.sql` is applied once; schema changes currently mean
   re-running `init-db`. Introduce Alembic before the data matters.
-- **Sets only.** No weight or reps yet — see the roadmap in the README.
+- **Sets only.** No weight or reps — `workout_entry` stores a bare count, so 3 sets at
+  60kg and 3 sets at 140kg are the same row. This blocks 1RM estimates, PR detection,
+  progress graphs and plate calculators, and is scheduled as
+  [Phase 4](ROADMAP.md) rather than a to-do.
 - **Squat covers the whole thigh.** It targets `quads` *and* `hamstrings` because
   the catalog has no hinge movement to distinguish them yet. Adding a deadlift or
   leg curl is the point at which squat should narrow to `quads`.
