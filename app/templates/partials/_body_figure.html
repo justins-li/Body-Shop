@@ -5,17 +5,24 @@
           {{ body.figure("front") }}
 
   Each trainable region is an SVG path with `class="muscle"` and a
-  `data-muscle` slug. `app/static/js/summary.js` adds `.is-worked` to every
-  region whose muscle group got at least one set that week, which turns it red
-  (see `.muscle.is-worked` in css/styles.css).
+  `data-muscle` slug. `app/static/js/summary.js` sets a `--level` custom
+  property (0–1) on every region and toggles `.is-worked` / `.is-over`, which
+  shades it along the green or red volume ramp (see `.muscle.is-worked` and
+  `.muscle.is-over` in css/styles.css).
 
-  Front view shows: chest, biceps, legs.
-  Back view shows:  back, triceps, legs.
+  The two views share no muscle groups:
+
+    Front — chest (two pectorals), abs (upper + lower), biceps, quads.
+    Back  — back (traps + lats), triceps, hamstrings.
+
+  `.body-base` draws a complete silhouette (head, torso, arms, legs, extremities)
+  underneath, so muscle regions are overlays and can leave anatomical gaps —
+  sternum, ribs, obliques, glutes, lower back — without holes in the figure.
+  A group may be drawn as several paths; `summary.js` selects on `data-muscle`,
+  so they light up together.
 #}
 
 {% macro figure(view) %}
-{% set upper = "chest" if view == "front" else "back" %}
-{% set arms = "biceps" if view == "front" else "triceps" %}
 <figure class="body-figure">
   <svg viewBox="0 0 200 440" role="img"
        aria-labelledby="body-{{ view }}-title body-{{ view }}-desc"
@@ -28,47 +35,97 @@
     <g class="body-base">
       <circle cx="100" cy="40" r="25" />
       <rect x="90" y="58" width="20" height="20" rx="6" />
-      <!-- core / abdomen: not tracked yet -->
-      <path d="M66,148 L134,148 L127,212 L73,212 Z" />
+      <!-- torso silhouette: shoulders down to the pelvis -->
+      <path d="M62,82 C78,73 122,73 138,82 L134,148 L127,212 L73,212 L66,148 Z" />
+      <!-- upper arms -->
+      <path d="M61,84 L44,89 L33,150 L51,155 L61,110 Z" />
+      <path d="M139,84 L156,89 L167,150 L149,155 L139,110 Z" />
       <!-- forearms -->
       <path d="M33,150 L51,155 L45,216 L28,212 Z" />
       <path d="M167,150 L149,155 L155,216 L172,212 Z" />
       <!-- hands -->
       <circle cx="37" cy="224" r="9" />
       <circle cx="163" cy="224" r="9" />
+      <!-- legs: thigh muscles are overlaid, shins stay untracked -->
+      <path d="M73,212 L99,212 L98,300 L94,402 L70,402 L71,300 Z" />
+      <path d="M127,212 L101,212 L102,300 L106,402 L130,402 L129,300 Z" />
       <!-- feet -->
       <path d="M70,402 L94,402 L96,418 L66,418 Z" />
       <path d="M106,402 L130,402 L134,418 L104,418 Z" />
     </g>
 
     <g class="body-muscles">
-      <path class="muscle" data-muscle="{{ upper }}"
-            id="{{ view }}-{{ upper }}"
-            d="M62,82 C78,73 122,73 138,82 L134,148 L66,148 Z">
-        <title>{{ muscle_labels[upper] }}</title>
+      {% if view == "front" %}
+
+      {# Two pectorals, split at the sternum. #}
+      <path class="muscle" data-muscle="chest" id="front-chest-left"
+            d="M67,86 C79,78 92,77 98,84 L98,124 L70,124 Z">
+        <title>{{ muscle_labels['chest'] }}</title>
+      </path>
+      <path class="muscle" data-muscle="chest" id="front-chest-right"
+            d="M133,86 C121,78 108,77 102,84 L102,124 L130,124 Z">
+        <title>{{ muscle_labels['chest'] }}</title>
       </path>
 
-      <path class="muscle" data-muscle="{{ arms }}"
-            id="{{ view }}-{{ arms }}-left"
-            d="M61,84 L44,89 L33,150 L51,155 L61,110 Z">
-        <title>{{ muscle_labels[arms] }}</title>
+      {# Abdominals: upper and lower blocks, obliques left as silhouette. #}
+      <path class="muscle" data-muscle="abs" id="front-abs-upper"
+            d="M82,130 L118,130 L119,166 L81,166 Z">
+        <title>{{ muscle_labels['abs'] }}</title>
       </path>
-      <path class="muscle" data-muscle="{{ arms }}"
-            id="{{ view }}-{{ arms }}-right"
-            d="M139,84 L156,89 L167,150 L149,155 L139,110 Z">
-        <title>{{ muscle_labels[arms] }}</title>
+      <path class="muscle" data-muscle="abs" id="front-abs-lower"
+            d="M81,170 L119,170 L122,204 L78,204 Z">
+        <title>{{ muscle_labels['abs'] }}</title>
       </path>
 
-      <path class="muscle" data-muscle="legs"
-            id="{{ view }}-legs-left"
-            d="M73,212 L99,212 L98,300 L94,402 L70,402 L71,300 Z">
-        <title>{{ muscle_labels['legs'] }}</title>
+      <path class="muscle" data-muscle="biceps" id="front-biceps-left"
+            d="M60,88 L46,92 L38,140 L53,144 L60,112 Z">
+        <title>{{ muscle_labels['biceps'] }}</title>
       </path>
-      <path class="muscle" data-muscle="legs"
-            id="{{ view }}-legs-right"
-            d="M127,212 L101,212 L102,300 L106,402 L130,402 L129,300 Z">
-        <title>{{ muscle_labels['legs'] }}</title>
+      <path class="muscle" data-muscle="biceps" id="front-biceps-right"
+            d="M140,88 L154,92 L162,140 L147,144 L140,112 Z">
+        <title>{{ muscle_labels['biceps'] }}</title>
       </path>
+
+      <path class="muscle" data-muscle="quads" id="front-quads-left"
+            d="M74,216 L98,216 L97,298 L76,298 Z">
+        <title>{{ muscle_labels['quads'] }}</title>
+      </path>
+      <path class="muscle" data-muscle="quads" id="front-quads-right"
+            d="M126,216 L102,216 L103,298 L124,298 Z">
+        <title>{{ muscle_labels['quads'] }}</title>
+      </path>
+
+      {% else %}
+
+      {# Trapezius across the shoulders, then the lats tapering to the waist. #}
+      <path class="muscle" data-muscle="back" id="back-traps"
+            d="M100,70 L138,82 L132,106 L100,98 L68,106 L62,82 Z">
+        <title>{{ muscle_labels['back'] }}</title>
+      </path>
+      <path class="muscle" data-muscle="back" id="back-lats"
+            d="M67,110 L133,110 L126,158 L100,170 L74,158 Z">
+        <title>{{ muscle_labels['back'] }}</title>
+      </path>
+
+      <path class="muscle" data-muscle="triceps" id="back-triceps-left"
+            d="M60,88 L46,92 L38,140 L53,144 L60,112 Z">
+        <title>{{ muscle_labels['triceps'] }}</title>
+      </path>
+      <path class="muscle" data-muscle="triceps" id="back-triceps-right"
+            d="M140,88 L154,92 L162,140 L147,144 L140,112 Z">
+        <title>{{ muscle_labels['triceps'] }}</title>
+      </path>
+
+      <path class="muscle" data-muscle="hamstrings" id="back-hamstrings-left"
+            d="M74,216 L98,216 L97,298 L76,298 Z">
+        <title>{{ muscle_labels['hamstrings'] }}</title>
+      </path>
+      <path class="muscle" data-muscle="hamstrings" id="back-hamstrings-right"
+            d="M126,216 L102,216 L103,298 L124,298 Z">
+        <title>{{ muscle_labels['hamstrings'] }}</title>
+      </path>
+
+      {% endif %}
     </g>
   </svg>
   <figcaption>{{ view | capitalize }}</figcaption>

@@ -31,7 +31,7 @@ HTML never diverges from the API, and the API is testable without a browser.
 | `app/exercises.py` | The exercise catalog and its muscle mapping. | Touch the database. |
 | `app/models.py` | Every SQL statement, plus input validation. | Know about HTTP or Jinja. |
 | `app/services/weeks.py` | Week/month boundary maths. | Query the database. |
-| `app/services/summary.py` | Turning entries into per-muscle coverage. | Build HTTP responses. |
+| `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses. |
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
 | `app/views.py` | Page shells and template context. | Contain business rules. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
@@ -48,21 +48,37 @@ there simultaneously:
 
 Nothing else hard-codes the list of exercises.
 
-## The "turn it red" rule
+## The volume scale
 
-`app/services/summary.py::summarise_entries` produces, for each muscle group:
+`app/services/summary.py::summarise_entries` produces, for each of the seven groups
+in `MUSCLE_GROUPS`:
 
 ```python
-{"muscle": "chest", "label": "Chest", "worked": True, "sets": 5, "exercises": ["Bench press"]}
+{"muscle": "chest", "label": "Chest", "worked": True, "sets": 12, "target": 20,
+ "over": 0, "state": "trained", "intensity": 0.6, "exercises": ["Bench press"]}
 ```
 
-`worked` is `True` as soon as a single set of a targeting exercise exists — that is
-the product rule verbatim. `sets` is tracked alongside it so the UI can also show
-volume, and so a future "deeper red for more volume" change needs no backend work.
+`worked` is `True` as soon as a single set of a targeting exercise exists. Colour is
+a *volume* scale on top of that, graded by `summary.py::grade`:
 
-The front-end does no aggregation of its own: `summary.js` reads `worked` and
-toggles the `.is-worked` class on every SVG path with the matching `data-muscle`
-attribute. Colour lives entirely in CSS (`--worked`).
+| Sets | `state` | `intensity` | Colour |
+| --- | --- | --- | --- |
+| 0 | `rest` | `0.0` | untrained grey |
+| 1 … target | `trained` | `sets / target` | light green → dark green |
+| target + 1 … | `over` | `over / (target // 2)`, clamped to 1 | light red → dark red |
+
+`intensity` restarts at the bottom of the new ramp when a group crosses its target,
+so the two scales are read independently — a group is never "dark green *and* faintly
+red". Targets come from `exercises.py::MUSCLE_TARGETS`: 20 sets a week for the large
+groups (chest, back, quads, hamstrings) and 10 for the small ones (abs, biceps,
+triceps), which recover on less volume. Overshoot saturates at half the target, so
+one extra set is a visible step on either scale.
+
+The front-end does no grading of its own: `summary.js` writes `intensity` to a
+`--level` custom property and toggles `.is-worked` / `.is-over` on every element with
+the matching `data-muscle` attribute — SVG regions and breakdown rows alike. Colour
+still lives entirely in CSS, which mixes between the ramp endpoints
+(`--train-light`/`--train-dark`, `--over-light`/`--over-dark`) with `color-mix`.
 
 Note that a set counts once per muscle group it targets — 3 sets of bench press add
 3 to *both* chest and triceps. That is intentional: the page answers "how much work
@@ -71,21 +87,24 @@ did this muscle get", not "how many sets did I perform".
 ## The body map
 
 `app/templates/partials/_body_figure.html` is a Jinja macro rendered twice, as
-`figure("front")` and `figure("back")`. The macro swaps which muscle the torso and
-upper-arm regions represent:
+`figure("front")` and `figure("back")`. The two views draw **disjoint** sets of
+muscle groups, so each figure carries information the other does not:
 
-| Region | Front view | Back view |
+| View | Groups | Drawn as |
 | --- | --- | --- |
-| Torso (upper) | `chest` | `back` |
-| Upper arms | `biceps` | `triceps` |
-| Thighs/shins | `legs` | `legs` |
+| Front | `chest`, `abs`, `biceps`, `quads` | two pectorals split at the sternum; upper and lower abdominal blocks; upper arms; thighs |
+| Back | `back`, `triceps`, `hamstrings` | trapezius plus a tapering lat sheet; upper arms; thighs |
 
-Untracked anatomy (head, core, forearms, hands, feet) sits in the `.body-base`
-group and is never coloured. Because `legs` appears in both figures, both light up
-together — `summary.js` selects by `data-muscle`, not by id.
+`.body-base` draws a *complete* silhouette — head, neck, torso, arms, full legs,
+forearms, hands, feet — and muscle regions are painted on top of it. That is why a
+group can be several paths with anatomical gaps between them (sternum, ribs,
+obliques, glutes, lower back, shins) without leaving holes in the outline.
 
-Adding a muscle group means adding a path with the right `data-muscle` slug; no
-JavaScript changes are needed.
+Because a group is selected by `data-muscle` rather than by id, all of its paths
+light up together — the two pectorals, or both thighs.
+
+Adding a muscle group means adding a path with the right `data-muscle` slug to the
+appropriate view; no JavaScript changes are needed.
 
 ## Data model
 
@@ -112,8 +131,8 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
 ## Testing strategy
 
 - `tests/test_weeks.py` — boundary maths, no app needed.
-- `tests/test_summary.py` — the muscle-coverage rule, both as a pure function and
-  through the database.
+- `tests/test_summary.py` — the muscle-coverage and volume-grading rules, both as
+  pure functions and through the database.
 - `tests/test_api.py` — every endpoint, including the validation failure modes.
 - `tests/test_pages.py` — the three pages render and contain every muscle region.
 
@@ -128,3 +147,6 @@ run in any order.
 - **No migrations.** `schema.sql` is applied once; schema changes currently mean
   re-running `init-db`. Introduce Alembic before the data matters.
 - **Sets only.** No weight or reps yet — see the roadmap in the README.
+- **Squat covers the whole thigh.** It targets `quads` *and* `hamstrings` because
+  the catalog has no hinge movement to distinguish them yet. Adding a deadlift or
+  leg curl is the point at which squat should narrow to `quads`.

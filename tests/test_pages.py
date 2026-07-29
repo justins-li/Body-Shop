@@ -1,6 +1,10 @@
 """Smoke tests for the three HTML pages."""
 
+import re
+
 import pytest
+
+from app.exercises import MUSCLE_GROUPS
 
 
 @pytest.mark.parametrize(
@@ -19,14 +23,33 @@ def test_pages_render(client, path, marker):
 
 def test_log_page_lists_every_exercise(client):
     body = client.get("/log").data
-    for name in (b"Bench press", b"Pull ups", b"Squat"):
+    for name in (b"Bench press", b"Pull ups", b"Squat", b"Sit ups"):
         assert name in body
 
 
 def test_summary_page_contains_every_muscle_region(client):
     body = client.get("/summary").data.decode()
-    for muscle in ("chest", "back", "biceps", "triceps", "legs"):
+    for muscle in MUSCLE_GROUPS:
         assert f'data-muscle="{muscle}"' in body
+
+
+def test_front_and_back_views_show_different_muscle_groups(client):
+    body = client.get("/summary").data.decode()
+    # Scope to each <svg>; the breakdown list below them repeats every slug.
+    front = body.split('data-view="front"')[1].split("</svg>")[0]
+    back = body.split('data-view="back"')[1].split("</svg>")[0]
+
+    assert set(re.findall(r'data-muscle="(\w+)"', front)) == {
+        "chest",
+        "abs",
+        "biceps",
+        "quads",
+    }
+    assert set(re.findall(r'data-muscle="(\w+)"', back)) == {
+        "back",
+        "triceps",
+        "hamstrings",
+    }
 
 
 def test_summary_page_uses_requested_week(client):
