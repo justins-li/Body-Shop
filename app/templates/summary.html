@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{# `with context` gives the macro access to `muscle_labels` (see app/views.py). #}
+{% import "partials/_body_figure.html" as body with context %}
+{% block title %}Weekly summary · Body Shop{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <h1>Weekly summary</h1>
+  <p class="lede">Every muscle group you trained at least one set for this week turns red.</p>
+</section>
+
+<section class="card week-switcher" aria-label="Week navigation">
+  <button class="icon-btn" id="prev-week" type="button" aria-label="Previous week">‹</button>
+  <div class="week-range">
+    <span class="week-label" id="week-label" aria-live="polite">
+      {{ week_start.strftime('%b %d') }} – {{ week_end.strftime('%b %d, %Y') }}
+    </span>
+    <span class="week-meta muted" id="week-meta">&nbsp;</span>
+  </div>
+  <button class="icon-btn" id="next-week" type="button" aria-label="Next week">›</button>
+</section>
+
+<div class="layout-summary">
+  <section class="card body-card" aria-labelledby="body-heading">
+    <h2 id="body-heading" class="card-title">Muscle coverage</h2>
+    <div class="body-figures">
+      {{ body.figure("front") }}
+      {{ body.figure("back") }}
+    </div>
+    <p class="legend">
+      <span class="swatch swatch-worked"></span> trained this week
+      <span class="swatch swatch-rest"></span> not yet trained
+    </p>
+  </section>
+
+  <section class="card" aria-labelledby="breakdown-heading">
+    <h2 id="breakdown-heading" class="card-title">Sets by muscle group</h2>
+    <ul class="muscle-list" id="muscle-list">
+      {% for muscle in muscle_groups %}
+      <li class="muscle-row" data-muscle="{{ muscle }}">
+        <span class="muscle-name">{{ muscle_labels[muscle] }}</span>
+        <span class="muscle-bar"><span class="muscle-bar-fill"></span></span>
+        <span class="muscle-sets">0 sets</span>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <h3 class="card-subtitle">This week's entries</h3>
+    <div id="week-entries" class="day-entries"><p class="muted">Loading…</p></div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { initSummary } from "{{ url_for('static', filename='js/summary.js') }}";
+  initSummary({{ selected_date.isoformat() | tojson }});
+</script>
+{% endblock %}

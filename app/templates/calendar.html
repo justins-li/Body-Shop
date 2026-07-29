@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Calendar · Body Shop{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <h1>Calendar</h1>
+  <p class="lede">Pick a day to see what you trained, or jump straight to logging it.</p>
+</section>
+
+<div class="layout-split">
+  <section class="card calendar-card" aria-labelledby="calendar-heading">
+    <header class="card-head">
+      <button class="icon-btn" id="prev-month" type="button" aria-label="Previous month">‹</button>
+      <h2 id="calendar-heading" class="month-label" aria-live="polite">&nbsp;</h2>
+      <button class="icon-btn" id="next-month" type="button" aria-label="Next month">›</button>
+    </header>
+
+    <div class="calendar-grid weekday-row" aria-hidden="true">
+      {% for name in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] %}
+        <span class="weekday">{{ name }}</span>
+      {% endfor %}
+    </div>
+
+    <div class="calendar-grid" id="calendar-days" role="grid" aria-labelledby="calendar-heading"></div>
+
+    <footer class="card-foot">
+      <button class="btn btn-ghost" id="today-btn" type="button">Jump to today</button>
+      <p class="legend-note"><span class="dot dot-filled"></span> day with logged sets</p>
+    </footer>
+  </section>
+
+  <aside class="card day-card" aria-labelledby="day-heading">
+    <h2 id="day-heading" class="day-heading">&nbsp;</h2>
+    <div id="day-entries" class="day-entries"><p class="muted">Loading…</p></div>
+    <div class="card-actions">
+      <a class="btn btn-primary" id="log-for-day" href="{{ url_for('views.log_page') }}">Log a workout</a>
+      <a class="btn btn-ghost" id="week-for-day" href="{{ url_for('views.summary_page') }}">See the week</a>
+    </div>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { initCalendar } from "{{ url_for('static', filename='js/calendar.js') }}";
+  initCalendar({{ selected_date.isoformat() | tojson }});
+</script>
+{% endblock %}

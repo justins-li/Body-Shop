@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Body Shop -------------------------------------------------------------
+# Local SQLite database (created on first run inside instance/)
+*.sqlite3
+*.sqlite3-journal
+instance/

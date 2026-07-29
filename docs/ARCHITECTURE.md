@@ -1,0 +1,130 @@
+# Architecture
+
+## Why this shape
+
+The product is small but has one non-trivial rule — *which muscle groups did this
+week's sets cover?* — that three different surfaces need to agree on (the API, the
+summary page, and eventually any export). So the code is organised around keeping
+that rule in exactly one place, with thin layers on either side of it.
+
+```
+browser  ──fetch──▶  app/api.py        (HTTP: parse, serialise, status codes)
+                          │
+                          ▼
+                     app/services/     (rules: week boundaries, muscle coverage)
+                          │
+                          ▼
+                     app/models.py     (SQL: validation + queries, all of it)
+                          │
+                          ▼
+                     SQLite (instance/bodyshop.sqlite3)
+```
+
+`app/views.py` renders three server-side shells; everything dynamic is fetched by
+the page's JavaScript module from the same `/api` the tests exercise. That means the
+HTML never diverges from the API, and the API is testable without a browser.
+
+## Layer responsibilities
+
+| Module | Owns | Must not |
+| --- | --- | --- |
+| `app/exercises.py` | The exercise catalog and its muscle mapping. | Touch the database. |
+| `app/models.py` | Every SQL statement, plus input validation. | Know about HTTP or Jinja. |
+| `app/services/weeks.py` | Week/month boundary maths. | Query the database. |
+| `app/services/summary.py` | Turning entries into per-muscle coverage. | Build HTTP responses. |
+| `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
+| `app/views.py` | Page shells and template context. | Contain business rules. |
+| `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
+
+## The single source of truth
+
+`app/exercises.py` defines both `EXERCISES` and `MUSCLE_GROUPS`. Adding a movement
+there simultaneously:
+
+- adds a radio button to `/log` (the view passes `all_exercises()` to the template),
+- makes it valid input for `POST /api/entries` (`validate_entry` rejects unknown ids),
+- makes its muscles countable in the weekly summary (`summarise_entries` iterates
+  `entry.muscles`).
+
+Nothing else hard-codes the list of exercises.
+
+## The "turn it red" rule
+
+`app/services/summary.py::summarise_entries` produces, for each muscle group:
+
+```python
+{"muscle": "chest", "label": "Chest", "worked": True, "sets": 5, "exercises": ["Bench press"]}
+```
+
+`worked` is `True` as soon as a single set of a targeting exercise exists — that is
+the product rule verbatim. `sets` is tracked alongside it so the UI can also show
+volume, and so a future "deeper red for more volume" change needs no backend work.
+
+The front-end does no aggregation of its own: `summary.js` reads `worked` and
+toggles the `.is-worked` class on every SVG path with the matching `data-muscle`
+attribute. Colour lives entirely in CSS (`--worked`).
+
+Note that a set counts once per muscle group it targets — 3 sets of bench press add
+3 to *both* chest and triceps. That is intentional: the page answers "how much work
+did this muscle get", not "how many sets did I perform".
+
+## The body map
+
+`app/templates/partials/_body_figure.html` is a Jinja macro rendered twice, as
+`figure("front")` and `figure("back")`. The macro swaps which muscle the torso and
+upper-arm regions represent:
+
+| Region | Front view | Back view |
+| --- | --- | --- |
+| Torso (upper) | `chest` | `back` |
+| Upper arms | `biceps` | `triceps` |
+| Thighs/shins | `legs` | `legs` |
+
+Untracked anatomy (head, core, forearms, hands, feet) sits in the `.body-base`
+group and is never coloured. Because `legs` appears in both figures, both light up
+together — `summary.js` selects by `data-muscle`, not by id.
+
+Adding a muscle group means adding a path with the right `data-muscle` slug; no
+JavaScript changes are needed.
+
+## Data model
+
+One table. Entries are append-only rows; there is no per-day "workout" record,
+which keeps logging a single insert and makes range queries trivial.
+
+```sql
+workout_entry(id, entry_date TEXT, exercise_id TEXT, sets INTEGER, created_at TEXT)
+```
+
+`entry_date` is stored as an ISO-8601 string, so SQLite's lexicographic `BETWEEN`
+comparison is also a correct chronological comparison, and the value needs no
+conversion on the way to JSON.
+
+## Dates and time zones
+
+The backend never converts time zones. The browser sends `YYYY-MM-DD` strings that
+the user picked, and gets the same strings back. `app/static/js/ui.js` deliberately
+parses those with `new Date(y, m - 1, d)` rather than `new Date(iso)` — the latter
+parses as UTC and can shift a day backwards for users west of Greenwich.
+
+Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
+
+## Testing strategy
+
+- `tests/test_weeks.py` — boundary maths, no app needed.
+- `tests/test_summary.py` — the muscle-coverage rule, both as a pure function and
+  through the database.
+- `tests/test_api.py` — every endpoint, including the validation failure modes.
+- `tests/test_pages.py` — the three pages render and contain every muscle region.
+
+Each test gets a fresh SQLite file in pytest's `tmp_path`, so tests are isolated and
+run in any order.
+
+## Deliberate limitations
+
+- **Single user.** There is no auth and no `user_id` column; the database is
+  whoever's machine it runs on. Adding accounts means a `user` table and a foreign
+  key on `workout_entry`.
+- **No migrations.** `schema.sql` is applied once; schema changes currently mean
+  re-running `init-db`. Introduce Alembic before the data matters.
+- **Sets only.** No weight or reps yet — see the roadmap in the README.

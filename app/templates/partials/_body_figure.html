@@ -1,0 +1,76 @@
+{#
+  Body outline used by the weekly summary.
+
+  Usage:  {% import "partials/_body_figure.html" as body %}
+          {{ body.figure("front") }}
+
+  Each trainable region is an SVG path with `class="muscle"` and a
+  `data-muscle` slug. `app/static/js/summary.js` adds `.is-worked` to every
+  region whose muscle group got at least one set that week, which turns it red
+  (see `.muscle.is-worked` in css/styles.css).
+
+  Front view shows: chest, biceps, legs.
+  Back view shows:  back, triceps, legs.
+#}
+
+{% macro figure(view) %}
+{% set upper = "chest" if view == "front" else "back" %}
+{% set arms = "biceps" if view == "front" else "triceps" %}
+<figure class="body-figure">
+  <svg viewBox="0 0 200 440" role="img"
+       aria-labelledby="body-{{ view }}-title body-{{ view }}-desc"
+       class="body-svg" data-view="{{ view }}">
+    <title id="body-{{ view }}-title">{{ view | capitalize }} view of the body</title>
+    <desc id="body-{{ view }}-desc">
+      Muscle groups trained at least once this week are filled red.
+    </desc>
+
+    <g class="body-base">
+      <circle cx="100" cy="40" r="25" />
+      <rect x="90" y="58" width="20" height="20" rx="6" />
+      <!-- core / abdomen: not tracked yet -->
+      <path d="M66,148 L134,148 L127,212 L73,212 Z" />
+      <!-- forearms -->
+      <path d="M33,150 L51,155 L45,216 L28,212 Z" />
+      <path d="M167,150 L149,155 L155,216 L172,212 Z" />
+      <!-- hands -->
+      <circle cx="37" cy="224" r="9" />
+      <circle cx="163" cy="224" r="9" />
+      <!-- feet -->
+      <path d="M70,402 L94,402 L96,418 L66,418 Z" />
+      <path d="M106,402 L130,402 L134,418 L104,418 Z" />
+    </g>
+
+    <g class="body-muscles">
+      <path class="muscle" data-muscle="{{ upper }}"
+            id="{{ view }}-{{ upper }}"
+            d="M62,82 C78,73 122,73 138,82 L134,148 L66,148 Z">
+        <title>{{ muscle_labels[upper] }}</title>
+      </path>
+
+      <path class="muscle" data-muscle="{{ arms }}"
+            id="{{ view }}-{{ arms }}-left"
+            d="M61,84 L44,89 L33,150 L51,155 L61,110 Z">
+        <title>{{ muscle_labels[arms] }}</title>
+      </path>
+      <path class="muscle" data-muscle="{{ arms }}"
+            id="{{ view }}-{{ arms }}-right"
+            d="M139,84 L156,89 L167,150 L149,155 L139,110 Z">
+        <title>{{ muscle_labels[arms] }}</title>
+      </path>
+
+      <path class="muscle" data-muscle="legs"
+            id="{{ view }}-legs-left"
+            d="M73,212 L99,212 L98,300 L94,402 L70,402 L71,300 Z">
+        <title>{{ muscle_labels['legs'] }}</title>
+      </path>
+      <path class="muscle" data-muscle="legs"
+            id="{{ view }}-legs-right"
+            d="M127,212 L101,212 L102,300 L106,402 L130,402 L129,300 Z">
+        <title>{{ muscle_labels['legs'] }}</title>
+      </path>
+    </g>
+  </svg>
+  <figcaption>{{ view | capitalize }}</figcaption>
+</figure>
+{% endmacro %}

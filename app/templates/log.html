@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Log a workout · Body Shop{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <h1>Log a workout</h1>
+  <p class="lede">Pick a date, choose a movement, and record how many sets you finished.</p>
+</section>
+
+<div class="layout-split">
+  <section class="card" aria-labelledby="form-heading">
+    <h2 id="form-heading" class="card-title">New entry</h2>
+
+    <form id="entry-form" class="form" novalidate>
+      <div class="field">
+        <label for="entry-date">Date</label>
+        <input type="date" id="entry-date" name="date"
+               value="{{ selected_date.isoformat() }}" required>
+      </div>
+
+      <fieldset class="field">
+        <legend>Exercise</legend>
+        <div class="exercise-options">
+          {% for exercise in exercises %}
+          <label class="exercise-option">
+            <input type="radio" name="exercise_id" value="{{ exercise.id }}"
+                   {{ 'checked' if loop.first }} required>
+            <span class="exercise-body">
+              <span class="exercise-name">{{ exercise.name }}</span>
+              <span class="muscle-tags">
+                {% for muscle in exercise.muscles %}
+                  <span class="tag">{{ muscle_labels[muscle] }}</span>
+                {% endfor %}
+              </span>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="field">
+        <label for="entry-sets">Sets</label>
+        <div class="stepper">
+          <button type="button" class="icon-btn" data-step="-1" aria-label="One fewer set">−</button>
+          <input type="number" id="entry-sets" name="sets" value="3" min="1" max="100" required>
+          <button type="button" class="icon-btn" data-step="1" aria-label="One more set">+</button>
+        </div>
+      </div>
+
+      <p class="form-error" id="form-error" role="alert" hidden></p>
+
+      <div class="card-actions">
+        <button type="submit" class="btn btn-primary">Add entry</button>
+        <a class="btn btn-ghost" id="view-summary" href="{{ url_for('views.summary_page') }}">Weekly summary</a>
+      </div>
+    </form>
+  </section>
+
+  <aside class="card" aria-labelledby="entries-heading">
+    <h2 id="entries-heading" class="card-title">Logged on <span id="entries-date"></span></h2>
+    <div id="day-entries" class="day-entries"><p class="muted">Loading…</p></div>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { initLog } from "{{ url_for('static', filename='js/log.js') }}";
+  initLog({{ selected_date.isoformat() | tojson }});
+</script>
+{% endblock %}

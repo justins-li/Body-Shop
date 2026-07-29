@@ -1,0 +1,18 @@
+[project]
+name = "body-shop"
+version = "0.1.0"
+description = "Log workouts on a calendar and see which muscle groups you trained each week."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = ["Flask>=3.0,<4.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
