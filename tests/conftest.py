@@ -1,20 +1,68 @@
-"""Shared pytest fixtures: a throwaway app and client backed by a temp SQLite file."""
+"""Shared pytest fixtures.
+
+Two modes, chosen by whether ``BODYSHOP_TEST_DATABASE_URL`` is set:
+
+**SQLite (default).** Each test gets its own file in pytest's ``tmp_path``, built
+directly from ``app.tables.metadata``. Fast, and the isolation is absolute — no
+test can see another's rows, in any order.
+
+**Postgres.** Every test runs against the one database named by the environment
+variable. The schema is built once per session **by running the migrations**, so
+a Postgres run also verifies the migration chain against a real dialect rather
+than only the queries. Between tests the table is truncated, which is one round
+trip where a drop-and-recreate would be a schema rebuild — the difference is
+minutes against a hosted database.
+
+    BODYSHOP_TEST_DATABASE_URL=postgresql://... pytest
+
+That database is truncated between tests, so point it at a scratch one.
+"""
 
 from __future__ import annotations
 
+import os
+
 import pytest
+import sqlalchemy as sa
 
 from app import create_app
-from app.db import init_db
+from app.db import get_engine, init_db
+from app.tables import metadata
+
+TEST_DATABASE_URL = os.environ.get("BODYSHOP_TEST_DATABASE_URL")
+
+
+@pytest.fixture(scope="session")
+def postgres_app():
+    """Session-wide app whose schema is built once, by the migrations."""
+    application = create_app("testing", DATABASE_URL=TEST_DATABASE_URL)
+    with application.app_context():
+        init_db(application)
+        yield application
+        get_engine(application).dispose()
 
 
 @pytest.fixture
-def app(tmp_path):
+def app(tmp_path, request):
     """A testing app with an isolated, freshly initialised database."""
-    application = create_app("testing", DATABASE=str(tmp_path / "test.sqlite3"))
+    if TEST_DATABASE_URL:
+        application = request.getfixturevalue("postgres_app")
+        with application.app_context():
+            engine = get_engine(application)
+            with engine.begin() as connection:
+                connection.execute(
+                    sa.text("TRUNCATE TABLE workout_entry RESTART IDENTITY CASCADE")
+                )
+            yield application
+        return
+
+    application = create_app(
+        "testing", DATABASE_URL=f"sqlite:///{tmp_path / 'test.sqlite3'}"
+    )
     with application.app_context():
-        init_db()
-    yield application
+        metadata.create_all(get_engine(application))
+        yield application
+        get_engine(application).dispose()
 
 
 @pytest.fixture
