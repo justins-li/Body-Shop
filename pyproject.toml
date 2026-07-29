@@ -13,6 +13,10 @@ dev = ["pytest>=8.0"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# conftest.py lives in tests/, so pytest puts tests/ on sys.path but not the repo
+# root — `from app import create_app` then fails under a bare `pytest`. Running
+# `python -m pytest` happens to work because that form adds the CWD itself.
+pythonpath = ["."]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
