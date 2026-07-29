@@ -52,12 +52,14 @@ before the `user` table does.
 
 ```
 Phase 1  Tailwind + DaisyUI ──┬──▶ Phase 2  Exercise taxonomy ──┬──▶ Phase 6  AI custom exercises
-                              │                                 │
-                              └──▶ (all later UI)               └──▶ Phase 7  Images (+ licensing)
+                              │                                 ├──▶ Phase 7  Images (+ licensing)
+                              └──▶ (all later UI)               └──▶ Phase 8  Mobile + app stores
 
-Phase 3  Migrations + Postgres ──▶ Phase 4  Auth ──┬──▶ Phase 5  Vercel deploy
-                                                   │
+Phase 3  Migrations + Postgres ──▶ Phase 4  Auth ──┬──▶ Phase 5  Vercel deploy ──▶ Phase 8
                                                    └──▶ Phase 6  AI custom exercises
+
+   Phase 8 reaches backwards: it requires token auth (not cookie sessions) and an
+   in-app account-deletion endpoint, both of which must be decided in Phase 4.
 ```
 
 Phases 1–2 and Phase 3 are independent and can run in parallel. The critical path to
@@ -499,6 +501,86 @@ purely additive and parallelises with anything.
 
 ---
 
+## Phase 8 — Mobile apps and store distribution
+
+**Depends on:** Phases 2, 4 and 5. Last because it consumes all of them — the catalog is
+what makes a mobile logger worth opening, auth is what makes it multi-device, and the
+deployed API is what it talks to.
+
+**But two of its constraints have to be honoured in Phase 4, not here.** See *Decisions
+this forces earlier* below; retrofitting either is expensive.
+
+### The asset you already have
+
+Pages are server-rendered shells and every dynamic byte comes from `/api` — the same API
+the tests exercise. A mobile client is just another consumer of it; no new backend surface
+is required. That is the payoff for the shell + fetch design in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+The ISO-local-date rule holds up too: a workout logged at 7am in Tokyo is that day's
+workout, not a UTC instant. Keep the backend free of time-zone conversion.
+
+### A wrapped website gets rejected
+
+Apple's **Guideline 4.2 (Minimum Functionality)** rejects apps that are repackaged
+websites. That rules out the cheapest version of this phase.
+
+| Option | Both stores? | Cost | Notes |
+| --- | --- | --- | --- |
+| **A** — PWA + Trusted Web Activity | Play only | Lowest | Apple does not accept PWAs in the App Store. Installable from Safari, but no listing. |
+| **B** — Capacitor shell around the web UI | Yes | Low–medium | **Rejection risk under 4.2** unless it does genuinely native things. |
+| **C** — React Native / Expo client on `/api` | Yes | High | A real native client; Flask stays the API. |
+| **D** — Native Swift + Kotlin | Yes | Highest | Two codebases. |
+
+**Recommendation: B, but only paired with real native capability** — otherwise it is the
+textbook 4.2 rejection. The capabilities that both clear the bar and genuinely help a gym
+app are the same list:
+
+- Offline logging (below) — the gym-basement problem
+- Apple Health / Health Connect write-back
+- Local rest-timer notifications
+- A home-screen widget showing weekly muscle coverage
+
+If mobile is a first-class surface rather than a checkbox, **C is the honest answer**, and
+it moots the Next.js question from Phase 5 — React Native becomes the client and Flask
+stays the API it already is.
+
+### Offline-first is the real cost
+
+The gym is where this app gets used and where reception dies. The current design fetches
+everything from `/api` on load, which is a blank screen in a basement.
+
+**The append-only single-table model is unusually well suited to sync**: entries are
+immutable rows, so a client can queue inserts locally and replay them with no conflict
+resolution. Two changes make it work, both Alembic revisions rather than rewrites:
+
+- **Client-generated ids** (UUID instead of autoincrement) so a queued entry has an
+  identity before it ever reaches the server.
+- **Soft delete / tombstones** — `delete_entry` hard-deletes today, which cannot be
+  replayed or ordered against a concurrent insert from another device.
+
+### Decisions this forces earlier
+
+| Decision | Phase | Why mobile changes it |
+| --- | --- | --- |
+| **Token auth, not cookie sessions** | 4 | Flask-Login cookie sessions are awkward from a native client. Choose bearer tokens (JWT + refresh) or a provider with mobile SDKs (Clerk, Supabase). Converting an API from cookies to tokens later touches every endpoint and the whole CSRF design. |
+| **In-app account deletion** | 4 | **Apple Guideline 5.1.1(v) requires** any app offering account creation to offer account deletion *inside the app* — a support email does not satisfy it. Needs `DELETE /api/account` and a cascade to `workout_entry` and `custom_exercise`. |
+
+One more, worth knowing before Phase 1: if you end up on route C, Tailwind/DaisyUI does
+not transfer (NativeWind ports Tailwind to React Native; DaisyUI has no RN equivalent).
+That is not a reason to change Phase 1 — the web app needs styling either way — but budget
+the UI twice if C is the destination.
+
+### Store logistics
+
+- Apple Developer Program $99/yr; Google Play $25 one-time.
+- **Privacy labels** (App Store) and **Data Safety** (Play) both require declaring what you
+  collect — email and workout data here. Fill them from the actual schema.
+- Both stores require a public **privacy policy URL**. There is no privacy policy in the
+  repo today; it needs writing before submission.
+- Budget for at least one rejection round on 4.2.
+
+---
+
 ## Summary
 
 | # | Phase | Blocked by | Why here |
@@ -510,6 +592,7 @@ purely additive and parallelises with anything.
 | 5 | Vercel deploy, CI gates | 3, 4 | Critical path to being online; don't expose an unauthenticated app |
 | 6 | AI custom exercises | 2, 4, 5 | Needs the vocabulary, per-user ownership, and key management — and its value depends on the catalog's measured miss rate |
 | 7 | Exercise images | 2 + licensing | Largest asset effort, least structural risk; can start early if licensing resolves |
+| 8 | Mobile apps + store distribution | 2, 4, 5 | Consumes everything before it — but dictates Phase 4's auth design, so pick an approach early even though you build it last |
 
 ---
 
@@ -517,11 +600,19 @@ purely additive and parallelises with anything.
 
 1. **Image licensing** — license, commission, or adopt free-exercise-db? Gates Phase 7 and
    may collapse it into Phase 2. **Answer this first** despite being last in the order.
-2. **Auth: self-hosted or provider?** Flask-Login is more code and more responsibility;
-   Clerk/Supabase is faster and safer but adds a vendor.
-3. **Secondary-muscle weighting** — is 0.5 right, and is fractional set counting acceptable
+2. **Mobile approach — PWA, Capacitor shell, or React Native?** Last to build, but
+   **answer it before Phase 4**: it decides token auth vs cookie sessions and whether an
+   in-app account-deletion endpoint is required. Route C would also make the Phase 5
+   Next.js question moot.
+3. **Auth: self-hosted or provider?** Flask-Login is more code and more responsibility;
+   Clerk/Supabase is faster and safer, adds a vendor, and ships mobile SDKs — which
+   matters more once decision 2 is settled.
+4. **Secondary-muscle weighting** — is 0.5 right, and is fractional set counting acceptable
    in the UI (`12.5 / 20`)?
-4. **Existing data on migration** — wipe, or backfill to a seed account?
-5. **Delt granularity** — one `shoulders` group, or split front/side/rear?
-6. **AI feature scope** — per-user custom exercises only, or a review queue that promotes
+5. **Existing data on migration** — wipe, or backfill to a seed account?
+6. **Delt granularity** — one `shoulders` group, or split front/side/rear?
+7. **AI feature scope** — per-user custom exercises only, or a review queue that promotes
    popular ones into the shared catalog?
+
+Decisions 1 and 2 are the two that can change the plan's *shape* rather than its detail —
+worth resolving early even though both belong to late phases.
