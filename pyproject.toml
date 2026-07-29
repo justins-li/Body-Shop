@@ -5,7 +5,13 @@ description = "Log workouts on a calendar and see which muscle groups you traine
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-dependencies = ["Flask>=3.0,<4.0"]
+dependencies = [
+    "Flask>=3.0,<4.0",
+    "SQLAlchemy>=2.0,<3.0",
+    "alembic>=1.13,<2.0",
+    "psycopg[binary]>=3.1,<4.0",
+    "python-dotenv>=1.0,<2.0",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
