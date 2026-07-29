@@ -423,23 +423,161 @@
     background: linear-gradient(90deg, var(--color-over-light), var(--color-over-dark));
   }
 
-  /* -- Exercise picker (checked state is CSS-only, no JS) --------------- */
-  .exercise-option {
-    display: flex;
-    align-items: center;
-    gap: 0.85rem;
-    padding: 0.8rem 1rem;
+  /* -- Exercise picker (built by log.js) -------------------------------- */
+  .picker-tab {
+    padding: 0.4rem 0.9rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-secondary);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  }
+  .picker-tab:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 40%, transparent);
+  }
+  .picker-tab[aria-selected="true"] {
+    border-color: var(--color-base-content);
+    background-color: var(--color-base-content);
+    color: var(--color-base-100);
+  }
+
+  /* The catalog is 873 movements: cap the list's height rather than the page's. */
+  .picker-results {
+    display: grid;
+    gap: 0.4rem;
+    max-height: 21rem;
+    overflow-y: auto;
+  }
+  .picker-result {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.65rem 0.85rem;
+    text-align: left;
     border: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
     border-radius: 0.85rem;
     cursor: pointer;
     transition: border-color 0.15s ease, background-color 0.15s ease;
   }
-  .exercise-option:hover {
+  .picker-result:hover {
     border-color: color-mix(in srgb, var(--color-base-content) 40%, transparent);
   }
-  .exercise-option:has(input:checked) {
+  .picker-result[aria-pressed="true"] {
     border-color: var(--color-base-content);
     background-color: color-mix(in srgb, var(--color-base-content) 5%, transparent);
+  }
+  .picker-result-name {
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    font-size: 0.9rem;
+  }
+  .picker-result-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .picker-result-equipment {
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-secondary);
+  }
+
+  /* Primary muscles take the whole set, secondary half — the weight a group
+     carries is worth seeing before the movement is logged, not after. */
+  .muscle-badge {
+    font-size: 0.7rem;
+    line-height: 1;
+    padding: 0.28rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 15%, transparent);
+    color: var(--color-secondary);
+  }
+  .muscle-badge.is-primary {
+    border-color: color-mix(in srgb, var(--color-train-accent) 45%, transparent);
+    background-color: color-mix(in srgb, var(--color-train-accent) 12%, transparent);
+    color: var(--color-base-content);
+    font-weight: 600;
+  }
+
+  /* -- The chosen movement ---------------------------------------------- */
+  .exercise-chosen-card {
+    display: grid;
+    gap: 1rem;
+    padding: 0.9rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+    border-radius: 0.9rem;
+    background-color: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+  }
+  @media (min-width: 40rem) {
+    .exercise-chosen-card {
+      grid-template-columns: 12rem minmax(0, 1fr);
+      align-items: start;
+    }
+  }
+  .exercise-chosen-name {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.5rem;
+  }
+  .exercise-chosen-muscles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0;
+  }
+  .exercise-chosen-note {
+    margin: 0.6rem 0 0;
+    font-size: 0.78rem;
+    color: var(--color-secondary);
+  }
+  .exercise-steps {
+    margin: 0.75rem 0 0;
+    /* Preflight strips list markers; numbered steps need them back. */
+    list-style: decimal outside;
+    padding-left: 1.1rem;
+    display: grid;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--color-secondary);
+    max-height: 9rem;
+    overflow-y: auto;
+  }
+
+  /* Each movement ships exactly two photographs, its start and end position.
+     Stacking them and swapping on a steps(1) timeline turns the pair into a
+     two-frame loop of the movement — no JS timer, no third-party player. */
+  .exercise-frames {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    border-radius: 0.7rem;
+    overflow: hidden;
+    background-color: color-mix(in srgb, var(--color-base-content) 8%, transparent);
+  }
+  .exercise-frame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .exercise-frame:nth-child(2) {
+    animation: exercise-frame-flip 1.6s steps(1) infinite;
+  }
+  @keyframes exercise-frame-flip {
+    0%, 50% { opacity: 1; }
+    50.01%, 100% { opacity: 0; }
+  }
+  /* Reduced motion gets the start position, held. */
+  @media (prefers-reduced-motion: reduce) {
+    .exercise-frame:nth-child(2) {
+      animation: none;
+      opacity: 0;
+    }
   }
 
   /* -- Entry rows (built by ui.js) -------------------------------------- */

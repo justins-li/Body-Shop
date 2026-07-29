@@ -144,6 +144,46 @@ def delete_entry(entry_id: int) -> bool:
     return cursor.rowcount > 0
 
 
+def recent_exercise_ids(limit: int = 12) -> list[str]:
+    """Return recently-logged exercise ids, most recently used first.
+
+    Backs the picker's default view on ``/log``. Ordering is recency of last
+    use, with total uses breaking ties, which is what makes the 10–20 movements
+    someone actually cycles through surface without a search.
+    """
+    rows = get_db().execute(
+        """
+        SELECT exercise_id, MAX(entry_date) AS last_used, COUNT(*) AS uses
+        FROM workout_entry
+        GROUP BY exercise_id
+        ORDER BY last_used DESC, uses DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [row["exercise_id"] for row in rows]
+
+
+def remap_exercise_ids(mapping: dict[str, str]) -> dict[str, int]:
+    """Rewrite ``old_id -> new_id`` across every entry. Returns rows moved.
+
+    Used once, by ``flask --app app remap-exercises``, to carry history across
+    the Phase 2 catalog swap. Safe to run twice: ids already migrated simply
+    match nothing.
+    """
+    db = get_db()
+    moved: dict[str, int] = {}
+    for old_id, new_id in mapping.items():
+        cursor = db.execute(
+            "UPDATE workout_entry SET exercise_id = ? WHERE exercise_id = ?",
+            (new_id, old_id),
+        )
+        if cursor.rowcount:
+            moved[old_id] = cursor.rowcount
+    db.commit()
+    return moved
+
+
 def sets_by_date(start: date, end: date) -> dict[str, int]:
     """Return ``{iso_date: total_sets}`` for the inclusive range (calendar dots)."""
     rows = get_db().execute(

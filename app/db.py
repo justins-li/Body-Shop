@@ -58,7 +58,29 @@ def init_db_command() -> None:
     click.echo("Initialised the database.")
 
 
+@click.command("remap-exercises")
+def remap_exercises_command() -> None:
+    """CLI: ``flask --app app remap-exercises`` — carry history onto the catalog.
+
+    Phase 2 replaced four hand-written exercise ids with free-exercise-db's.
+    This rewrites entries logged against the old ones so they keep counting.
+    Idempotent.
+    """
+    # Imported here: models.py imports this module for get_db().
+    from .exercises import RETIRED_EXERCISE_IDS
+    from .models import remap_exercise_ids
+
+    moved = remap_exercise_ids(RETIRED_EXERCISE_IDS)
+    if not moved:
+        click.echo("No entries to remap.")
+        return
+    for old_id, count in moved.items():
+        click.echo(f"  {old_id} -> {RETIRED_EXERCISE_IDS[old_id]} ({count} entries)")
+    click.echo(f"Remapped {sum(moved.values())} entries.")
+
+
 def init_app(app: Flask) -> None:
     """Register database teardown and CLI commands on ``app``."""
     app.teardown_appcontext(close_db)
     app.cli.add_command(init_db_command)
+    app.cli.add_command(remap_exercises_command)

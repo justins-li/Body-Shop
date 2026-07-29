@@ -76,13 +76,18 @@ def calendar_page():
 
 @bp.get("/log")
 def log_page():
-    """Workout input form plus the list of entries for the chosen day."""
+    """Workout input form plus the list of entries for the chosen day.
+
+    The catalog is **not** passed to the template. At 873 movements the old
+    radio list is neither renderable nor usable, so ``log.js`` fetches
+    ``/api/exercises`` once and drives the picker client-side.
+    """
     day = _requested_date()
     return render_template(
         "log.html",
         page="log",
         selected_date=day,
-        exercises=all_exercises(),
+        exercise_count=len(all_exercises()),
     )
 
 

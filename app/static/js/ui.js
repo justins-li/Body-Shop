@@ -36,6 +36,17 @@ export function addDays(isoDate, days) {
   return toIso(date);
 }
 
+/**
+ * Render a weighted set count: `12.5`, but `12` rather than `12.0`.
+ *
+ * Secondary muscles count half a set, so per-group totals are fractional.
+ * Mirrors `format_sets` in `app/exercises.py`.
+ */
+export function formatSets(value) {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
 /** Update `?date=` in the address bar without reloading the page. */
 export function syncUrlDate(isoDate) {
   const url = new URL(window.location.href);

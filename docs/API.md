@@ -10,21 +10,103 @@ no time zone conversion is performed.
 
 ## `GET /api/exercises`
 
-The exercise catalog.
+The whole catalog — 873 movements, ordered by name.
+
+This is the **light** shape: no `instructions`, no `images`. The `/log` picker fetches
+it once and filters client-side, and including them quadruples the payload. Use
+`GET /api/exercises/<id>` for those.
 
 ```json
 {
   "exercises": [
-    { "id": "bench_press", "name": "Bench press", "muscles": ["triceps", "chest"] },
-    { "id": "pull_ups",    "name": "Pull ups",    "muscles": ["biceps", "back"] },
-    { "id": "squat",       "name": "Squat",       "muscles": ["quads", "hamstrings"] },
-    { "id": "sit_ups",     "name": "Sit ups",     "muscles": ["abs"] }
+    {
+      "id": "Barbell_Bench_Press_-_Medium_Grip",
+      "name": "Barbell Bench Press - Medium Grip",
+      "primary": ["chest"],
+      "secondary": ["shoulders", "triceps"],
+      "muscles": ["chest", "shoulders", "triceps"],
+      "equipment": "barbell",
+      "category": "strength",
+      "level": "beginner",
+      "force": "push",
+      "mechanic": "compound",
+      "counts_toward_volume": true
+    }
   ]
 }
 ```
 
-Muscle group slugs are `chest`, `abs`, `back`, `biceps`, `triceps`, `quads` and
-`hamstrings`.
+| Field | Meaning |
+| --- | --- |
+| `primary` | Groups the movement trains directly. Each takes a **whole** set of volume. |
+| `secondary` | Groups it trains indirectly. Each takes **half** a set. Never overlaps `primary`. |
+| `muscles` | `primary + secondary`, in that order — for callers that only need "was this group touched". |
+| `equipment` | One of `barbell`, `dumbbell`, `cable`, `machine`, `kettlebells`, `bands`, `body only`, `medicine ball`, `exercise ball`, `foam roll`, `e-z curl bar`, `other`, `none`. |
+| `category` | `strength`, `stretching`, `plyometrics`, `powerlifting`, `olympic weightlifting`, `strongman` or `cardio`. |
+| `level` | `beginner`, `intermediate` or `expert`. |
+| `force` | `push`, `pull`, `static` or `null`. |
+| `mechanic` | `compound`, `isolation` or `null`. |
+| `counts_toward_volume` | `false` for stretching, cardio and plyometrics — still loggable, but graded as zero sets. |
+
+The twelve muscle group slugs are `chest`, `abs`, `shoulders`, `biceps`, `forearms`,
+`quads`, `back`, `traps`, `triceps`, `glutes`, `hamstrings` and `calves`.
+
+Ids come from [free-exercise-db](https://github.com/yuhonas/free-exercise-db) and are
+case-sensitive (`Barbell_Squat`, `Sit-Up`, `3_4_Sit-Up`).
+
+---
+
+## `GET /api/exercises/recent`
+
+Recently logged exercises, most recently used first, ties broken by total uses. Backs
+the picker's default view; unlike search and browse it reads entry history, so it
+cannot be derived from the catalog payload.
+
+| Query param | Default | Notes |
+| --- | --- | --- |
+| `limit` | `12` | Clamped to 1–50. |
+
+Same object shape as `GET /api/exercises`. Returns an empty list before anything has
+been logged.
+
+---
+
+## `GET /api/exercises/<id>`
+
+One exercise in full: everything above, plus its instructions and image URLs.
+
+```json
+{
+  "exercise": {
+    "id": "Barbell_Squat",
+    "name": "Barbell Squat",
+    "primary": ["quads"],
+    "secondary": ["back", "calves", "glutes", "hamstrings"],
+    "muscles": ["quads", "back", "calves", "glutes", "hamstrings"],
+    "equipment": "barbell",
+    "category": "strength",
+    "level": "beginner",
+    "force": "push",
+    "mechanic": "compound",
+    "counts_toward_volume": true,
+    "instructions": [
+      "This exercise is best performed inside a squat rack for safety purposes. …",
+      "…"
+    ],
+    "images": [
+      "https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@b0eed06…/exercises/Barbell_Squat/0.jpg",
+      "https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@b0eed06…/exercises/Barbell_Squat/1.jpg"
+    ]
+  }
+}
+```
+
+`images` is **always exactly two** — the start and end position of the movement, which
+`/log` cross-fades into a two-frame loop. They are absolute URLs built from the
+`EXERCISE_IMAGE_BASE` config value (`BODYSHOP_EXERCISE_IMAGE_BASE`), pinned to the
+free-exercise-db commit the catalog was generated from.
+
+**404** with `{"error": "Unknown exercise: …"}` if the id is not in the catalog.
 
 ---
 
@@ -46,14 +128,18 @@ With no parameters, returns every entry.
     {
       "id": 12,
       "date": "2026-07-28",
-      "exercise_id": "bench_press",
-      "exercise_name": "Bench press",
-      "muscles": ["triceps", "chest"],
+      "exercise_id": "Barbell_Bench_Press_-_Medium_Grip",
+      "exercise_name": "Barbell Bench Press - Medium Grip",
+      "muscles": ["chest", "shoulders", "triceps"],
       "sets": 3
     }
   ]
 }
 ```
+
+`muscles` is `primary + secondary` and does not say which is which — fetch the
+exercise if you need the split. `sets` is the whole number the user logged, not a
+weighted figure.
 
 **400** if a date parameter is not a valid ISO date.
 
@@ -64,13 +150,13 @@ With no parameters, returns every entry.
 Create an entry. Accepts a JSON body or form encoding.
 
 ```json
-{ "date": "2026-07-28", "exercise_id": "squat", "sets": 4 }
+{ "date": "2026-07-28", "exercise_id": "Barbell_Squat", "sets": 4 }
 ```
 
 | Field | Rules |
 | --- | --- |
 | `date` | Required, ISO-8601. |
-| `exercise_id` | Required, must exist in the catalog. |
+| `exercise_id` | Required, must exist in the catalog. Case-sensitive. |
 | `sets` | Required, integer 1–100. |
 
 **201** with `{"entry": {...}}` on success, **400** with an explanatory `error` otherwise.
@@ -78,7 +164,7 @@ Create an entry. Accepts a JSON body or form encoding.
 ```bash
 curl -X POST http://127.0.0.1:5000/api/entries \
   -H 'Content-Type: application/json' \
-  -d '{"date":"2026-07-28","exercise_id":"squat","sets":4}'
+  -d '{"date":"2026-07-28","exercise_id":"Barbell_Squat","sets":4}'
 ```
 
 ---
@@ -118,6 +204,9 @@ Days with nothing logged are omitted. **400** if `month` is outside 1–12.
 The weekly muscle-coverage summary for the week containing `date` (defaults to
 today). This is the endpoint that drives the body map.
 
+Example below: 12 sets of barbell bench press (primary chest; secondary shoulders and
+triceps). Groups omitted for brevity all look like `abs`.
+
 ```json
 {
   "week_start": "2026-07-27",
@@ -125,37 +214,59 @@ today). This is the endpoint that drives the body map.
   "total_sets": 12,
   "total_entries": 1,
   "muscles": {
-    "chest":      { "muscle": "chest",   "label": "Chest",   "worked": true,  "sets": 12, "target": 20, "over": 0, "state": "trained", "intensity": 0.6, "exercises": ["Bench press"] },
-    "abs":        { "muscle": "abs",     "label": "Abs",     "worked": false, "sets": 0,  "target": 10, "over": 0, "state": "rest",    "intensity": 0.0, "exercises": [] },
-    "back":       { "muscle": "back",    "label": "Back",    "worked": false, "sets": 0,  "target": 20, "over": 0, "state": "rest",    "intensity": 0.0, "exercises": [] },
-    "biceps":     { "muscle": "biceps",  "label": "Biceps",  "worked": false, "sets": 0,  "target": 10, "over": 0, "state": "rest",    "intensity": 0.0, "exercises": [] },
-    "triceps":    { "muscle": "triceps", "label": "Triceps", "worked": true,  "sets": 12, "target": 10, "over": 2, "state": "over",    "intensity": 0.4, "exercises": ["Bench press"] },
-    "quads":      { "muscle": "quads",   "label": "Quads",   "worked": false, "sets": 0,  "target": 20, "over": 0, "state": "rest",    "intensity": 0.0, "exercises": [] },
-    "hamstrings": { "muscle": "hamstrings", "label": "Hamstrings", "worked": false, "sets": 0, "target": 20, "over": 0, "state": "rest", "intensity": 0.0, "exercises": [] }
+    "chest":      { "muscle": "chest",     "label": "Chest",     "worked": true,  "sets": 12.0, "target": 20, "over": 0.0, "state": "trained", "intensity": 0.6, "exercises": ["Barbell Bench Press - Medium Grip"] },
+    "abs":        { "muscle": "abs",       "label": "Abs",       "worked": false, "sets": 0.0,  "target": 10, "over": 0.0, "state": "rest",    "intensity": 0.0, "exercises": [] },
+    "shoulders":  { "muscle": "shoulders", "label": "Shoulders", "worked": true,  "sets": 6.0,  "target": 20, "over": 0.0, "state": "trained", "intensity": 0.3, "exercises": ["Barbell Bench Press - Medium Grip"] },
+    "biceps":     { "muscle": "biceps",    "label": "Biceps",    "worked": false, "sets": 0.0,  "target": 10, "over": 0.0, "state": "rest",    "intensity": 0.0, "exercises": [] },
+    "forearms":   { "muscle": "forearms",  "label": "Forearms",  "worked": false, "sets": 0.0,  "target": 10, "over": 0.0, "state": "rest",    "intensity": 0.0, "exercises": [] },
+    "quads":      { "muscle": "quads",     "label": "Quads",     "worked": false, "sets": 0.0,  "target": 20, "over": 0.0, "state": "rest",    "intensity": 0.0, "exercises": [] },
+    "back":       { "muscle": "back",      "label": "Back",      "worked": false, "sets": 0.0,  "target": 20, "over": 0.0, "state": "rest",    "intensity": 0.0, "exercises": [] },
+    "traps":      { "muscle": "traps",     "label": "Traps",     "worked": false, "sets": 0.0,  "target": 10, "over": 0.0, "state": "rest",    "intensity": 0.0, "exercises": [] },
+    "triceps":    { "muscle": "triceps",   "label": "Triceps",   "worked": true,  "sets": 6.0,  "target": 10, "over": 0.0, "state": "trained", "intensity": 0.6, "exercises": ["Barbell Bench Press - Medium Grip"] },
+    "glutes":     { "muscle": "glutes",    "label": "Glutes",    "worked": false, "sets": 0.0,  "target": 20, "over": 0.0, "state": "rest",    "intensity": 0.0, "exercises": [] },
+    "hamstrings": { "muscle": "hamstrings","label": "Hamstrings","worked": false, "sets": 0.0,  "target": 20, "over": 0.0, "state": "rest",    "intensity": 0.0, "exercises": [] },
+    "calves":     { "muscle": "calves",    "label": "Calves",    "worked": false, "sets": 0.0,  "target": 10, "over": 0.0, "state": "rest",    "intensity": 0.0, "exercises": [] }
   },
-  "muscles_worked": ["chest", "triceps"],
-  "muscles_at_target": ["triceps"],
-  "muscles_over": ["triceps"],
+  "muscles_worked": ["chest", "shoulders", "triceps"],
+  "muscles_at_target": [],
+  "muscles_over": [],
   "sets_per_day": { "2026-07-28": 12, "...": 0 },
   "entries": [ /* same shape as GET /api/entries */ ]
 }
 ```
 
-`worked` is `true` when the week contains **at least one set** of an exercise that
-targets the group. `sets` counts a set once per targeted group, so 12 sets of bench
-press contribute 12 to both chest and triceps.
+### Weighted sets
+
+**`sets` is a float, not an integer.** A set counts once per targeted group, but at a
+weight that depends on how directly the movement trains it:
+
+| Role | Weight |
+| --- | --- |
+| `primary` | 1.0 |
+| `secondary` | 0.5 |
+
+So 12 sets of bench press give chest 12 and shoulders and triceps 6 each. Values are
+rounded to one decimal place, so `12.5` is a normal reading and clients must format
+accordingly. `total_sets` is unweighted — it counts sets actually performed.
+
+Movements whose `counts_toward_volume` is `false` (stretching, cardio, plyometrics)
+contribute **nothing**: they add no sets, do not appear in `exercises`, and do not
+mark a group `worked`.
+
+`worked` is `true` when the week gave the group any volume at all — including a
+single set at half weight.
 
 ### Volume grading
 
 Each group also reports how its volume compares to a weekly `target` — 20 sets for
-the large groups (chest, back, quads, hamstrings), 10 for the small ones (abs,
-biceps, triceps).
+the large groups (chest, back, shoulders, quads, hamstrings, glutes), 10 for the small
+ones (abs, biceps, triceps, forearms, traps, calves).
 
 | Field | Meaning |
 | --- | --- |
-| `target` | Sets per week the group is aiming for. |
-| `over` | Sets beyond `target`; `0` while at or under it. |
-| `state` | `rest` (no sets), `trained` (1 … target) or `over` (past target). |
+| `target` | Sets per week the group is aiming for. Always an integer. |
+| `over` | Sets beyond `target`; `0` while at or under it. Fractional, like `sets`. |
+| `state` | `rest` (no volume), `trained` (up to target) or `over` (past target). |
 | `intensity` | `0.0`–`1.0` position **within that state's colour ramp**: green light→dark across `sets / target`, then red light→dark across `over / (target // 2)`, clamped at 1. |
 
 `muscles_at_target` lists groups whose sets have reached `target`; `muscles_over`

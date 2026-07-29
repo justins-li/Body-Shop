@@ -21,6 +21,19 @@ class BaseConfig:
     #: ISO weekday the summary week starts on (1 = Monday ... 7 = Sunday).
     WEEK_STARTS_ON = int(os.environ.get("BODYSHOP_WEEK_STARTS_ON", "1"))
 
+    #: Where exercise photographs are served from.
+    #:
+    #: The catalog's 1,746 images come to roughly 85 MB, which does not belong
+    #: in the repository, so they are served from jsDelivr pinned to the same
+    #: free-exercise-db commit ``tools/build_exercise_catalog.py`` vendored the
+    #: data from. Point this at any origin holding the same ``<id>/<n>.jpg``
+    #: layout to self-host instead.
+    EXERCISE_IMAGE_BASE = os.environ.get(
+        "BODYSHOP_EXERCISE_IMAGE_BASE",
+        "https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db"
+        "@b0eed061e1c832b3ed815fbaa4b45b3cdc14df49/exercises",
+    )
+
     JSON_SORT_KEYS = False
 
 

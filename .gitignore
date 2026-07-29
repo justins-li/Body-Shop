@@ -228,3 +228,6 @@ instance/
 /tools/tailwindcss
 /tools/tailwindcss.exe
 /tools/daisyui/
+
+# Playwright MCP scratch output (screenshots, snapshots, console logs)
+.playwright-mcp/

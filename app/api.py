@@ -10,13 +10,14 @@ from datetime import date
 
 from flask import Blueprint, current_app, jsonify, request
 
-from .exercises import all_exercises
+from .exercises import all_exercises, get_exercise
 from .models import (
     ValidationError,
     add_entry,
     delete_entry,
     list_entries,
     parse_date,
+    recent_exercise_ids,
     sets_by_date,
 )
 from .services.summary import weekly_summary
@@ -41,10 +42,42 @@ def _query_date(name: str, default: date | None = None) -> date:
     return parse_date(raw, field=name)
 
 
+def _image_base() -> str:
+    return str(current_app.config.get("EXERCISE_IMAGE_BASE", ""))
+
+
 @bp.get("/exercises")
 def get_exercises():
-    """List the exercise catalog and the muscles each movement trains."""
+    """The whole catalog, in its light shape.
+
+    Instructions and images are omitted — they quadruple the payload, and the
+    picker filters the catalog client-side, so it wants the smallest thing it
+    can search over. ``/api/exercises/<id>`` serves the rest on demand.
+    """
     return jsonify({"exercises": [e.to_dict() for e in all_exercises()]})
+
+
+@bp.get("/exercises/recent")
+def get_recent_exercises():
+    """Recently logged exercises, most recent first — the picker's default view.
+
+    Unlike search and browse this reads entry history, so it cannot be done
+    client-side from the catalog payload.
+    """
+    limit = request.args.get("limit", type=int) or 12
+    limit = max(1, min(limit, 50))
+
+    exercises = [get_exercise(i) for i in recent_exercise_ids(limit)]
+    return jsonify({"exercises": [e.to_dict() for e in exercises if e is not None]})
+
+
+@bp.get("/exercises/<exercise_id>")
+def get_exercise_detail(exercise_id: str):
+    """One exercise in full: instructions plus absolute image URLs."""
+    exercise = get_exercise(exercise_id)
+    if exercise is None:
+        return jsonify({"error": f"Unknown exercise: {exercise_id!r}."}), 404
+    return jsonify({"exercise": exercise.to_detail_dict(_image_base())})
 
 
 @bp.get("/entries")

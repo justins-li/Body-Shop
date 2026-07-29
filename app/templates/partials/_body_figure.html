@@ -17,36 +17,61 @@
 
   The two views share no muscle groups:
 
-    Front — chest (two pectorals), abs (upper + lower), biceps, quads.
-    Back  — back (traps + lats), triceps, hamstrings.
+    Front — chest (two pectorals), abs (upper + lower), shoulders (deltoid
+            caps), biceps, forearms, quads.
+    Back  — back (lats), traps, triceps, glutes, hamstrings, calves.
 
-  `.body-base` draws a complete silhouette (head, torso, arms, legs, extremities)
-  underneath, so muscle regions are overlays and can leave anatomical gaps —
-  sternum, ribs, obliques, glutes, lower back — without holes in the figure.
-  A group may be drawn as several paths; `summary.js` selects on `data-muscle`,
-  so they light up together.
+  `.body-base` draws a complete silhouette (head, torso, deltoid caps, arms,
+  legs, extremities) underneath, so muscle regions are overlays and can leave
+  anatomical gaps — sternum, ribs, obliques, lower back, shins — without holes
+  in the figure. A group may be drawn as several paths; `summary.js` selects on
+  `data-muscle`, so they light up together.
+
+  Phase 2 changed three things here that earlier revisions of this comment and
+  docs/ARCHITECTURE.md stated as settled, so they are worth naming:
+
+    * `traps` was folded into `back` (the path below still carries the id
+      `back-traps`). It is now its own group, which means historical `back`
+      counts are not comparable across that change.
+    * `glutes`, `calves` and `forearms` were listed here as *deliberate* gaps.
+      They are tracked groups now.
+    * `shoulders` had nothing to overlay — the torso ran into the upper arms at
+      a bare corner — so `.body-base` gained a pair of deltoid caps.
 #}
 
 {# Region geometry, as (muscle slug, element id, path) per view. Kept as data so
-   adding a group is one row and the markup below stays a single loop. #}
+   adding a group is one row and the markup below stays a single loop.
+
+   Regions within a view must not overlap. They are painted in order, so an
+   overlap lets the later group's colour hide the earlier one's — which is why
+   the glutes stop at y=232 and the hamstrings start at y=242, leaving the
+   crease between them as bare silhouette. #}
 {% set REGIONS = {
   "front": [
-    ("chest",  "front-chest-left",  "M67,86 C79,78 92,77 98,84 L98,124 L70,124 Z"),
-    ("chest",  "front-chest-right", "M133,86 C121,78 108,77 102,84 L102,124 L130,124 Z"),
-    ("abs",    "front-abs-upper",   "M82,130 L118,130 L119,166 L81,166 Z"),
-    ("abs",    "front-abs-lower",   "M81,170 L119,170 L122,204 L78,204 Z"),
-    ("biceps", "front-biceps-left", "M60,88 L46,92 L38,140 L53,144 L60,112 Z"),
-    ("biceps", "front-biceps-right","M140,88 L154,92 L162,140 L147,144 L140,112 Z"),
-    ("quads",  "front-quads-left",  "M74,216 L98,216 L97,298 L76,298 Z"),
-    ("quads",  "front-quads-right", "M126,216 L102,216 L103,298 L124,298 Z"),
+    ("chest",     "front-chest-left",     "M67,86 C79,78 92,77 98,84 L98,124 L70,124 Z"),
+    ("chest",     "front-chest-right",    "M133,86 C121,78 108,77 102,84 L102,124 L130,124 Z"),
+    ("abs",       "front-abs-upper",      "M82,130 L118,130 L119,166 L81,166 Z"),
+    ("abs",       "front-abs-lower",      "M81,170 L119,170 L122,204 L78,204 Z"),
+    ("shoulders", "front-shoulder-left",  "M62,84 C52,82 45,89 47,99 L61,104 Z"),
+    ("shoulders", "front-shoulder-right", "M138,84 C148,82 155,89 153,99 L139,104 Z"),
+    ("biceps",    "front-biceps-left",    "M59,107 L43,111 L38,140 L52,144 L59,122 Z"),
+    ("biceps",    "front-biceps-right",   "M141,107 L157,111 L162,140 L148,144 L141,122 Z"),
+    ("forearms",  "front-forearms-left",  "M35,157 L49,161 L44,206 L31,202 Z"),
+    ("forearms",  "front-forearms-right", "M165,157 L151,161 L156,206 L169,202 Z"),
+    ("quads",     "front-quads-left",     "M74,216 L98,216 L97,298 L76,298 Z"),
+    ("quads",     "front-quads-right",    "M126,216 L102,216 L103,298 L124,298 Z"),
   ],
   "back": [
-    ("back",       "back-traps",          "M100,70 L138,82 L132,106 L100,98 L68,106 L62,82 Z"),
-    ("back",       "back-lats",           "M67,110 L133,110 L126,158 L100,170 L74,158 Z"),
-    ("triceps",    "back-triceps-left",   "M60,88 L46,92 L38,140 L53,144 L60,112 Z"),
-    ("triceps",    "back-triceps-right",  "M140,88 L154,92 L162,140 L147,144 L140,112 Z"),
-    ("hamstrings", "back-hamstrings-left","M74,216 L98,216 L97,298 L76,298 Z"),
-    ("hamstrings", "back-hamstrings-right","M126,216 L102,216 L103,298 L124,298 Z"),
+    ("traps",      "back-traps",           "M100,70 L138,82 L132,106 L100,98 L68,106 L62,82 Z"),
+    ("back",       "back-lats",            "M67,110 L133,110 L126,158 L100,170 L74,158 Z"),
+    ("triceps",    "back-triceps-left",    "M59,107 L43,111 L38,140 L52,144 L59,122 Z"),
+    ("triceps",    "back-triceps-right",   "M141,107 L157,111 L162,140 L148,144 L141,122 Z"),
+    ("glutes",     "back-glutes-left",     "M76,198 L98,198 L98,232 C86,231 77,224 75,213 Z"),
+    ("glutes",     "back-glutes-right",    "M124,198 L102,198 L102,232 C114,231 123,224 125,213 Z"),
+    ("hamstrings", "back-hamstrings-left", "M74,242 L97,242 L96,300 L75,300 Z"),
+    ("hamstrings", "back-hamstrings-right","M126,242 L103,242 L104,300 L125,300 Z"),
+    ("calves",     "back-calves-left",     "M74,312 L94,312 L91,382 L77,382 Z"),
+    ("calves",     "back-calves-right",    "M126,312 L106,312 L109,382 L123,382 Z"),
   ],
 } %}
 
@@ -69,6 +94,10 @@
       <rect x="90" y="58" width="20" height="20" rx="6" />
       <!-- torso silhouette: shoulders down to the pelvis -->
       <path d="M62,82 C78,73 122,73 138,82 L134,148 L127,212 L73,212 L66,148 Z" />
+      <!-- deltoid caps: rounds off the torso/upper-arm corner so the shoulders
+           group has geometry to overlay (added in Phase 2) -->
+      <path d="M63,81 C51,78 42,87 44,101 L62,107 Z" />
+      <path d="M137,81 C149,78 158,87 156,101 L138,107 Z" />
       <!-- upper arms -->
       <path d="M61,84 L44,89 L33,150 L51,155 L61,110 Z" />
       <path d="M139,84 L156,89 L167,150 L149,155 L139,110 Z" />

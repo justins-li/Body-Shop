@@ -33,10 +33,31 @@ async function request(path, options = {}) {
   return payload;
 }
 
-/** @returns {Promise<Array>} The exercise catalog. */
+/**
+ * The whole catalog in its light shape — no instructions, no images.
+ *
+ * Fetched once per page load and filtered client-side; at 873 movements that
+ * is ~35 KB gzipped, which beats a round trip per keystroke.
+ * @returns {Promise<Array>}
+ */
 export async function fetchExercises() {
   const data = await request("/exercises");
   return data.exercises;
+}
+
+/**
+ * Recently logged exercises, most recent first.
+ * Reads entry history, so it cannot come from the catalog payload.
+ */
+export async function fetchRecentExercises(limit = 12) {
+  const data = await request(`/exercises/recent?limit=${limit}`);
+  return data.exercises;
+}
+
+/** One exercise in full: instructions and absolute image URLs. */
+export async function fetchExerciseDetail(id) {
+  const data = await request(`/exercises/${encodeURIComponent(id)}`);
+  return data.exercise;
 }
 
 /**

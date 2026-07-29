@@ -8,14 +8,17 @@
   rather than an empty silhouette.
 #}
 {% set demo_front = {
-  "chest":  ("trained", 0.62),
-  "abs":    ("trained", 0.90),
-  "biceps": ("over",    0.45),
-  "quads":  ("trained", 0.34),
+  "chest":     ("trained", 0.62),
+  "abs":       ("trained", 0.90),
+  "shoulders": ("trained", 0.45),
+  "biceps":    ("over",    0.45),
+  "quads":     ("trained", 0.34),
 } %}
 {% set demo_back = {
-  "back":    ("trained", 0.78),
-  "triceps": ("trained", 0.50),
+  "back":       ("trained", 0.78),
+  "triceps":    ("trained", 0.50),
+  "glutes":     ("trained", 0.28),
+  "hamstrings": ("trained", 0.20),
 } %}
 
 {% block content %}

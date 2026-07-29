@@ -1,4 +1,14 @@
-"""Tests for the weekly muscle-coverage aggregation."""
+"""Tests for the weekly muscle-coverage aggregation.
+
+Set counts are weighted: a movement's primary muscles take the whole set, its
+secondary muscles half. The four movements below are used throughout because
+their muscle maps are stable and cover both weights:
+
+    Sit-Up            abs
+    Pullups           back / biceps
+    Barbell Squat     quads / back, calves, glutes, hamstrings
+    Barbell Bench...  chest / shoulders, triceps
+"""
 
 from datetime import date
 
@@ -8,9 +18,20 @@ from app.exercises import LARGE_MUSCLE_TARGET, MUSCLE_GROUPS, SMALL_MUSCLE_TARGE
 from app.models import WorkoutEntry, add_entry
 from app.services.summary import grade, summarise_entries, weekly_summary
 
+BENCH = "Barbell_Bench_Press_-_Medium_Grip"
+PULLUP = "Pullups"
+SQUAT = "Barbell_Squat"
+SITUP = "Sit-Up"
+#: A stretch — loggable, but outside VOLUME_CATEGORIES.
+HAMSTRING_STRETCH = "90_90_Hamstring"
+
 
 def entry(exercise_id: str, sets: int, day: str = "2026-07-28") -> WorkoutEntry:
     return WorkoutEntry(id=1, entry_date=date.fromisoformat(day), exercise_id=exercise_id, sets=sets)
+
+
+def worked(summary: dict) -> set[str]:
+    return {muscle for muscle, group in summary.items() if group["worked"]}
 
 
 def test_empty_week_marks_nothing_worked():
@@ -20,48 +41,71 @@ def test_empty_week_marks_nothing_worked():
     assert all(group["sets"] == 0 for group in summary.values())
 
 
-def test_bench_press_works_chest_and_triceps():
-    summary = summarise_entries([entry("bench_press", 3)])
+def test_primary_muscle_takes_the_whole_set():
+    summary = summarise_entries([entry(BENCH, 3)])
     assert summary["chest"]["worked"] and summary["chest"]["sets"] == 3
-    assert summary["triceps"]["worked"] and summary["triceps"]["sets"] == 3
-    assert not summary["back"]["worked"]
-    assert not summary["biceps"]["worked"]
-    assert not summary["quads"]["worked"]
 
 
-def test_pull_ups_work_biceps_and_back():
-    summary = summarise_entries([entry("pull_ups", 4)])
-    assert summary["biceps"]["worked"] and summary["back"]["worked"]
-    assert not summary["chest"]["worked"]
+def test_secondary_muscles_take_half_a_set_each():
+    summary = summarise_entries([entry(BENCH, 3)])
+    assert summary["triceps"]["sets"] == 1.5
+    assert summary["shoulders"]["sets"] == 1.5
+    assert summary["triceps"]["worked"] and summary["shoulders"]["worked"]
 
 
-def test_squat_works_both_thigh_groups():
-    summary = summarise_entries([entry("squat", 5)])
-    assert [m for m, g in summary.items() if g["worked"]] == ["quads", "hamstrings"]
-    assert summary["quads"]["sets"] == summary["hamstrings"]["sets"] == 5
+def test_untargeted_groups_stay_untouched():
+    summary = summarise_entries([entry(BENCH, 3)])
+    assert not worked(summary) & {"back", "biceps", "quads", "calves"}
+
+
+def test_pull_ups_work_back_and_biceps():
+    summary = summarise_entries([entry(PULLUP, 4)])
+    assert worked(summary) == {"back", "biceps"}
+    assert summary["back"]["sets"] == 4
+    assert summary["biceps"]["sets"] == 2
+
+
+def test_squat_spreads_across_the_whole_lower_body():
+    summary = summarise_entries([entry(SQUAT, 5)])
+    assert worked(summary) == {"quads", "back", "calves", "glutes", "hamstrings"}
+    assert summary["quads"]["sets"] == 5
+    assert summary["hamstrings"]["sets"] == summary["glutes"]["sets"] == 2.5
 
 
 def test_sit_ups_work_abs_only():
-    summary = summarise_entries([entry("sit_ups", 2)])
-    assert [m for m, g in summary.items() if g["worked"]] == ["abs"]
+    summary = summarise_entries([entry(SITUP, 2)])
+    assert worked(summary) == {"abs"}
+    assert summary["abs"]["sets"] == 2
 
 
 def test_a_single_set_is_enough_to_mark_worked():
-    summary = summarise_entries([entry("squat", 1)])
+    summary = summarise_entries([entry(SQUAT, 1)])
     assert summary["quads"]["worked"] is True
+    # Even at half weight, a secondary group counts as trained.
+    assert summary["glutes"]["worked"] is True
+    assert summary["glutes"]["sets"] == 0.5
+
+
+def test_non_strength_movements_do_not_count_toward_volume():
+    """A hamstring stretch is loggable, but must not shade the body map."""
+    summary = summarise_entries([entry(HAMSTRING_STRETCH, 4)])
+    assert worked(summary) == set()
+    assert summary["hamstrings"]["sets"] == 0
+    assert summary["hamstrings"]["state"] == "rest"
 
 
 def test_sets_accumulate_across_entries_and_exercises():
     summary = summarise_entries(
-        [entry("bench_press", 3), entry("pull_ups", 2), entry("squat", 4), entry("sit_ups", 1)]
+        [entry(BENCH, 3), entry(PULLUP, 2), entry(SQUAT, 4), entry(SITUP, 1)]
     )
     assert summary["chest"]["sets"] == 3
-    assert summary["triceps"]["sets"] == 3
-    assert summary["back"]["sets"] == 2
-    assert summary["quads"]["sets"] == 4
-    assert summary["hamstrings"]["sets"] == 4
     assert summary["abs"]["sets"] == 1
-    assert all(group["worked"] for group in summary.values())
+    assert summary["quads"]["sets"] == 4
+    # back: 2 primary from pull-ups + half of 4 squat sets.
+    assert summary["back"]["sets"] == 4
+    # biceps: half of 2 pull-up sets.
+    assert summary["biceps"]["sets"] == 1
+    assert summary["triceps"]["sets"] == 1.5
 
 
 @pytest.mark.parametrize(
@@ -70,6 +114,7 @@ def test_sets_accumulate_across_entries_and_exercises():
         (0, ("rest", 0.0)),
         (1, ("trained", 0.05)),  # lightest green
         (10, ("trained", 0.5)),
+        (12.5, ("trained", 0.625)),  # a weighted total grades like any other
         (20, ("trained", 1.0)),  # darkest green: exactly on target
         (21, ("over", 0.1)),  # lightest red: one set past
         (30, ("over", 1.0)),  # darkest red: half the target over
@@ -88,56 +133,67 @@ def test_small_muscles_saturate_on_half_the_volume():
 
 def test_targets_are_larger_for_large_muscle_groups():
     summary = summarise_entries([])
-    assert summary["chest"]["target"] == LARGE_MUSCLE_TARGET
-    assert summary["quads"]["target"] == LARGE_MUSCLE_TARGET
-    assert summary["biceps"]["target"] == SMALL_MUSCLE_TARGET
-    assert summary["abs"]["target"] == SMALL_MUSCLE_TARGET
+    for muscle in ("chest", "back", "shoulders", "quads", "hamstrings", "glutes"):
+        assert summary[muscle]["target"] == LARGE_MUSCLE_TARGET
+    for muscle in ("abs", "biceps", "triceps", "forearms", "traps", "calves"):
+        assert summary[muscle]["target"] == SMALL_MUSCLE_TARGET
 
 
 def test_group_over_its_target_reports_the_overshoot():
-    summary = summarise_entries([entry("sit_ups", 14)])
+    summary = summarise_entries([entry(SITUP, 14)])
     abs_group = summary["abs"]
     assert abs_group["state"] == "over"
     assert abs_group["over"] == 4
     assert abs_group["intensity"] == 0.8
 
 
+def test_overshoot_can_be_fractional():
+    """21 sets of bench press put triceps on 10.5 — half a set past their target."""
+    summary = summarise_entries([entry(BENCH, 21)])
+    assert summary["triceps"]["sets"] == 10.5
+    assert summary["triceps"]["over"] == 0.5
+    assert summary["triceps"]["state"] == "over"
+
+
 def test_group_under_its_target_is_not_over():
-    summary = summarise_entries([entry("sit_ups", 9)])
+    summary = summarise_entries([entry(SITUP, 9)])
     assert summary["abs"]["state"] == "trained"
     assert summary["abs"]["over"] == 0
 
 
 def test_weekly_summary_lists_groups_at_and_over_target(app):
     with app.app_context():
-        add_entry("2026-07-28", "sit_ups", 12)  # small target 10 → over
-        add_entry("2026-07-28", "bench_press", 20)  # chest target 20 → exactly at it
+        add_entry("2026-07-28", SITUP, 12)  # abs: small target 10 -> over
+        add_entry("2026-07-28", BENCH, 20)  # chest: large target 20 -> exactly at it
         summary = weekly_summary(date(2026, 7, 28))
 
-    # Bench press pushes triceps (small target) past 10 on the same sets.
-    assert summary["muscles_over"] == ["abs", "triceps"]
+    # Bench press gives triceps and shoulders 10 sets each at half weight:
+    # triceps (target 10) land exactly on target, shoulders (target 20) do not.
+    assert summary["muscles_over"] == ["abs"]
     assert summary["muscles_at_target"] == ["chest", "abs", "triceps"]
     assert summary["muscles"]["chest"]["state"] == "trained"
     assert summary["muscles"]["chest"]["intensity"] == 1.0
+    assert summary["muscles"]["triceps"]["sets"] == 10
 
 
 def test_exercise_names_are_listed_without_duplicates():
-    summary = summarise_entries([entry("bench_press", 3), entry("bench_press", 2)])
-    assert summary["chest"]["exercises"] == ["Bench press"]
+    summary = summarise_entries([entry(BENCH, 3), entry(BENCH, 2)])
+    assert summary["chest"]["exercises"] == ["Barbell Bench Press - Medium Grip"]
     assert summary["chest"]["sets"] == 5
 
 
 def test_weekly_summary_only_includes_the_target_week(app):
     with app.app_context():
-        add_entry("2026-07-27", "squat", 5)  # Monday, in week
-        add_entry("2026-08-02", "pull_ups", 2)  # Sunday, in week
-        add_entry("2026-08-03", "bench_press", 3)  # next Monday, out of week
+        add_entry("2026-07-27", SITUP, 5)  # Monday, in week
+        add_entry("2026-08-02", PULLUP, 2)  # Sunday, in week
+        add_entry("2026-08-03", BENCH, 3)  # next Monday, out of week
 
         summary = weekly_summary(date(2026, 7, 28))
 
     assert summary["week_start"] == "2026-07-27"
     assert summary["week_end"] == "2026-08-02"
+    # total_sets counts sets performed, not weighted volume.
     assert summary["total_sets"] == 7
-    assert sorted(summary["muscles_worked"]) == ["back", "biceps", "hamstrings", "quads"]
+    assert sorted(summary["muscles_worked"]) == ["abs", "back", "biceps"]
     assert summary["sets_per_day"]["2026-07-27"] == 5
     assert summary["sets_per_day"]["2026-07-30"] == 0

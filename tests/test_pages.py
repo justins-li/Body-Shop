@@ -45,10 +45,22 @@ def test_summary_body_map_is_not_pre_graded(client):
     assert "--level:" not in body
 
 
-def test_log_page_lists_every_exercise(client):
-    body = client.get("/log").data
-    for name in (b"Bench press", b"Pull ups", b"Squat", b"Sit ups"):
-        assert name in body
+def test_log_page_renders_a_picker_shell_not_the_catalog(client):
+    """873 movements cannot be radio buttons: log.js fills these panels."""
+    body = client.get("/log").data.decode()
+    for marker in ('data-tab="recent"', 'data-tab="search"', 'data-tab="browse"',
+                   'id="exercise-id"', 'id="browse-muscle"'):
+        assert marker in body
+
+    # The catalog itself must not be server-rendered.
+    assert "Barbell Bench Press" not in body
+    assert body.count('data-panel="') == 3
+
+
+def test_log_page_browse_offers_every_muscle_group(client):
+    body = client.get("/log").data.decode()
+    for muscle in MUSCLE_GROUPS:
+        assert f'<option value="{muscle}">' in body
 
 
 def test_summary_page_contains_every_muscle_region(client):
@@ -63,17 +75,15 @@ def test_front_and_back_views_show_different_muscle_groups(client):
     front = body.split('data-view="front"')[1].split("</svg>")[0]
     back = body.split('data-view="back"')[1].split("</svg>")[0]
 
-    assert set(re.findall(r'data-muscle="(\w+)"', front)) == {
-        "chest",
-        "abs",
-        "biceps",
-        "quads",
-    }
-    assert set(re.findall(r'data-muscle="(\w+)"', back)) == {
-        "back",
-        "triceps",
-        "hamstrings",
-    }
+    front_groups = set(re.findall(r'data-muscle="(\w+)"', front))
+    back_groups = set(re.findall(r'data-muscle="(\w+)"', back))
+
+    assert front_groups == {"chest", "abs", "shoulders", "biceps", "forearms", "quads"}
+    assert back_groups == {"back", "traps", "triceps", "glutes", "hamstrings", "calves"}
+
+    # The split is the point: neither figure repeats the other's information.
+    assert not front_groups & back_groups
+    assert front_groups | back_groups == set(MUSCLE_GROUPS)
 
 
 def test_summary_page_uses_requested_week(client):

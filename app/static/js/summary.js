@@ -6,10 +6,15 @@
  * target is passed. The server does the grading — each group arrives with a
  * `state` (`rest` | `trained` | `over`) and an `intensity` from 0 to 1 within
  * that state's ramp. All this module does is hand those to CSS.
+ *
+ * Set counts arrive fractional: a movement's primary muscles take the whole
+ * set and its secondary muscles half, so `12.5 / 20` is a normal reading.
  */
 
 import { fetchWeeklySummary } from "./api.js";
-import { $, addDays, formatDate, renderEntries, retargetLinks, syncUrlDate, toast } from "./ui.js";
+import {
+  $, addDays, formatDate, formatSets, renderEntries, retargetLinks, syncUrlDate, toast,
+} from "./ui.js";
 
 let anchorIso; // Any date inside the week being displayed.
 
@@ -28,10 +33,10 @@ function describe(info, fallbackLabel) {
   if (!info) return fallbackLabel;
   if (!info.worked) return `${info.label}: no sets this week (target ${info.target})`;
 
-  const sets = `${info.sets} of ${info.target} sets`;
+  const sets = `${formatSets(info.sets)} of ${info.target} sets`;
   const detail = info.exercises.join(", ");
   return info.state === "over"
-    ? `${info.label}: ${sets} — ${info.over} over target (${detail})`
+    ? `${info.label}: ${sets} — ${formatSets(info.over)} over target (${detail})`
     : `${info.label}: ${sets} (${detail})`;
 }
 
@@ -56,7 +61,8 @@ function renderBreakdown(muscles) {
     // The bar tops out at the target; overshoot shows as colour, not length.
     const progress = Math.min(1, info.sets / info.target);
     row.querySelector(".muscle-bar-fill").style.width = `${progress * 100}%`;
-    row.querySelector(".muscle-sets").textContent = `${info.sets} / ${info.target}`;
+    row.querySelector(".muscle-sets").textContent =
+      `${formatSets(info.sets)} / ${info.target}`;
     row.title = describe(info, row.dataset.muscle);
   });
 }
