@@ -9,8 +9,9 @@ doing most of the work: *anything that will be re-done later should be built lat
 Tailwind is first because every remaining phase adds UI, and UI built before the
 migration gets styled twice.
 
-Current state: Flask + Jinja + vanilla ES modules, no build step, no JS dependencies,
-one SQLite table, no auth, no migrations, 4 exercises, 7 muscle groups. See
+Current state: **Phase 1 is done.** Flask + Jinja + vanilla ES modules, styled with
+Tailwind v4 + daisyUI (CSS build step, still no JS dependencies), one SQLite table,
+no auth, no migrations, 4 exercises, 7 muscle groups. See
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
@@ -27,18 +28,21 @@ recreated empty on every cold start, silently losing every workout.
 hard blocker on auth, the stack decision, and deployment simultaneously, which is why
 Phase 3 exists and why Phases 4–5 sit behind it.
 
-### 2. Tailwind reverses a deliberate architectural choice
+### 2. Tailwind reverses a deliberate architectural choice — *resolved in Phase 1*
 
-`CLAUDE.md`, `CONTRIBUTING.md` and `ARCHITECTURE.md` all state the no-build-step,
+`CLAUDE.md`, `CONTRIBUTING.md` and `ARCHITECTURE.md` all stated the no-build-step,
 no-JS-dependencies invariant as intentional. Tailwind requires a build step. That is a
 fine trade — it buys DaisyUI and a design system — but it is a reversal, not an
-addition, and all three documents need updating in the same change so the next session
+addition, and all three documents were updated in the same change so a later session
 isn't working from a stale invariant.
 
 The good news: **DaisyUI is pure CSS.** Its components (`btn`, `card`, `modal`, `stat`,
 `drawer`) are class names, not React components. They work directly in Jinja templates
-with no JS framework, which is what makes Phase 1 cheap and what keeps Flask viable
+with no JS framework, which is what made Phase 1 cheap and what keeps Flask viable
 through Phase 5.
+
+The reversal turned out narrower than feared: the build step is **CSS-only and
+npm-free**, and JS is still served exactly as written. See Phase 1 below.
 
 ### 3. Auth is impossible without migrations
 
@@ -67,75 +71,95 @@ being on the internet is **3 → 4 → 5**.
 
 ---
 
-## Phase 1 — Tailwind + DaisyUI
+## Phase 1 — Tailwind + DaisyUI ✅ *done*
 
-**Depends on:** nothing. **First because it is a soft dependency of everything else** —
+**Depended on:** nothing. **First because it is a soft dependency of everything else** —
 Phases 2, 4 and 6 each add UI surfaces (exercise picker, login/signup, AI verification
-modal), and every one of them would need re-styling if Tailwind landed later. The app is
-three pages today; this is the cheapest it will ever be.
+modal), and every one of them would have needed re-styling if Tailwind landed later. The
+app was three pages; this was the cheapest it would ever be.
 
-### Build setup
+### What shipped, and where it diverged from this plan
 
-Tailwind CLI only — no bundler, no PostCSS pipeline, no npm runtime dependencies:
+Three deviations, each deliberate:
+
+**1. No npm.** The plan called for `npm install -D tailwindcss daisyui`. Node was not
+installed on the dev machine, and adding a `package.json` to a Python project to compile
+one stylesheet is a poor trade. Instead:
 
 ```
-npm install -D tailwindcss daisyui
-npx tailwindcss -i app/static/css/input.css -o app/static/css/styles.css --watch
+python tools/fetch_css_toolchain.py    # pinned Tailwind CLI binary + daisyUI tarball → tools/
+tools/tailwindcss -i app/static/css/input.css -o app/static/css/styles.css --minify
 ```
 
-Content globs must cover `app/templates/**/*.html` **and** `app/static/js/**/*.js`,
-because `summary.js` toggles classes at runtime. Any class that only appears in a JS
-string must be written out in full or safelisted — Tailwind's scanner does not evaluate
-template literals, so `` `is-${state}` `` would be silently purged.
+Tailwind publishes a self-contained CLI binary per platform, and daisyUI is a plain
+tarball of CSS plus a plugin entry point, so `@plugin "../../../tools/daisyui"` resolves
+off disk with no package manager involved. `tools/` is gitignored; the fetch script pins
+both versions so a rebuild elsewhere is byte-identical. As planned, the compiled
+`styles.css` **is** committed, so nothing at runtime or in CI needs the toolchain.
 
-Commit the compiled `styles.css` (a Python deployment should not depend on npm at build
-time) and add `app/static/css/input.css` as the real source.
+**2. Tailwind v4, so config is CSS-first.** There is no `tailwind.config.js` and no
+`theme.extend`. Tokens live in `@theme`, the theme pair in two `@plugin "daisyui/theme"`
+blocks, and content globs are `@source` directives — all inside `input.css`, with
+`source(none)` disabling auto-detection so the globs are the whole story.
 
-### Migration order
+**3. A real home page landed now, not in Phase 4.** The plan deferred it on the grounds
+that auth creates the signed-out/signed-in split. But `/` being the calendar meant the
+app had no front door at all, and a landing page is the natural showcase for the body
+map. So `/` is now a static landing page and the calendar moved to `/calendar`. Phase 4
+gets *easier* for it: the split becomes a branch inside an existing template rather than
+a new route plus a URL migration.
 
-The existing stylesheet is already sectioned (`1) tokens 2) reset 3) layout
-4) components 5) pages 6) media`), which makes this tractable:
+### The theme
 
-1. **Tokens → `theme.extend`.** The `:root` custom properties become theme values; the
-   `prefers-color-scheme: light` block becomes a DaisyUI theme pair.
-2. **Reset → Preflight.** Delete section 2 outright.
-3. **Layout + components → utilities in templates.** Mechanical.
-4. **Pages → DaisyUI components.** Mapping below.
+Two hand-written daisyUI themes, `bodyshop` (default, light) and `bodyshop-dark`
+(`prefersdark`); all 35 stock themes are disabled. As planned, a custom theme rather
+than a stock one keeps `--color-train-*`/`--color-over-*` first-class tokens.
 
-### DaisyUI component mapping
+The palette is **achromatic on purpose** — cream `#fff8ed`, warm ink `#312726`, warm grey
+`#7a716e`, adapted from [jeskojets.com](https://jeskojets.com). There is no accent hue,
+which makes the volume ramp the only saturated colour in the app: the heatmap wins the
+eye by default. Separation is hairline borders at 10–20% ink, never shadows (`--depth`
+and `--noise` are 0). Type is one variable family, Archivo, whose width axis supplies the
+wide display voice via `font-stretch`.
 
-| Current | DaisyUI |
+### DaisyUI component mapping, as built
+
+| Was | Now |
 | --- | --- |
 | `.card` | `card` / `card-body` |
-| `.icon-btn`, form buttons | `btn`, `btn-circle`, `btn-primary` |
-| `.toast` | `toast` + `alert` |
-| `.muscle-bar` | `progress` (custom fill colour still needed) |
-| Week switcher | `join` + `btn` |
+| `.icon-btn`, form buttons | `btn`, `btn-circle`, `btn-outline`, `btn-primary` |
+| `.toast` | `.toast-bar` (hand-written — daisyUI's `toast` is a corner *stack*, not a centred bar) |
+| `.muscle-bar` | hand-written (see below) |
+| Week switcher | `card` + `btn btn-circle` (`join` implies a segmented control; these are steppers) |
 | `.tag` | `badge` |
-| Nav | `navbar` |
-| Week totals | `stats` / `stat` |
+| Nav | plain flex header (`navbar` adds a min-height and padding the design doesn't want) |
+| Week totals | `#week-meta` inline summary line (a `stats` block outweighed three numbers) |
+| Form fields | `input`, `radio`, `alert` |
 
-Define a **custom DaisyUI theme** rather than using a stock one, so
-`--train-light`/`--train-dark`/`--over-*` stay first-class design tokens.
-
-### What must not become Tailwind utilities
+### What stayed hand-written
 
 The volume-scale colour mixing is computed, not enumerable:
 
 ```css
-fill: color-mix(in srgb, var(--train-dark) calc(var(--level) * 100%), var(--train-light));
+fill: color-mix(in srgb, var(--color-train-dark) calc(var(--level) * 100%), var(--color-train-light));
 ```
 
 `--level` is a continuous 0–1 value written by JS. Tailwind cannot express this as a
-utility, and quantising it into 10 fixed classes would visibly band the gradient. **Keep
-the `.muscle` / `.muscle-row` colour rules as hand-written CSS** in a `@layer components`
-block, along with the SVG body-map geometry. Everything else can go.
+utility, and quantising it into 10 fixed classes would visibly band the gradient. So the
+`.muscle` / `.muscle-row` colour rules and the SVG body-map geometry stay hand-written in
+`@layer components`.
 
-### Homepage
+That block grew one more job than planned. **Every class the JS toggles lives there too**
+— `.day-cell.is-selected`, `.toast-bar.is-visible`, `.entry`, `.empty`. Tailwind's
+scanner reads literal text only, so `` `is-${state}` `` would be purged silently; the
+plan's answer was "write it out in full or safelist it", but a named component class is
+more readable than swapping utility lists from JS and keeps the state vocabulary visible
+in one place. The rule now is: **static structure is utilities in templates, JS-driven
+state is a named class in `input.css`.**
 
-There is no signed-out surface today — `/` is the calendar. Build the visual redesign of
-the three existing pages here; the **landing page lands in Phase 4**, when auth creates
-the signed-out/signed-in split that gives it a purpose.
+One trap worth knowing: daisyUI sets `.card figure { display: flex }` with no
+`flex-direction`, so a `<figcaption>` inside a card lands *beside* its figure. The
+body-map macro passes `flex flex-col` to counter it.
 
 ---
 
@@ -302,8 +326,10 @@ mechanical but must be exhaustive; one missed clause is a data leak.
 Existing rows have no owner: either wipe or backfill to a seed account. Decide before
 writing the migration — `NOT NULL` without a default fails on a non-empty table.
 
-The **signed-out homepage** lands here, since auth is what creates the split: signed-out
-`/` = landing page, signed-in `/` = calendar.
+The **signed-out/signed-in split** lands here. Phase 1 already built `/` as a static
+landing page and moved the calendar to `/calendar`, so this is now a branch inside
+`home.html` — swap the hero's "Log a workout" CTA for a link into the app when a session
+exists — rather than a new route.
 
 ---
 
@@ -585,7 +611,7 @@ the UI twice if C is the destination.
 
 | # | Phase | Blocked by | Why here |
 | --- | --- | --- | --- |
-| 1 | Tailwind + DaisyUI | — | Soft dependency of every later UI surface; cheapest at three pages |
+| 1 | ✅ Tailwind + DaisyUI, home page | — | Soft dependency of every later UI surface; cheapest at three pages |
 | 2 | Exercise taxonomy, 12 muscle groups, picker | 1 | Highest product value; defines the vocabulary Phase 6 emits into |
 | 3 | Migrations + Postgres | — | Blocks 4 and 5; runs parallel to 1–2 |
 | 4 | Auth, `user_id`, CSRF, rate limiting | 3 | Needs migrations and a real database |

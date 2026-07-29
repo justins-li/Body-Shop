@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% import "partials/_body_figure.html" as body with context %}
+{% block title %}Body Shop — see what you actually trained{% endblock %}
+
+{#
+  Static landing page. No fetch, no JS module — the body map below is graded in
+  the markup via the macro's `demo` argument, so it shows a representative week
+  rather than an empty silhouette.
+#}
+{% set demo_front = {
+  "chest":  ("trained", 0.62),
+  "abs":    ("trained", 0.90),
+  "biceps": ("over",    0.45),
+  "quads":  ("trained", 0.34),
+} %}
+{% set demo_back = {
+  "back":    ("trained", 0.78),
+  "triceps": ("trained", 0.50),
+} %}
+
+{% block content %}
+{# ---- Hero ------------------------------------------------------------- #}
+<section class="wrap grid items-center gap-16 pt-20 pb-24 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:pt-28 lg:pb-32">
+  <div>
+    <p class="type-label text-secondary mb-7">Workout logging · Muscle coverage</p>
+
+    <h1 class="type-display text-[clamp(2.75rem,7.5vw,5.25rem)] mb-8">
+      Every set.<br>Every muscle.<br>Every week.
+    </h1>
+
+    <p class="type-lede mb-10">
+      Log the sets you actually finished. Body Shop shades a body map from pale
+      green to deep green as each muscle group closes on its weekly target — then
+      red for every set past it. The gaps are the point: you see what you skipped
+      before the week is gone.
+    </p>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <a class="btn btn-primary rounded-full h-12 px-7 text-sm font-medium border-0"
+         href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}">
+        Log a workout
+      </a>
+      <a class="btn btn-outline rounded-full h-12 px-7 text-sm font-medium hairline"
+         href="{{ url_for('views.summary_page', date=selected_date.isoformat()) }}">
+        See this week
+      </a>
+    </div>
+  </div>
+
+  {# Illustrative week, not live data. `aria-hidden` because the figures' own
+     titles would otherwise announce a fictional workout to a screen reader. #}
+  <div class="rounded-[var(--radius-box)] border hairline bg-base-100 p-8 sm:p-10" aria-hidden="true">
+    <div class="grid grid-cols-2 gap-6 justify-items-center">
+      {{ body.figure("front", demo=demo_front) }}
+      {{ body.figure("back", demo=demo_back) }}
+    </div>
+    <p class="type-label text-secondary mt-8 text-center">A week in progress</p>
+  </div>
+</section>
+
+{# ---- Numbers ---------------------------------------------------------- #}
+<section class="wrap" aria-label="At a glance">
+  <dl class="grid gap-px border hairline rounded-[var(--radius-box)] overflow-hidden bg-base-content/12 sm:grid-cols-3">
+    {% for value, label, note in [
+      (exercise_count, "Movements", "Every one mapped to the groups it trains"),
+      (muscle_groups | length, "Muscle groups", "Split across a front and a back view"),
+      ("20 / 10", "Weekly set targets", "Large groups, then small ones"),
+    ] %}
+      <div class="bg-base-100 px-8 py-10">
+        <dd class="type-display text-[clamp(2.25rem,4.5vw,3.25rem)] mb-3">{{ value }}</dd>
+        <dt class="type-label mb-2">{{ label }}</dt>
+        <p class="text-sm text-secondary m-0">{{ note }}</p>
+      </div>
+    {% endfor %}
+  </dl>
+</section>
+
+{# ---- How it works ----------------------------------------------------- #}
+<section class="wrap pt-28" aria-labelledby="how-heading">
+  <p class="type-label text-secondary mb-6">How it works</p>
+  <h2 id="how-heading" class="type-display text-[clamp(2rem,5vw,3.5rem)] mb-16 max-w-[22ch]">
+    Three screens, no setup.
+  </h2>
+
+  <ol class="grid gap-px bg-base-content/12 border hairline rounded-[var(--radius-box)] overflow-hidden md:grid-cols-3 list-none p-0 m-0">
+    {% for step, title, copy, endpoint in [
+      ("01", "Log the sets",
+       "Pick a date, choose a movement, enter how many sets you finished. That is the whole entry — no weight, no reps, nothing to maintain.",
+       "views.log_page"),
+      ("02", "Watch the week fill in",
+       "A set counts once for every group the movement trains, so three sets of bench press credit both chest and triceps.",
+       "views.summary_page"),
+      ("03", "Find the gaps",
+       "Anything still untrained stays neutral on the body map. Glance at it mid-week and you know exactly what is left.",
+       "views.calendar_page"),
+    ] %}
+      <li class="bg-base-100 px-8 py-10 flex flex-col">
+        <span class="type-display text-2xl text-secondary mb-6">{{ step }}</span>
+        <h3 class="type-display text-xl mb-3">{{ title }}</h3>
+        <p class="text-sm text-secondary leading-relaxed flex-1 m-0">{{ copy }}</p>
+        <a class="type-label mt-7 no-underline hover:text-secondary transition-colors"
+           href="{{ url_for(endpoint, date=selected_date.isoformat()) }}">Open →</a>
+      </li>
+    {% endfor %}
+  </ol>
+</section>
+
+{# ---- The volume scale ------------------------------------------------- #}
+<section class="wrap pt-28" aria-labelledby="scale-heading">
+  <div class="grid gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-center">
+    <div>
+      <p class="type-label text-secondary mb-6">The colour scale</p>
+      <h2 id="scale-heading" class="type-display text-[clamp(2rem,5vw,3.5rem)] mb-7 max-w-[20ch]">
+        Not trained or untrained. How much.
+      </h2>
+      <p class="type-lede">
+        Most loggers answer yes or no. A muscle group worked once in a week is not
+        the same as one worked twelve times, so colour here is a volume scale,
+        graded on the server against each group's weekly target.
+      </p>
+    </div>
+
+    <ul class="list-none p-0 m-0 grid gap-px bg-base-content/12 border hairline rounded-[var(--radius-box)] overflow-hidden">
+      {% for swatch, title, copy in [
+        ("swatch-rest", "No sets yet", "Neutral. The group has not been trained this week."),
+        ("swatch-scale swatch-scale-train", "One set → target", "Pale green deepening to dark as the target gets closer."),
+        ("swatch-scale swatch-scale-over", "Past the target", "Pale red deepening to dark across the next half-target of sets."),
+      ] %}
+        <li class="bg-base-100 flex items-start gap-5 px-8 py-7">
+          <span class="swatch {{ swatch }} mt-1 shrink-0"></span>
+          <div>
+            <p class="type-label mb-1.5">{{ title }}</p>
+            <p class="text-sm text-secondary m-0">{{ copy }}</p>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
+{# ---- Closing CTA ------------------------------------------------------
+     Inverted band: ink ground, cream ink. The reference alternates these to
+     break up a long cream page. #}
+<section class="wrap pt-28">
+  <div class="rounded-[var(--radius-box)] bg-primary text-primary-content px-8 py-20 text-center sm:px-16">
+    <h2 class="type-display text-[clamp(2rem,5.5vw,4rem)] mb-6 mx-auto max-w-[24ch]">
+      Today is a set you have not logged.
+    </h2>
+    <p class="text-base opacity-70 mb-10 mx-auto max-w-[52ch] leading-relaxed">
+      There is nothing to configure and no account to make. Pick a movement and
+      the week starts filling in.
+    </p>
+    <a class="btn rounded-full h-12 px-8 text-sm font-medium border-0 bg-primary-content text-primary hover:opacity-85"
+       href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}">
+      Log today's workout
+    </a>
+  </div>
+</section>
+{% endblock %}

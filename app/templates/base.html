@@ -6,42 +6,64 @@
   <title>{% block title %}Body Shop{% endblock %}</title>
   <meta name="description" content="Body Shop — log your workouts and see which muscle groups you hit each week.">
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+
+  {# Archivo carries a width axis, which is what the `font-stretch-*` utilities
+     widen for the display voice. Loaded before the stylesheet so the swap
+     happens once. #}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
-<body data-page="{{ page }}">
-  <a class="skip-link" href="#main">Skip to content</a>
+<body data-page="{{ page }}" class="min-h-screen flex flex-col">
+  <a class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[70]
+            focus:rounded-full focus:border focus:border-base-content/20 focus:bg-base-100
+            focus:px-4 focus:py-2 focus:text-sm focus:no-underline"
+     href="#main">Skip to content</a>
 
-  <header class="site-header">
-    <div class="wrap header-inner">
-      <a class="brand" href="{{ url_for('views.calendar_page') }}">
-        <span class="brand-mark" aria-hidden="true">◈</span>
-        <span class="brand-name">Body<span class="brand-accent">Shop</span></span>
+  <header class="sticky top-0 z-50 border-b hairline bg-base-200/85 backdrop-blur-md">
+    <div class="wrap flex flex-wrap items-center justify-between gap-x-6 gap-y-3 py-4">
+      <a class="flex items-center gap-2.5 no-underline text-base-content"
+         href="{{ url_for('views.home_page') }}">
+        <span aria-hidden="true" class="text-lg leading-none">◈</span>
+        <span class="type-display text-lg">Body Shop</span>
       </a>
-      <nav class="nav" aria-label="Primary">
-        <a href="{{ url_for('views.calendar_page', date=selected_date.isoformat()) }}"
-           class="nav-link {{ 'is-active' if page == 'calendar' }}"
-           {{ 'aria-current=page' if page == 'calendar' }}>Calendar</a>
-        <a href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}"
-           class="nav-link {{ 'is-active' if page == 'log' }}"
-           {{ 'aria-current=page' if page == 'log' }}>Log workout</a>
-        <a href="{{ url_for('views.summary_page', date=selected_date.isoformat()) }}"
-           class="nav-link {{ 'is-active' if page == 'summary' }}"
-           {{ 'aria-current=page' if page == 'summary' }}>Weekly summary</a>
+
+      <nav class="flex flex-wrap items-center gap-1" aria-label="Primary">
+        {% set links = [
+          ('views.home_page',     'home',     'Home'),
+          ('views.calendar_page', 'calendar', 'Calendar'),
+          ('views.log_page',      'log',      'Log workout'),
+          ('views.summary_page',  'summary',  'Weekly summary'),
+        ] %}
+        {% for endpoint, key, label in links %}
+          {% set active = page == key %}
+          <a href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
+             class="nav-link type-label rounded-full px-3.5 py-2 no-underline transition-colors
+                    {{ 'bg-primary text-primary-content'
+                       if active else
+                       'text-secondary hover:text-base-content hover:bg-base-content/6' }}"
+             {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
       </nav>
     </div>
   </header>
 
-  <main id="main" class="wrap">
+  <main id="main" class="flex-1">
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="site-footer">
-    <div class="wrap">
-      <p>Body Shop · logged locally in SQLite · <a href="/api/exercises">API</a></p>
+  <footer class="border-t hairline mt-24">
+    <div class="wrap flex flex-wrap items-center justify-between gap-4 py-8 text-sm text-secondary">
+      <p class="type-label">Body Shop — logged locally in SQLite</p>
+      <a class="type-label no-underline hover:text-base-content transition-colors"
+         href="/api/exercises">API</a>
     </div>
   </footer>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="toast" class="toast-bar" role="status" aria-live="polite"></div>
 
   {% block scripts %}{% endblock %}
 </body>

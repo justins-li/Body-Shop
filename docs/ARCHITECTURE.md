@@ -20,9 +20,13 @@ browser  ──fetch──▶  app/api.py        (HTTP: parse, serialise, status
                      SQLite (instance/bodyshop.sqlite3)
 ```
 
-`app/views.py` renders three server-side shells; everything dynamic is fetched by
+`app/views.py` renders four server-side shells; everything dynamic is fetched by
 the page's JavaScript module from the same `/api` the tests exercise. That means the
 HTML never diverges from the API, and the API is testable without a browser.
+
+`/` is the exception: a static landing page with no JS module and no API calls. It is
+the one page that will render identically for a visitor and a signed-in user, which is
+why it is worth having before auth exists.
 
 ## Layer responsibilities
 
@@ -35,6 +39,33 @@ HTML never diverges from the API, and the API is testable without a browser.
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
 | `app/views.py` | Page shells and template context. | Contain business rules. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
+| `app/static/css/input.css` | The design system: theme pair, tokens, and every hand-written rule. | — (`styles.css` beside it is generated; never edit it) |
+
+## Styling
+
+Tailwind v4 + daisyUI, compiled by a **CSS-only, npm-free build step**: Tailwind ships a
+standalone CLI binary and daisyUI is a tarball of CSS, both fetched into gitignored
+`tools/` by `tools/fetch_css_toolchain.py`. JavaScript is still served exactly as
+written — there is no bundler. The compiled `styles.css` is committed, so running the
+app or CI never needs the toolchain; only editing `input.css` does.
+
+Configuration is CSS-first (Tailwind v4): no `tailwind.config.js`. `@theme` holds the
+tokens, two `@plugin "daisyui/theme"` blocks define the `bodyshop` / `bodyshop-dark`
+pair, and `@source` directives list the content globs.
+
+The division of labour is the part worth internalising:
+
+| Kind of style | Lives in |
+| --- | --- |
+| Static structure and spacing | Tailwind utilities, in the template |
+| Standard controls (buttons, inputs, badges, cards) | daisyUI component classes |
+| Anything a JS module toggles at runtime | A named class in `input.css`, `@layer components` |
+| The volume-scale colour mixing and SVG geometry | Hand-written CSS, same block |
+
+The last two are not stylistic preferences. Tailwind's scanner reads class names as
+literal text, so a class assembled at runtime (`` `is-${state}` ``) is purged silently —
+and the colour mixing is computed from a continuous `--level`, which no finite set of
+utilities can express without banding the gradient.
 
 ## The single source of truth
 
@@ -86,9 +117,19 @@ did this muscle get", not "how many sets did I perform".
 
 ## The body map
 
-`app/templates/partials/_body_figure.html` is a Jinja macro rendered twice, as
-`figure("front")` and `figure("back")`. The two views draw **disjoint** sets of
-muscle groups, so each figure carries information the other does not:
+`app/templates/partials/_body_figure.html` is a Jinja macro rendered twice per page, as
+`figure("front")` and `figure("back")`. Region geometry is held as data (slug, element
+id, path) at the top of the partial and rendered by a single loop, so adding a group is
+one row.
+
+The macro takes an optional `demo` argument mapping muscle → `(state, level)`, which
+bakes the grading into the markup as classes and an inline `--level`. That exists for
+surfaces with no JavaScript: the home page uses it to show an illustrative week instead
+of an empty silhouette. `/summary` passes nothing, so `summary.js` owns every region's
+state there — `tests/test_pages.py` asserts both halves of that split.
+
+The two views draw **disjoint** sets of muscle groups, so each figure carries
+information the other does not:
 
 | View | Groups | Drawn as |
 | --- | --- | --- |
@@ -134,7 +175,8 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
 - `tests/test_summary.py` — the muscle-coverage and volume-grading rules, both as
   pure functions and through the database.
 - `tests/test_api.py` — every endpoint, including the validation failure modes.
-- `tests/test_pages.py` — the three pages render and contain every muscle region.
+- `tests/test_pages.py` — the four pages render and contain every muscle region. Page
+  markers are chosen to be unique to their page, since the nav links appear on all four.
 
 Each test gets a fresh SQLite file in pytest's `tmp_path`, so tests are isolated and
 run in any order.

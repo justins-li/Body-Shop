@@ -25,11 +25,12 @@ different things.
 
 | Page | Route | What it does |
 | --- | --- | --- |
-| **Calendar** | `/` | Month grid of your training. Days with logged sets are dotted; click one to see what you did. |
+| **Home** | `/` | What the app does, and the way in. Static — no API calls. |
+| **Calendar** | `/calendar` | Month grid of your training. Days with logged sets are dotted; click one to see what you did. |
 | **Log workout** | `/log` | Pick date → exercise → sets. Shows and deletes the entries for that day. |
 | **Weekly summary** | `/summary` | Front/back body map shaded by weekly volume, plus each group's sets against its target. |
 
-All three pages share a `?date=YYYY-MM-DD` query parameter, so navigating between
+All four pages share a `?date=YYYY-MM-DD` query parameter, so navigating between
 them keeps the day you were looking at.
 
 ## Quick start
@@ -54,12 +55,28 @@ To wipe it and start over:
 flask --app app init-db
 ```
 
+Nothing else is needed to run or change the app — the compiled stylesheet is committed.
+
 ## Running the tests
 
 ```bash
 pip install -r requirements-dev.txt
 pytest
 ```
+
+## Editing the styles
+
+The UI is Tailwind v4 + daisyUI. `app/static/css/input.css` is the source;
+`app/static/css/styles.css` is generated output and should never be edited by hand.
+The toolchain needs **no npm** — Tailwind ships a standalone binary and daisyUI is a
+tarball of CSS:
+
+```bash
+python tools/fetch_css_toolchain.py   # once, into gitignored tools/
+tools/tailwindcss -i app/static/css/input.css -o app/static/css/styles.css --watch
+```
+
+Commit the rebuilt `styles.css` with your change; CI does not build it.
 
 ## Configuration
 
@@ -91,15 +108,17 @@ Body-Shop/
 │   ├── schema.sql            # table definitions
 │   ├── exercises.py          # exercise → muscle-group catalog (single source of truth)
 │   ├── models.py             # all SQL lives here: validation + queries
-│   ├── views.py              # the three HTML page routes
+│   ├── views.py              # the four HTML page routes
 │   ├── api.py                # /api JSON endpoints
 │   ├── services/
 │   │   ├── weeks.py          # week/month boundary maths
 │   │   └── summary.py        # weekly muscle-coverage aggregation
 │   ├── templates/            # Jinja2: base + one per page + body-map partial
 │   └── static/
-│       ├── css/styles.css
+│       ├── css/input.css     # design system — the file you edit
+│       ├── css/styles.css    # compiled output — generated, committed
 │       └── js/               # api.js, ui.js, and one module per page
+├── tools/                    # fetch_css_toolchain.py (binaries it downloads are ignored)
 ├── tests/                    # pytest suite (API, pages, aggregation, dates)
 ├── docs/                     # architecture + API reference
 ├── run.py                    # dev entry point
@@ -125,9 +144,10 @@ new movement introduces a *new* muscle group, also add it to `MUSCLE_GROUPS`,
 
 ## Roadmap
 
-The full technical plan, in execution order — Tailwind/DaisyUI, a ~180-exercise catalog,
-Postgres, accounts, Vercel hosting, AI-assisted custom exercises, then mobile — is in
-[docs/ROADMAP.md](docs/ROADMAP.md). Smaller items not covered there:
+The full technical plan, in execution order — a ~180-exercise catalog, Postgres,
+accounts, Vercel hosting, AI-assisted custom exercises, then mobile — is in
+[docs/ROADMAP.md](docs/ROADMAP.md). Phase 1 (Tailwind/DaisyUI and the home page) is
+done. Smaller items not covered there:
 
 - [ ] A hinge movement (deadlift / leg curl) so quads and hamstrings can differ
 - [ ] Per-set weight and reps

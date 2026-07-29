@@ -12,6 +12,18 @@ pytest
 python run.py
 ```
 
+That is everything you need to run, test and change the app. **The CSS toolchain is a
+separate, optional step** — the compiled stylesheet is committed, so you only need this
+if you are editing `app/static/css/input.css`:
+
+```bash
+python tools/fetch_css_toolchain.py   # once — no npm; downloads into gitignored tools/
+tools/tailwindcss -i app/static/css/input.css -o app/static/css/styles.css --watch
+```
+
+If you do edit CSS, **commit the rebuilt `styles.css` alongside your `input.css`
+change** — CI does not build it.
+
 ## Before you open a pull request
 
 1. `pytest` passes.
@@ -36,10 +48,15 @@ each module owns. The short version:
 
 - Python: standard library formatting conventions, 4-space indent, type hints on
   function signatures, `from __future__ import annotations` at the top of modules.
-- JavaScript: ES modules, no build step, no dependencies. Keep it that way unless
-  there's a strong reason.
-- CSS: design tokens at the top of `styles.css`; use the existing custom properties
-  rather than adding new hex values.
+- JavaScript: ES modules, no dependencies, no bundler — it is served as written. Keep it
+  that way unless there's a strong reason.
+- CSS: `input.css` is the source, `styles.css` is generated — never edit the latter.
+  Reach for a daisyUI component first, then Tailwind utilities, then hand-written CSS.
+  Never a raw hex value: use the theme colours so both light and dark stay correct.
+  Separation is a hairline border, not a shadow.
+- Anything a JS module toggles at runtime needs a named class in `input.css`, not a
+  utility — Tailwind's scanner reads literal text, so an interpolated class name gets
+  purged without warning.
 
 ## Commits
 
