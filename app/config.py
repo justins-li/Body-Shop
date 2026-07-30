@@ -15,12 +15,19 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 # Must run before the classes below, whose attributes are evaluated at import.
 # Real environment variables win over .env (load_dotenv does not override).
-load_dotenv()
+#
+# The path is explicit rather than dotenv's default search, which walks up from
+# the *calling stack frame* — that makes what gets loaded depend on who imported
+# this module and fails outright where there is no frame to inspect. A missing
+# file is a no-op, which is the normal case in a hosted environment where the
+# platform injects the variables directly.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 #: The placeholder secret. Production refuses to boot while this is in force.
 DEV_SECRET_KEY = "dev-secret-change-me"
