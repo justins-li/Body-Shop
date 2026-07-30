@@ -140,7 +140,7 @@
         <li class="region-group" data-muscle="{{ muscle }}">
           <p class="region-group-head m-0">
             <span class="font-semibold tracking-tight text-sm">{{ muscle_labels[muscle] }}</span>
-            <span class="type-label text-secondary" data-role="attributed">&nbsp;</span>
+            <span class="type-label text-secondary" data-role="basis">&nbsp;</span>
           </p>
           {% for region in regions %}
           <span class="region-bar" data-region="{{ region }}">
@@ -153,10 +153,14 @@
         {% endfor %}
       </ul>
 
-      <p class="type-label text-secondary border-t hairline pt-5 m-0">
-        Shares of the sets we can place inside a group. No region targets — the
-        useful question is whether the work is spread, not whether a head hit a
-        number.
+      <p class="text-sm text-secondary border-t hairline pt-5 m-0 leading-relaxed">
+        Percentages are of the sets that favoured a region. Plenty of movements
+        don't — a deadlift trains the back without telling you lats or mid back —
+        so those sets count for the group above but not for a bar here, which is
+        what "based on 3 of 4.5 sets" means.
+        <span class="text-base-content">No region targets:</span>
+        the useful question is whether the work is spread, not whether a head hit
+        a number.
       </p>
     </div>
   </section>
