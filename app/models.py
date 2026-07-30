@@ -265,7 +265,7 @@ def _entries_from(rows) -> list[WorkoutEntry]:
     ]
 
 
-def add_entry(entry_date, exercise_id: str, sets) -> WorkoutEntry:
+def add_entry(entry_date, exercise_id: str, sets: list[dict]) -> WorkoutEntry:
     """Insert an entry and its sets after validating both."""
     parsed_date, parsed_exercise = validate_entry(entry_date, exercise_id)
     rows = validate_sets(sets)

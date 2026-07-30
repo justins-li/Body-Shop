@@ -63,6 +63,7 @@ export function loadUnit() {
   return WEIGHT_UNITS.includes(stored) ? stored : "kg";
 }
 
+/** Remember the reader's unit choice. Ignores anything not in `WEIGHT_UNITS`. */
 export function saveUnit(unit) {
   if (WEIGHT_UNITS.includes(unit)) localStorage.setItem(UNIT_KEY, unit);
 }
