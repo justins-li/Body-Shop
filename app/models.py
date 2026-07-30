@@ -158,12 +158,16 @@ def delete_entry(entry_id: int) -> bool:
     return result.rowcount > 0
 
 
-def recent_exercise_ids(limit: int = 12) -> list[str]:
-    """Return recently-logged exercise ids, most recently used first.
+def recent_exercise_usage(limit: int = 12) -> list[tuple[str, int]]:
+    """Return ``(exercise_id, times logged)`` pairs, most recently used first.
 
     Backs the picker's default view on ``/log``. Ordering is recency of last
     use, with total uses breaking ties, which is what makes the 10–20 movements
     someone actually cycles through surface without a search.
+
+    The count comes back with the id because the picker ranks *every* list by
+    it: a movement you have logged twelve times belongs above a movement the
+    curated staple order merely thinks is popular.
     """
     last_used = sa.func.max(workout_entry.c.entry_date).label("last_used")
     uses = sa.func.count().label("uses")
@@ -177,7 +181,12 @@ def recent_exercise_ids(limit: int = 12) -> list[str]:
         )
         .all()
     )
-    return [row.exercise_id for row in rows]
+    return [(row.exercise_id, int(row.uses)) for row in rows]
+
+
+def recent_exercise_ids(limit: int = 12) -> list[str]:
+    """Return recently-logged exercise ids, most recently used first."""
+    return [exercise_id for exercise_id, _uses in recent_exercise_usage(limit)]
 
 
 def sets_by_date(start: date, end: date) -> dict[str, int]:

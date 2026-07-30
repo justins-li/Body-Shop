@@ -115,6 +115,37 @@ rather than the pattern/modifier split the roadmap originally sketched — deriv
 patterns for 873 movements by hand is the error-prone data entry that adopting a
 dataset was meant to avoid.
 
+### Ranking is ours, and lives in code
+
+What the source does **not** carry is any notion of how common a movement is, and
+alphabetical order at 873 rows is actively hostile: browsing chest opened with
+"Alternating Floor Press" and "Around The Worlds", the bench press sat mid-list, and
+pushups — 70th of 147 — fell past the picker's row cap where browsing could not reach
+them at all.
+
+So `Exercise.rank` exists (**lower sorts first**), in two tiers that never interleave:
+
+| Tier | Rank | Ordered by |
+| --- | --- | --- |
+| Staples | `0`–`len(STAPLE_EXERCISE_IDS) - 1` | Position in `STAPLE_EXERCISE_IDS` — a curated list, most common first |
+| Everything else | `UNRANKED_RANK_BASE` (1000) upward | `mechanic`, then `level`, then whether the equipment is gym-standard; zero-volume categories take a flat 400 penalty and land last |
+
+Two decisions worth keeping:
+
+- **It is in `exercises.py`, not in the JSON.** The catalog is generated from a pinned
+  upstream commit and never hand-edited; a popularity ordering is an editorial
+  judgement about lifters rather than a fact about the source, and keeping it in code
+  means revising it does not mean regenerating the catalog.
+- **Every staple id is checked at import**, raising `CatalogError`. A rename upstream
+  would otherwise silently demote a staple to the bottom of every browse list, which is
+  precisely the failure the ranking exists to prevent.
+
+`rank` rides on the light payload, and `/log` sorts by *history first, then rank*:
+`GET /api/exercises/recent` returns `uses` per movement, and a movement you have logged
+outranks one the staple list merely believes is popular. The tiers stay disjoint so no
+combination of facets can lift an obscure movement above a named staple — a property
+`tests/test_exercises.py` asserts directly.
+
 ### Images
 
 Each movement carries exactly two photographs, its start and end position. They are
@@ -127,6 +158,66 @@ movement with no JS timer and no player.
 instructions: the picker fetches the whole catalog to filter it locally, and the
 full payload is four times the size. `GET /api/exercises/<id>` serves the rest for
 the one movement actually selected.
+
+### Grouping schemes: one list, four headings
+
+Twelve rows is an inventory, not a summary — nobody trains "forearms" as a decision, they
+train a push day. So `/summary`'s breakdown offers `MUSCLE_SCHEMES`: **Push · Pull · Legs**
+(the default), **Upper · Lower**, **Front · Back** (the same split as the two figures, so
+the list reads like the map) and **Every group** (the flat twelve).
+
+The rules that keep it honest:
+
+- **A scheme is a view, never a filter.** Every scheme must file all twelve groups exactly
+  once, checked at import by `_check_schemes` — a scheme that dropped a group would hide
+  volume the user logged, and one that repeated a group would double it in a bucket total.
+- **Buckets have no target.** Summing twelve targets into a "push target" would put a
+  number on screen that nobody has studied; same reasoning as regions below.
+- **One definition, two consumers.** `scheme_map()` serialises the schemes and
+  `views.summary_page` passes them into `initSummary`, so the JS never restates the split.
+- **The rows are rendered once and *moved*,** not duplicated or re-ordered with CSS
+  `order`: nodes get re-appended in scheme order so a screen reader's reading order
+  matches the screen. Bucket headings for all four schemes ship in the markup and the
+  inactive ones are `hidden`.
+- The choice persists in `localStorage` under `bodyshop:summary-scheme`, not in the URL —
+  `?date=` is shared state every page honours, this is a reading preference.
+
+### Regions: a second layer that is deliberately not graded
+
+Six groups subdivide into regions (`MUSCLE_REGIONS`): chest, shoulders, back, triceps,
+hamstrings and calves. The other six do not, and biceps heads and "upper vs. lower abs"
+are excluded specifically — the evidence there is EMG rather than growth.
+
+The asymmetry with muscle groups is the whole design:
+
+| | Muscle group | Region |
+| --- | --- | --- |
+| Weekly target | Yes (`MUSCLE_TARGETS`) | **None** |
+| `state` / `intensity` | Yes | **None** |
+| Colour | The volume ramp | Achromatic — length only |
+| Reports | Volume against a target | Share of the volume placed inside its parent |
+
+Because no study has ever established how many weekly sets a muscle *head* needs. The
+subdivisions are real — growth within a muscle is non-uniform and follows exercise
+selection — but that supports a *distribution*, not a target, and a fabricated target
+would sit on the summary page indistinguishable from the sourced ones. Full evidence and
+the rules in [VOLUME_SCIENCE.md](VOLUME_SCIENCE.md).
+
+Two consequences worth knowing before editing:
+
+- **Attribution is partial by design.** `EXERCISE_REGIONS` maps a movement to a region
+  only where the emphasis is defensible. A deadlift trains the back without saying
+  anything about lats vs. mid back, so its volume is *unattributed*, and `region_sets`
+  reports how much of the group's total could be placed. Shares are of `region_sets`,
+  never of `sets` — otherwise unplaceable volume would read as neglect.
+- **Import-time validation refuses to attribute a movement to a region whose parent
+  muscle it does not train.** `_check_regions` raises `CatalogError`, which is what keeps
+  a mapping slip from becoming a plausible-looking number on the summary page.
+
+The only invented numbers are `REGION_NEGLECT_SHARE` (0.15) and
+`REGION_NEGLECT_MIN_PARENT_SETS` (4.0, the literature's rough floor for a muscle
+responding at all), both named constants in `services/summary.py` rather than literals, so
+what is opinion stays visible.
 
 ## The volume scale
 
@@ -282,9 +373,13 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
 
 - `tests/test_weeks.py` — boundary maths, no app needed.
 - `tests/test_exercises.py` — the catalog's contract: known slugs, unique ids, two
-  frames each, no muscle both primary and secondary, and the volume weights.
+  frames each, no muscle both primary and secondary, the volume weights, and the
+  ranking's invariants (every staple id resolves, the tiers do not interleave, every
+  muscle group has a staple).
 - `tests/test_summary.py` — the muscle-coverage and volume-grading rules, both as
-  pure functions and through the database.
+  pure functions and through the database, plus the region distribution: that regions
+  carry no target or grade, that unplaceable volume is reported rather than spread, and
+  that a balanced week flags nothing.
 - `tests/test_models.py` — the data layer's non-API surface: the retired-id remap and
   the recent-exercise query.
 - `tests/test_api.py` — every endpoint, including the validation failure modes.

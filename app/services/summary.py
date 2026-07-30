@@ -11,15 +11,45 @@ muscle takes the whole set, a secondary muscle half of it, so totals are
 fractional (see :data:`app.exercises.PRIMARY_WEIGHT`). Movements outside
 :data:`app.exercises.VOLUME_CATEGORIES` — stretches, cardio, plyometrics —
 contribute nothing and never mark a group worked.
+
+Six groups also break down into **regions** (see :data:`app.exercises.MUSCLE_REGIONS`).
+Regions are graded differently — which is to say, not at all. They carry no
+target, no state and no intensity, because no study has established how many
+weekly sets a muscle *head* needs. They report where a group's volume landed and
+whether a region was left out, which is a statement of fact rather than a
+prescription. See docs/VOLUME_SCIENCE.md.
 """
 
 from __future__ import annotations
 
 from datetime import date
 
-from ..exercises import MUSCLE_GROUPS, MUSCLE_LABELS, get_exercise, target_for
+from ..exercises import (
+    MUSCLE_GROUPS,
+    MUSCLE_LABELS,
+    REGION_LABELS,
+    get_exercise,
+    regions_for,
+    regions_of,
+    target_for,
+)
 from ..models import WorkoutEntry, list_entries
 from .weeks import week_bounds, week_days
+
+
+#: Share of a group's attributed volume below which a region reads as left out.
+#:
+#: **This is a judgement, not a finding**, and one of only two invented numbers
+#: in the region feature. An even split across three delt heads is 33% and across
+#: two chest regions 50%, so 15% is well clear of "merely less" in either case.
+REGION_NEGLECT_SHARE = 0.15
+
+#: A group must have had this much volume before a thin region means anything.
+#:
+#: Set to the approximate floor at which a muscle responds to training at all
+#: (Pelland et al. 2025), so a group that was barely trained is reported as
+#: barely trained rather than as three separate imbalances.
+REGION_NEGLECT_MIN_PARENT_SETS = 4.0
 
 
 def overshoot_span(target: int) -> int:
@@ -74,6 +104,17 @@ def summarise_entries(entries: list[WorkoutEntry]) -> dict[str, dict]:
             "state": "rest",
             "intensity": 0.0,
             "exercises": [],
+            "regions": [
+                {
+                    "region": region,
+                    "label": REGION_LABELS[region],
+                    "sets": 0.0,
+                    "share": 0.0,
+                    "neglected": False,
+                }
+                for region in regions_of(muscle)
+            ],
+            "region_sets": 0.0,
         }
         for muscle in MUSCLE_GROUPS
     }
@@ -87,10 +128,24 @@ def summarise_entries(entries: list[WorkoutEntry]) -> dict[str, dict]:
             bucket = summary.get(muscle)
             if bucket is None:  # pragma: no cover - guards future exercise data
                 continue
-            bucket["sets"] += entry.sets * exercise.weight_for(muscle)
+            weighted = entry.sets * exercise.weight_for(muscle)
+            bucket["sets"] += weighted
             bucket["worked"] = True
             if entry.exercise_name not in bucket["exercises"]:
                 bucket["exercises"].append(entry.exercise_name)
+
+            # A movement with no defensible emphasis inside the group — a
+            # deadlift for the back — leaves this volume unattributed rather
+            # than spreading it over regions it says nothing about. Movements
+            # emphasising two regions split evenly between them.
+            emphasised = regions_for(exercise.id, muscle)
+            if not emphasised:
+                continue
+            per_region = weighted / len(emphasised)
+            for region in bucket["regions"]:
+                if region["region"] in emphasised:
+                    region["sets"] += per_region
+                    bucket["region_sets"] += per_region
 
     for bucket in summary.values():
         # Half-set weights land on .5 exactly, but round anyway so float error
@@ -98,8 +153,30 @@ def summarise_entries(entries: list[WorkoutEntry]) -> dict[str, dict]:
         bucket["sets"] = round(bucket["sets"], 1)
         bucket["over"] = round(max(0.0, bucket["sets"] - bucket["target"]), 1)
         bucket["state"], bucket["intensity"] = grade(bucket["sets"], bucket["target"])
+        _finish_regions(bucket)
 
     return summary
+
+
+def _finish_regions(bucket: dict) -> None:
+    """Fill in each region's share of its group, and whether it was left out.
+
+    Shares are of the volume that could be *attributed* to a region, not of the
+    group's total — so a week of deadlifts and pulldowns reports the lats' share
+    of the pulldowns, and ``region_sets`` says how much of the back's volume that
+    was. Reporting a share of the total instead would silently blame the deadlift
+    for neglecting the mid back.
+    """
+    attributed = bucket["region_sets"]
+    bucket["region_sets"] = round(attributed, 1)
+
+    for region in bucket["regions"]:
+        region["sets"] = round(region["sets"], 1)
+        region["share"] = round(region["sets"] / attributed, 3) if attributed else 0.0
+        region["neglected"] = (
+            attributed >= REGION_NEGLECT_MIN_PARENT_SETS
+            and region["share"] < REGION_NEGLECT_SHARE
+        )
 
 
 def weekly_summary(day: date, week_starts_on: int = 1) -> dict:
@@ -123,6 +200,14 @@ def weekly_summary(day: date, week_starts_on: int = 1) -> dict:
         "muscles_worked": [m for m in MUSCLE_GROUPS if muscles[m]["worked"]],
         "muscles_at_target": [m for m in MUSCLE_GROUPS if muscles[m]["sets"] >= muscles[m]["target"]],
         "muscles_over": [m for m in MUSCLE_GROUPS if muscles[m]["state"] == "over"],
+        # Flat list so the page can say "two regions were left out" without
+        # walking every group. Order follows MUSCLE_GROUPS, then region order.
+        "regions_neglected": [
+            {"muscle": m, "region": r["region"], "label": r["label"]}
+            for m in MUSCLE_GROUPS
+            for r in muscles[m]["regions"]
+            if r["neglected"]
+        ],
         "sets_per_day": per_day,
         "entries": [entry.to_dict() for entry in entries],
     }

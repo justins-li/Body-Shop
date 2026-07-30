@@ -59,6 +59,99 @@ MUSCLE_LABELS: dict[str, str] = {
 }
 
 
+@dataclass(frozen=True)
+class MuscleBucket:
+    """One heading in a grouped breakdown, and the groups filed under it."""
+
+    key: str
+    label: str
+    muscles: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MuscleScheme:
+    """A way of grouping the twelve muscle groups for reading a week back.
+
+    Twelve rows is an inventory, not a summary — nobody trains "forearms" as a
+    decision. Lifters think in sessions, so the weekly breakdown offers the
+    splits they actually plan in, and a scheme is only a *view*: the same
+    weighted set counts, re-headed. No bucket has a target, since a "push
+    target" would be a number nobody has studied.
+    """
+
+    key: str
+    label: str
+    #: One line under the selector saying what the split means.
+    note: str
+    buckets: tuple[MuscleBucket, ...]
+
+    @property
+    def muscles(self) -> tuple[str, ...]:
+        """Every group the scheme files, in display order."""
+        return tuple(m for bucket in self.buckets for m in bucket.muscles)
+
+
+#: Ways to group the breakdown on /summary, in the order the selector offers them.
+#:
+#: Every scheme must partition :data:`MUSCLE_GROUPS` exactly — a scheme that
+#: dropped a group would hide volume the user logged, so it is checked at import.
+MUSCLE_SCHEMES: tuple[MuscleScheme, ...] = (
+    MuscleScheme(
+        key="push_pull_legs",
+        label="Push · Pull · Legs",
+        note="The way most people plan sessions. Core sits outside the three.",
+        buckets=(
+            MuscleBucket("push", "Push", ("chest", "shoulders", "triceps")),
+            MuscleBucket("pull", "Pull", ("back", "traps", "biceps", "forearms")),
+            MuscleBucket("legs", "Legs", ("quads", "hamstrings", "glutes", "calves")),
+            MuscleBucket("core", "Core", ("abs",)),
+        ),
+    ),
+    MuscleScheme(
+        key="upper_lower",
+        label="Upper · Lower",
+        note="Two sessions rather than three, so pushing and pulling sit together.",
+        buckets=(
+            MuscleBucket(
+                "upper",
+                "Upper body",
+                ("chest", "back", "shoulders", "traps", "biceps", "triceps", "forearms"),
+            ),
+            MuscleBucket(
+                "lower", "Lower body", ("quads", "hamstrings", "glutes", "calves")
+            ),
+            MuscleBucket("trunk", "Core", ("abs",)),
+        ),
+    ),
+    MuscleScheme(
+        key="body_map",
+        label="Front · Back",
+        note="The same split as the two figures above, so the list reads like the map.",
+        buckets=(
+            MuscleBucket(
+                "front",
+                "Front",
+                ("chest", "abs", "shoulders", "biceps", "forearms", "quads"),
+            ),
+            MuscleBucket(
+                "back_view",
+                "Back",
+                ("back", "traps", "triceps", "glutes", "hamstrings", "calves"),
+            ),
+        ),
+    ),
+    MuscleScheme(
+        key="all",
+        label="Every group",
+        note="All twelve, in body-map order.",
+        buckets=(MuscleBucket("every", "Muscle groups", MUSCLE_GROUPS),),
+    ),
+)
+
+#: The scheme the summary page opens on for someone with no stored preference.
+DEFAULT_MUSCLE_SCHEME = "push_pull_legs"
+
+
 #: Weekly set target for a large muscle group.
 LARGE_MUSCLE_TARGET = 20
 
@@ -89,6 +182,11 @@ MUSCLE_TARGETS: dict[str, int] = {
 #: Secondary muscles take real but lesser stimulus, and counting them at full
 #: weight would inflate every accessory group — pressing alone would fill the
 #: triceps target twice over.
+#:
+#: **This is the best-evidenced number in the app.** Pelland et al. (2025) tested
+#: counting indirect sets at 1.0, 0.5 and 0.0 across 67 studies, and the 0.5
+#: "fractional" method fit the data best. See docs/VOLUME_SCIENCE.md before
+#: replacing it with a flat count or with per-exercise coefficients.
 PRIMARY_WEIGHT = 1.0
 SECONDARY_WEIGHT = 0.5
 
@@ -103,7 +201,434 @@ VOLUME_CATEGORIES: frozenset[str] = frozenset(
 )
 
 
+#: Regions within a muscle group that are worth tracking *separately*, and the
+#: movements that emphasise each.
+#:
+#: Growth within a muscle is non-uniform and follows exercise selection, which is
+#: well established. What is **not** established — anywhere, for any muscle — is
+#: how many weekly sets a region needs: nobody has run that experiment. So a
+#: region carries no target, no colour and no grade. It reports how much of its
+#: parent's volume it received, and whether it was left out. See
+#: docs/VOLUME_SCIENCE.md for the evidence behind each subdivision and the rules
+#: this obeys.
+#:
+#: Only six groups are subdivided, the ones where the evidence is at least
+#: moderate *and* the movement-to-region mapping is clean. Biceps heads and
+#: "upper vs. lower abs" are deliberately absent: EMG, not hypertrophy data.
+MUSCLE_REGIONS: dict[str, tuple[str, ...]] = {
+    "chest": ("chest_upper", "chest_mid_lower"),
+    "shoulders": ("delt_front", "delt_side", "delt_rear"),
+    "back": ("lats", "mid_back"),
+    "triceps": ("triceps_long", "triceps_lateral_medial"),
+    "hamstrings": ("hams_knee", "hams_hip"),
+    "calves": ("gastrocnemius", "soleus"),
+}
+
+#: Region slug → the parent muscle group it belongs to.
+REGION_PARENTS: dict[str, str] = {
+    region: muscle for muscle, regions in MUSCLE_REGIONS.items() for region in regions
+}
+
+#: Short labels. Anatomical where a lifter would use the anatomical name, plain
+#: where they would not.
+REGION_LABELS: dict[str, str] = {
+    "chest_upper": "Upper chest",
+    "chest_mid_lower": "Mid and lower chest",
+    "delt_front": "Front delt",
+    "delt_side": "Side delt",
+    "delt_rear": "Rear delt",
+    "lats": "Lats",
+    "mid_back": "Mid back",
+    "triceps_long": "Long head",
+    "triceps_lateral_medial": "Lateral and medial heads",
+    "hams_knee": "Knee flexion",
+    "hams_hip": "Hip extension",
+    "gastrocnemius": "Gastrocnemius",
+    "soleus": "Soleus",
+}
+
+#: Region → the movements whose emphasis on it is defensible.
+#:
+#: **Attribution is deliberately partial.** A deadlift trains the back without
+#: saying anything about lats versus mid back, so it appears under neither, and
+#: the weekly summary reports how much of a group's volume it could attribute.
+#: Partial coverage stated honestly beats full coverage invented.
+#:
+#: Two asymmetries worth knowing, both argued in docs/VOLUME_SCIENCE.md:
+#:
+#: * Pressing **does** count toward the front delt — that is where most
+#:   front-delt volume actually comes from, and showing it is the point.
+#: * Pressing does **not** count toward a triceps region. The long-head evidence
+#:   is about elbow position in isolation work, so only direct work is attributed.
+EXERCISE_REGIONS: dict[str, tuple[str, ...]] = {
+    "chest_upper": (
+        "Barbell_Incline_Bench_Press_-_Medium_Grip",
+        "Incline_Dumbbell_Press",
+        "Incline_Dumbbell_Flyes",
+        "Incline_Dumbbell_Flyes_-_With_A_Twist",
+        "Incline_Cable_Flye",
+        "Hammer_Grip_Incline_DB_Bench_Press",
+        "Leverage_Incline_Chest_Press",
+        "Incline_Cable_Chest_Press",
+        "Low_Cable_Crossover",
+        "Smith_Machine_Incline_Bench_Press",
+    ),
+    "chest_mid_lower": (
+        "Barbell_Bench_Press_-_Medium_Grip",
+        "Bench_Press_-_Powerlifting",
+        "Dumbbell_Bench_Press",
+        "Dumbbell_Bench_Press_with_Neutral_Grip",
+        "Machine_Bench_Press",
+        "Leverage_Chest_Press",
+        "Cable_Chest_Press",
+        "Butterfly",
+        "Dumbbell_Flyes",
+        "Cable_Crossover",
+        "Flat_Bench_Cable_Flyes",
+        "Pushups",
+        "Push-Up_Wide",
+        "Dips_-_Chest_Version",
+        "Decline_Barbell_Bench_Press",
+        "Decline_Dumbbell_Bench_Press",
+        "Decline_Dumbbell_Flyes",
+    ),
+    "delt_front": (
+        # Direct: overhead pressing and front raises.
+        "Standing_Military_Press",
+        "Seated_Barbell_Military_Press",
+        "Barbell_Shoulder_Press",
+        "Dumbbell_Shoulder_Press",
+        "Arnold_Dumbbell_Press",
+        "Machine_Shoulder_Military_Press",
+        "Front_Dumbbell_Raise",
+        "Push_Press",
+        "Kettlebell_Thruster",
+        "Clean_and_Press",
+        # Indirect, and the reason this readout exists: horizontal pressing is
+        # where most lifters' front-delt volume comes from.
+        "Barbell_Bench_Press_-_Medium_Grip",
+        "Barbell_Incline_Bench_Press_-_Medium_Grip",
+        "Dumbbell_Bench_Press",
+        "Incline_Dumbbell_Press",
+        "Machine_Bench_Press",
+        "Leverage_Chest_Press",
+        "Decline_Barbell_Bench_Press",
+        "Close-Grip_Barbell_Bench_Press",
+        "Pushups",
+        "Dips_-_Chest_Version",
+        "Dips_-_Triceps_Version",
+        "Bench_Dips",
+        "Cable_Crossover",
+        "Incline_Dumbbell_Flyes",
+    ),
+    "delt_side": (
+        "Side_Lateral_Raise",
+        "Seated_Side_Lateral_Raise",
+        "Cable_Seated_Lateral_Raise",
+        "One-Arm_Incline_Lateral_Raise",
+        "Lying_One-Arm_Lateral_Raise",
+        "Lateral_Raise_-_With_Bands",
+        "Upright_Barbell_Row",
+        "Upright_Cable_Row",
+        "Standing_Dumbbell_Upright_Row",
+        "Alternating_Deltoid_Raise",
+        "Dumbbell_Raise",
+    ),
+    "delt_rear": (
+        # Direct rear-delt work.
+        "Face_Pull",
+        "Reverse_Flyes",
+        "Reverse_Flyes_With_External_Rotation",
+        "Reverse_Machine_Flyes",
+        "Cable_Rear_Delt_Fly",
+        "Cable_Rope_Rear-Delt_Rows",
+        "Barbell_Rear_Delt_Row",
+        "Dumbbell_Lying_Rear_Lateral_Raise",
+        "Dumbbell_Lying_One-Arm_Rear_Lateral_Raise",
+        "Bent_Over_Dumbbell_Rear_Delt_Raise_With_Head_On_Bench",
+        # Horizontal rowing, which is why many lifters need no direct work.
+        "Bent_Over_Barbell_Row",
+        "One-Arm_Dumbbell_Row",
+        "Seated_Cable_Rows",
+        "Bent_Over_Two-Dumbbell_Row",
+    ),
+    "lats": (
+        "Pullups",
+        "Chin-Up",
+        "Wide-Grip_Rear_Pull-Up",
+        "V-Bar_Pullup",
+        "Wide-Grip_Lat_Pulldown",
+        "Close-Grip_Front_Lat_Pulldown",
+        "V-Bar_Pulldown",
+        "Underhand_Cable_Pulldowns",
+        "One_Arm_Lat_Pulldown",
+        "Full_Range-Of-Motion_Lat_Pulldown",
+        "Straight-Arm_Pulldown",
+        "Rope_Straight-Arm_Pulldown",
+    ),
+    "mid_back": (
+        "Bent_Over_Barbell_Row",
+        "Bent_Over_Two-Dumbbell_Row",
+        "Bent_Over_Two-Arm_Long_Bar_Row",
+        "One-Arm_Dumbbell_Row",
+        "Seated_Cable_Rows",
+        "T-Bar_Row_with_Handle",
+        "Lying_T-Bar_Row",
+        "Dumbbell_Incline_Row",
+        "Face_Pull",
+        "Seated_One-arm_Cable_Pulley_Rows",
+    ),
+    "triceps_long": (
+        "Cable_Rope_Overhead_Triceps_Extension",
+        "Triceps_Overhead_Extension_with_Rope",
+        "Dumbbell_One-Arm_Triceps_Extension",
+        "Dumbbell_Tricep_Extension_-Pronated_Grip",
+        "Standing_Dumbbell_Triceps_Extension",
+        "Seated_Triceps_Press",
+        "EZ-Bar_Skullcrusher",
+        "Incline_Barbell_Triceps_Extension",
+        "Cable_Incline_Triceps_Extension",
+        "Cable_Lying_Triceps_Extension",
+        "Decline_EZ_Bar_Triceps_Extension",
+        "Decline_Dumbbell_Triceps_Extension",
+        "Lying_Triceps_Press",
+    ),
+    "triceps_lateral_medial": (
+        "Triceps_Pushdown",
+        "Triceps_Pushdown_-_Rope_Attachment",
+        "Triceps_Pushdown_-_V-Bar_Attachment",
+        "Reverse_Grip_Triceps_Pushdown",
+        "Cable_One_Arm_Tricep_Extension",
+        "Tricep_Dumbbell_Kickback",
+        "Dips_-_Triceps_Version",
+        "Parallel_Bar_Dip",
+        "Bench_Dips",
+        "Weighted_Bench_Dip",
+        "Close-Grip_Barbell_Bench_Press",
+        "Body_Tricep_Press",
+        "Push-Ups_-_Close_Triceps_Position",
+    ),
+    "hams_knee": (
+        "Lying_Leg_Curls",
+        "Seated_Leg_Curl",
+        "Standing_Leg_Curl",
+        "Ball_Leg_Curl",
+        "Glute_Ham_Raise",
+        "Natural_Glute_Ham_Raise",
+        "Floor_Glute-Ham_Raise",
+    ),
+    "hams_hip": (
+        "Romanian_Deadlift",
+        "Romanian_Deadlift_from_Deficit",
+        "Stiff-Legged_Barbell_Deadlift",
+        "Stiff-Legged_Dumbbell_Deadlift",
+        "Barbell_Deadlift",
+        "Deficit_Deadlift",
+        "Snatch_Deadlift",
+        "Clean_Deadlift",
+        "Good_Morning",
+        "Stiff_Leg_Barbell_Good_Morning",
+        "Pull_Through",
+        "Barbell_Hip_Thrust",
+        "Barbell_Glute_Bridge",
+        "Single_Leg_Glute_Bridge",
+        "One-Arm_Kettlebell_Swings",
+        "Kettlebell_One-Legged_Deadlift",
+        "Hyperextensions_Back_Extensions",
+    ),
+    "gastrocnemius": (
+        "Standing_Calf_Raises",
+        "Standing_Barbell_Calf_Raise",
+        "Standing_Dumbbell_Calf_Raise",
+        "Rocking_Standing_Calf_Raise",
+        "Calf_Raise_On_A_Dumbbell",
+        "Calf_Raises_-_With_Bands",
+        "Smith_Machine_Calf_Raise",
+        "Donkey_Calf_Raises",
+        "Calf_Press_On_The_Leg_Press_Machine",
+    ),
+    "soleus": (
+        "Seated_Calf_Raise",
+        "Barbell_Seated_Calf_Raise",
+        "Dumbbell_Seated_One-Leg_Calf_Raise",
+    ),
+}
+
+
 CATALOG_PATH = Path(__file__).parent / "data" / "exercises.json"
+
+
+#: The movements most lifters actually program, most common first.
+#:
+#: free-exercise-db carries **no popularity signal** — only ``equipment``,
+#: ``category``, ``level``, ``force`` and ``mechanic`` — so "common lifts first"
+#: has to be asserted somewhere, and alphabetical order is actively hostile at
+#: 873 rows: browsing chest led with "Alternating Floor Press" and "Around The
+#: Worlds" while the bench press sat mid-list and pushups fell past the row cap
+#: entirely.
+#:
+#: This lives in code, not in ``exercises.json``, on purpose. The JSON is
+#: generated from a pinned upstream commit and is never hand-edited (see
+#: ``tools/build_exercise_catalog.py``); a ranking is *our* editorial judgement
+#: about lifters, not a fact about the source data, and putting it here means
+#: revising it does not mean regenerating the catalog. Order within the tuple is
+#: the ranking — index 0 outranks index 1 — and every id is checked against the
+#: catalog at import, so a rename upstream fails loudly instead of silently
+#: demoting a staple.
+STAPLE_EXERCISE_IDS: tuple[str, ...] = (
+    # The barbell core: the lifts a beginner's programme is built out of.
+    "Barbell_Bench_Press_-_Medium_Grip",
+    "Barbell_Squat",
+    "Barbell_Deadlift",
+    "Standing_Military_Press",
+    "Bent_Over_Barbell_Row",
+    "Pullups",
+    "Romanian_Deadlift",
+    "Barbell_Incline_Bench_Press_-_Medium_Grip",
+    "Front_Squat_Clean_Grip",
+    "Chin-Up",
+    "Dips_-_Triceps_Version",
+    "Pushups",
+    # Dumbbell, cable and machine mainstays for the upper body.
+    "Dumbbell_Bench_Press",
+    "Incline_Dumbbell_Press",
+    "Dumbbell_Shoulder_Press",
+    "Arnold_Dumbbell_Press",
+    "One-Arm_Dumbbell_Row",
+    "Seated_Cable_Rows",
+    "Wide-Grip_Lat_Pulldown",
+    "Close-Grip_Front_Lat_Pulldown",
+    "Bent_Over_Two-Dumbbell_Row",
+    "T-Bar_Row_with_Handle",
+    "Barbell_Shoulder_Press",
+    "Seated_Barbell_Military_Press",
+    "Machine_Shoulder_Military_Press",
+    "Machine_Bench_Press",
+    "Leverage_Chest_Press",
+    "Cable_Crossover",
+    "Dumbbell_Flyes",
+    "Incline_Dumbbell_Flyes",
+    "Butterfly",
+    "Decline_Barbell_Bench_Press",
+    "Close-Grip_Barbell_Bench_Press",
+    "Dips_-_Chest_Version",
+    "Straight-Arm_Pulldown",
+    "V-Bar_Pulldown",
+    # Legs, hips and calves.
+    "Leg_Press",
+    "Leg_Extensions",
+    "Lying_Leg_Curls",
+    "Seated_Leg_Curl",
+    "Dumbbell_Lunges",
+    "Barbell_Lunge",
+    "Barbell_Walking_Lunge",
+    "Split_Squat_with_Dumbbells",
+    "Goblet_Squat",
+    "Dumbbell_Squat",
+    "Bodyweight_Squat",
+    "Hack_Squat",
+    "Smith_Machine_Squat",
+    "Barbell_Full_Squat",
+    "Box_Squat",
+    "Stiff-Legged_Barbell_Deadlift",
+    "Barbell_Hip_Thrust",
+    "Barbell_Glute_Bridge",
+    "Single_Leg_Glute_Bridge",
+    "Glute_Ham_Raise",
+    "Good_Morning",
+    "Hyperextensions_Back_Extensions",
+    "Pull_Through",
+    "Glute_Kickback",
+    "One-Legged_Cable_Kickback",
+    "Step-up_with_Knee_Raise",
+    "Standing_Calf_Raises",
+    "Seated_Calf_Raise",
+    "Standing_Barbell_Calf_Raise",
+    "Standing_Dumbbell_Calf_Raise",
+    "Calf_Press_On_The_Leg_Press_Machine",
+    "Donkey_Calf_Raises",
+    # Arms.
+    "Barbell_Curl",
+    "Hammer_Curls",
+    "Incline_Hammer_Curls",
+    "Preacher_Curl",
+    "Concentration_Curls",
+    "Cable_Hammer_Curls_-_Rope_Attachment",
+    "Cable_Preacher_Curl",
+    "Alternate_Incline_Dumbbell_Curl",
+    "Close-Grip_EZ_Bar_Curl",
+    "Standing_Dumbbell_Reverse_Curl",
+    "Triceps_Pushdown",
+    "Triceps_Pushdown_-_Rope_Attachment",
+    "EZ-Bar_Skullcrusher",
+    "Cable_Rope_Overhead_Triceps_Extension",
+    "Dumbbell_One-Arm_Triceps_Extension",
+    "Tricep_Dumbbell_Kickback",
+    "Bench_Dips",
+    # Delts, traps and forearms.
+    "Side_Lateral_Raise",
+    "Seated_Side_Lateral_Raise",
+    "Front_Dumbbell_Raise",
+    "Face_Pull",
+    "Reverse_Flyes",
+    "Cable_Rear_Delt_Fly",
+    "Upright_Barbell_Row",
+    "Barbell_Shrug",
+    "Dumbbell_Shrug",
+    "Cable_Shrugs",
+    "Farmers_Walk",
+    "Wrist_Roller",
+    "Palms-Up_Barbell_Wrist_Curl_Over_A_Bench",
+    "Palms-Down_Wrist_Curl_Over_A_Bench",
+    # Abs.
+    "Crunches",
+    "Sit-Up",
+    "Plank",
+    "Hanging_Leg_Raise",
+    "Cable_Crunch",
+    "Russian_Twist",
+    "Ab_Crunch_Machine",
+    "Air_Bike",
+    "Decline_Crunch",
+    "Cross-Body_Crunch",
+    "Leg_Pull-In",
+    "Side_Bridge",
+    "Mountain_Climbers",
+    # Olympic and kettlebell work: common in the gym, rarer in a log.
+    "Clean_and_Jerk",
+    "Clean",
+    "Snatch",
+    "Power_Snatch",
+    "Hang_Clean",
+    "Push_Press",
+    "Dumbbell_Clean",
+    "One-Arm_Kettlebell_Swings",
+    "Kettlebell_Thruster",
+)
+
+#: Staple id → its rank, which is simply its position in the tuple above.
+_STAPLE_RANKS: dict[str, int] = {
+    exercise_id: index for index, exercise_id in enumerate(STAPLE_EXERCISE_IDS)
+}
+
+#: Where non-staple ranks begin, leaving the staple list room to grow.
+UNRANKED_RANK_BASE = 1000
+
+#: Equipment a commercial gym has. Everything else — foam rolls, exercise
+#: balls, medicine balls, "other" — sorts behind it.
+COMMON_EQUIPMENT: frozenset[str] = frozenset(
+    {"barbell", "dumbbell", "body only", "none", "cable", "machine", "kettlebells"}
+)
+
+#: Rank penalties for the facets the dataset *does* carry, applied to
+#: non-staples. Small numbers: they order movements within a tier, and must
+#: never let an unusual movement overtake a named staple.
+_MECHANIC_PENALTY: dict[str | None, int] = {"compound": 0, "isolation": 30}
+_LEVEL_PENALTY: dict[str, int] = {"beginner": 0, "intermediate": 15, "expert": 45}
+
+#: Applied to stretches, cardio and plyometrics, which grade as zero volume and
+#: are almost never what someone browsing a muscle group is looking for.
+_NON_VOLUME_PENALTY = 400
 
 
 #: The four hand-written ids this catalog replaced, and their equivalents.
@@ -164,6 +689,33 @@ class Exercise:
         """Whether sets of this movement are graded on the body map."""
         return self.category in VOLUME_CATEGORIES
 
+    @property
+    def rank(self) -> int:
+        """How prominently to offer this movement. **Lower sorts first.**
+
+        Two tiers. A movement named in :data:`STAPLE_EXERCISE_IDS` takes its
+        index there, so the curated order is the ranking. Everything else starts
+        at :data:`UNRANKED_RANK_BASE` and is ordered by the facets the dataset
+        does carry — compound before isolation, gym equipment before exercise
+        balls, beginner before expert, and everything that grades as zero volume
+        last.
+
+        The gap between the tiers is deliberate: no combination of facets can
+        lift an unranked movement above a staple.
+        """
+        staple = _STAPLE_RANKS.get(self.id)
+        if staple is not None:
+            return staple
+
+        rank = UNRANKED_RANK_BASE
+        if not self.counts_toward_volume:
+            rank += _NON_VOLUME_PENALTY
+        rank += _MECHANIC_PENALTY.get(self.mechanic, 60)
+        rank += _LEVEL_PENALTY.get(self.level, 15)
+        if self.equipment not in COMMON_EQUIPMENT:
+            rank += 120
+        return rank
+
     def weight_for(self, muscle: str) -> float:
         """Return this movement's volume weight for ``muscle``.
 
@@ -197,6 +749,7 @@ class Exercise:
             "force": self.force,
             "mechanic": self.mechanic,
             "counts_toward_volume": self.counts_toward_volume,
+            "rank": self.rank,
         }
 
     def to_detail_dict(self, image_base: str = "") -> dict:
@@ -260,7 +813,88 @@ def _load_catalog(path: Path = CATALOG_PATH) -> dict[str, Exercise]:
 
         catalog[exercise.id] = exercise
 
+    # A staple id that no longer resolves would silently demote a common lift to
+    # the bottom of every browse list, which is exactly the failure this ranking
+    # exists to prevent — so it is an import-time error, not a shrug.
+    unknown_staples = [i for i in STAPLE_EXERCISE_IDS if i not in catalog]
+    if unknown_staples:
+        raise CatalogError(
+            f"STAPLE_EXERCISE_IDS names ids not in the catalog: {unknown_staples}. "
+            "The upstream pin probably renamed them; fix the list in exercises.py."
+        )
+    if len(_STAPLE_RANKS) != len(STAPLE_EXERCISE_IDS):
+        raise CatalogError("STAPLE_EXERCISE_IDS contains duplicates.")
+
+    _check_regions(catalog)
+    _check_schemes()
+
     return catalog
+
+
+def _check_schemes() -> None:
+    """Every grouping scheme must file all twelve groups, each exactly once.
+
+    A scheme that dropped a group would hide volume the user logged, and one
+    that repeated a group would count it twice in the bucket totals — both are
+    silent in the UI, so they fail at import instead.
+    """
+    keys = [scheme.key for scheme in MUSCLE_SCHEMES]
+    if len(set(keys)) != len(keys):
+        raise CatalogError(f"Duplicate scheme keys: {keys}.")
+    if DEFAULT_MUSCLE_SCHEME not in keys:
+        raise CatalogError(
+            f"DEFAULT_MUSCLE_SCHEME {DEFAULT_MUSCLE_SCHEME!r} is not a scheme."
+        )
+
+    for scheme in MUSCLE_SCHEMES:
+        filed = scheme.muscles
+        if sorted(filed) != sorted(MUSCLE_GROUPS):
+            missing = sorted(set(MUSCLE_GROUPS) - set(filed))
+            extra = sorted(set(filed) - set(MUSCLE_GROUPS))
+            repeated = sorted({m for m in filed if filed.count(m) > 1})
+            raise CatalogError(
+                f"Scheme {scheme.key!r} does not partition MUSCLE_GROUPS "
+                f"(missing={missing}, unknown={extra}, repeated={repeated})."
+            )
+
+        bucket_keys = [bucket.key for bucket in scheme.buckets]
+        if len(set(bucket_keys)) != len(bucket_keys):
+            raise CatalogError(f"Scheme {scheme.key!r} repeats a bucket key.")
+
+
+def _check_regions(catalog: dict[str, Exercise]) -> None:
+    """Validate the region vocabulary and its exercise mapping.
+
+    The third check is the one that matters: a movement may only be attributed
+    to a region whose **parent muscle it actually trains**. Attributing a squat
+    to the rear delt would put a number on the summary page that no amount of
+    later reasoning could justify.
+    """
+    unknown_regions = set(EXERCISE_REGIONS) - set(REGION_PARENTS)
+    if unknown_regions:
+        raise CatalogError(
+            f"EXERCISE_REGIONS names regions absent from MUSCLE_REGIONS: "
+            f"{sorted(unknown_regions)}."
+        )
+
+    missing_labels = set(REGION_PARENTS) - set(REGION_LABELS)
+    if missing_labels:
+        raise CatalogError(f"Regions with no label: {sorted(missing_labels)}.")
+
+    for region, exercise_ids in EXERCISE_REGIONS.items():
+        parent = REGION_PARENTS[region]
+        for exercise_id in exercise_ids:
+            exercise = catalog.get(exercise_id)
+            if exercise is None:
+                raise CatalogError(
+                    f"{region!r} is mapped to {exercise_id!r}, which is not in the "
+                    "catalog. The upstream pin probably renamed it."
+                )
+            if parent not in exercise.muscles:
+                raise CatalogError(
+                    f"{exercise_id!r} is mapped to region {region!r}, but it does not "
+                    f"train {parent!r} at all."
+                )
 
 
 #: The exercises a user may log, keyed by id and ordered by name.
@@ -271,6 +905,21 @@ EQUIPMENT: tuple[str, ...] = tuple(sorted({e.equipment for e in EXERCISES.values
 
 #: Every distinct category value, ditto.
 CATEGORIES: tuple[str, ...] = tuple(sorted({e.category for e in EXERCISES.values()}))
+
+
+def _index_regions() -> dict[str, tuple[str, ...]]:
+    """Invert :data:`EXERCISE_REGIONS` into exercise id → the regions it emphasises."""
+    index: dict[str, list[str]] = {}
+    for region, exercise_ids in EXERCISE_REGIONS.items():
+        for exercise_id in exercise_ids:
+            index.setdefault(exercise_id, []).append(region)
+    return {
+        exercise_id: tuple(regions) for exercise_id, regions in index.items()
+    }
+
+
+#: Exercise id → every region it emphasises, across all parent muscles.
+_REGIONS_BY_EXERCISE: dict[str, tuple[str, ...]] = _index_regions()
 
 
 def target_for(muscle: str) -> int:
@@ -286,6 +935,41 @@ def all_exercises() -> list[Exercise]:
 def get_exercise(exercise_id: str) -> Exercise | None:
     """Return the exercise with ``exercise_id``, or ``None`` if unknown."""
     return EXERCISES.get(exercise_id)
+
+
+def scheme_map() -> dict[str, list[dict]]:
+    """Return the grouping schemes as plain data, for the summary page's JS.
+
+    Shaped for the front end rather than for Python: ``{scheme_key: [{key,
+    label, muscles}, ...]}``. The page reorders its rows against this, so the
+    definition stays here — one place — rather than being duplicated in JS.
+    """
+    return {
+        scheme.key: [
+            {"key": bucket.key, "label": bucket.label, "muscles": list(bucket.muscles)}
+            for bucket in scheme.buckets
+        ]
+        for scheme in MUSCLE_SCHEMES
+    }
+
+
+def regions_of(muscle: str) -> tuple[str, ...]:
+    """Return the tracked regions of ``muscle``, or ``()`` if it is not subdivided."""
+    return MUSCLE_REGIONS.get(muscle, ())
+
+
+def regions_for(exercise_id: str, muscle: str) -> tuple[str, ...]:
+    """Return the regions of ``muscle`` that ``exercise_id`` emphasises.
+
+    Empty when the muscle is not subdivided, or when the movement's emphasis
+    within it is not defensible — a deadlift trains the back without telling us
+    anything about lats versus mid back. Callers must treat that as *unattributed
+    volume*, not as zero.
+    """
+    tracked = set(MUSCLE_REGIONS.get(muscle, ()))
+    if not tracked:
+        return ()
+    return tuple(r for r in _REGIONS_BY_EXERCISE.get(exercise_id, ()) if r in tracked)
 
 
 def muscles_for(exercise_ids: Iterable[str]) -> set[str]:

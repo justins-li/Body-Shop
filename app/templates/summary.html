@@ -9,7 +9,8 @@
   <h1 class="type-display text-[clamp(2rem,5vw,3.25rem)] mb-5">Muscle coverage</h1>
   <p class="type-lede">
     Groups deepen from pale to dark green as they work towards their weekly set
-    target, then turn red for every set past it.
+    target, then turn red for every set past it — so a balanced week reads as an
+    evenly shaded body, with nothing left pale and nothing pushed into the red.
   </p>
 </div>
 
@@ -52,9 +53,45 @@
 
     <section class="card bg-base-100 border hairline" aria-labelledby="breakdown-heading">
       <div class="card-body gap-6 sm:p-7">
-        <h2 id="breakdown-heading" class="type-display text-lg m-0">Sets by muscle group</h2>
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 mb-1.5">
+            <h2 id="breakdown-heading" class="type-display text-lg m-0">Sets by split</h2>
+            {#
+              A view, not a filter. Every scheme files all twelve groups — the
+              headings change, the numbers do not. Rendered as a plain <select>
+              so it works before summary.js runs and needs no ARIA of its own.
+            #}
+            <label class="sr-only" for="scheme-select">Group muscles by</label>
+            <select id="scheme-select"
+                    class="select select-sm w-auto bg-base-200 border hairline text-xs">
+              {% for scheme in muscle_schemes %}
+                <option value="{{ scheme.key }}" data-note="{{ scheme.note }}"
+                        {{ 'selected' if scheme.key == default_scheme else '' }}>
+                  {{ scheme.label }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <p class="type-label text-secondary m-0" id="scheme-note">&nbsp;</p>
+        </div>
 
-        <ul class="list-none m-0 p-0 grid gap-3.5" id="muscle-list">
+        {#
+          One row per muscle group, plus one heading per bucket of every scheme.
+          `summary.js` hides the headings that do not belong to the chosen scheme
+          and re-orders the list into it — moving the nodes rather than styling
+          an order, so what a screen reader hears matches what is on screen.
+        #}
+        <ul class="list-none m-0 p-0 flex flex-col gap-3.5" id="muscle-list">
+          {% for scheme in muscle_schemes %}
+            {% for bucket in scheme.buckets %}
+          <li class="muscle-bucket" data-scheme="{{ scheme.key }}"
+              data-bucket="{{ bucket.key }}" hidden>
+            <span class="type-label">{{ bucket.label }}</span>
+            <span class="muscle-bucket-sets type-label text-secondary tabular-nums"></span>
+          </li>
+            {% endfor %}
+          {% endfor %}
+
           {% for muscle in muscle_groups %}
           <li class="muscle-row text-sm" data-muscle="{{ muscle }}">
             <span class="font-semibold tracking-tight">{{ muscle_labels[muscle] }}</span>
@@ -75,12 +112,64 @@
       </div>
     </section>
   </div>
+
+  {#
+    Inside a muscle. Six groups split into regions that respond to different
+    movements (docs/VOLUME_SCIENCE.md); the other six do not, and are absent
+    rather than guessed at.
+
+    Regions carry no target and never take the volume ramp's colours — there is
+    no evidence for a per-region number, so this is a distribution, not a score.
+    `summary.js` fills the bars; the skeleton is server-rendered like the
+    breakdown list above it.
+  #}
+  <section class="card bg-base-100 border hairline mt-6" aria-labelledby="regions-heading">
+    <div class="card-body gap-6 sm:p-7">
+      <div>
+        <h2 id="regions-heading" class="type-display text-lg m-0 mb-2.5">Inside the muscle</h2>
+        <p class="type-lede text-sm">
+          Some muscles answer to more than one movement. Spreading a group's sets
+          across its regions is what keeps the week balanced — one region carrying
+          everything while another is skipped is how a weak link forms, and it is
+          invisible in a total.
+        </p>
+      </div>
+
+      <ul class="list-none m-0 p-0 grid gap-6 sm:grid-cols-2" id="region-list">
+        {% for muscle, regions in muscle_regions.items() %}
+        <li class="region-group" data-muscle="{{ muscle }}">
+          <p class="region-group-head m-0">
+            <span class="font-semibold tracking-tight text-sm">{{ muscle_labels[muscle] }}</span>
+            <span class="type-label text-secondary" data-role="basis">&nbsp;</span>
+          </p>
+          {% for region in regions %}
+          <span class="region-bar" data-region="{{ region }}">
+            <span class="region-bar-label">{{ region_labels[region] }}</span>
+            <span class="region-bar-track"><span class="region-bar-fill"></span></span>
+            <span class="region-bar-value tabular-nums"></span>
+          </span>
+          {% endfor %}
+        </li>
+        {% endfor %}
+      </ul>
+
+      <p class="text-sm text-secondary border-t hairline pt-5 m-0 leading-relaxed">
+        Percentages are of the sets that favoured a region. Plenty of movements
+        don't — a deadlift trains the back without telling you lats or mid back —
+        so those sets count for the group above but not for a bar here, which is
+        what "based on 3 of 4.5 sets" means.
+        <span class="text-base-content">No region targets:</span>
+        the useful question is whether the work is spread, not whether a head hit
+        a number.
+      </p>
+    </div>
+  </section>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script type="module">
   import { initSummary } from "{{ url_for('static', filename='js/summary.js') }}";
-  initSummary({{ selected_date.isoformat() | tojson }});
+  initSummary({{ selected_date.isoformat() | tojson }}, {{ scheme_buckets | tojson }});
 </script>
 {% endblock %}

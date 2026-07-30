@@ -34,8 +34,9 @@
     <p class="type-lede mb-10">
       Log the sets you actually finished. Body Shop shades a body map from pale
       green to deep green as each muscle group closes on its weekly target — then
-      red for every set past it. The gaps are the point: you see what you skipped
-      before the week is gone.
+      red for every set past it. The point is staying in range: nothing skipped
+      long enough to become a weak link, nothing hammered while its neighbours
+      go untouched.
     </p>
 
     <div class="flex flex-wrap items-center gap-3">
@@ -67,7 +68,7 @@
     {% for value, label, note in [
       (exercise_count, "Movements", "Every one mapped to the groups it trains"),
       (muscle_groups | length, "Muscle groups", "Split across a front and a back view"),
-      ("20 / 10", "Weekly set targets", "Large groups, then small ones"),
+      (region_labels | length, "Tracked regions", "Inside six groups that answer to different movements"),
     ] %}
       <div class="bg-base-100 px-8 py-10">
         <dd class="type-display text-[clamp(2.25rem,4.5vw,3.25rem)] mb-3">{{ value }}</dd>
@@ -91,10 +92,10 @@
        "Pick a date, choose a movement, enter how many sets you finished. That is the whole entry — no weight, no reps, nothing to maintain.",
        "views.log_page"),
       ("02", "Watch the week fill in",
-       "A set counts once for every group the movement trains, so three sets of bench press credit both chest and triceps.",
+       "A set counts for every group the movement trains — in full for the ones doing the work, half for the ones assisting. Three sets of bench press credit chest three, shoulders and triceps one and a half.",
        "views.summary_page"),
       ("03", "Find the gaps",
-       "Anything still untrained stays neutral on the body map. Glance at it mid-week and you know exactly what is left.",
+       "Anything still untrained stays neutral on the body map, and six groups show which region carried the work — so a shoulder week that was all pressing reads as one.",
        "views.calendar_page"),
     ] %}
       <li class="bg-base-100 px-8 py-10 flex flex-col">
