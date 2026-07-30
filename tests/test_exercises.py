@@ -9,11 +9,14 @@ weighting that the weekly summary reads.
 import pytest
 
 from app.exercises import (
+    EXERCISE_REGIONS,
     EXERCISES,
     MUSCLE_GROUPS,
     MUSCLE_LABELS,
     MUSCLE_TARGETS,
     PRIMARY_WEIGHT,
+    REGION_LABELS,
+    REGION_PARENTS,
     RETIRED_EXERCISE_IDS,
     SECONDARY_WEIGHT,
     VOLUME_CATEGORIES,
@@ -23,6 +26,8 @@ from app.exercises import (
     format_sets,
     get_exercise,
     muscles_for,
+    regions_for,
+    regions_of,
 )
 
 
@@ -176,3 +181,49 @@ def test_browse_order_leads_with_the_obvious_lifts():
 
 def test_light_payload_carries_the_rank_the_picker_sorts_by():
     assert get_exercise("Barbell_Squat").to_dict()["rank"] == 1
+
+
+# ---- Regions ---------------------------------------------------------------
+
+
+def test_every_region_belongs_to_a_real_muscle_group():
+    for region, parent in REGION_PARENTS.items():
+        assert parent in MUSCLE_GROUPS, region
+        assert region in REGION_LABELS
+
+
+def test_a_movement_is_only_attributed_to_a_muscle_it_trains():
+    """The check that keeps invented numbers off the summary page."""
+    for region, exercise_ids in EXERCISE_REGIONS.items():
+        parent = REGION_PARENTS[region]
+        for exercise_id in exercise_ids:
+            exercise = get_exercise(exercise_id)
+            assert exercise is not None, exercise_id
+            assert parent in exercise.muscles, (exercise_id, region)
+
+
+def test_regions_for_is_empty_when_emphasis_is_not_defensible():
+    # A deadlift trains the back, but says nothing about lats vs mid back.
+    assert regions_for("Barbell_Deadlift", "back") == ()
+    # Quads are not subdivided at all.
+    assert regions_for("Barbell_Squat", "quads") == ()
+
+
+def test_regions_for_only_returns_regions_of_the_muscle_asked_about():
+    bench = "Barbell_Bench_Press_-_Medium_Grip"
+    assert regions_for(bench, "chest") == ("chest_mid_lower",)
+    assert regions_for(bench, "shoulders") == ("delt_front",)
+    # Pressing is deliberately *not* attributed to a triceps region.
+    assert regions_for(bench, "triceps") == ()
+
+
+def test_every_region_has_at_least_one_movement():
+    """A region nothing maps to would read as permanently neglected."""
+    for region in REGION_PARENTS:
+        assert EXERCISE_REGIONS.get(region), region
+
+
+def test_biceps_and_abs_are_not_subdivided():
+    """Their subdivisions are EMG folklore; see docs/VOLUME_SCIENCE.md."""
+    assert regions_of("biceps") == ()
+    assert regions_of("abs") == ()

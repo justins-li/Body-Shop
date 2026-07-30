@@ -9,6 +9,10 @@
  *
  * Set counts arrive fractional: a movement's primary muscles take the whole
  * set and its secondary muscles half, so `12.5 / 20` is a normal reading.
+ *
+ * The "inside the muscle" panel is the exception to all of the above: regions
+ * are a *distribution*, never a grade. They take no target, no `--level` and
+ * none of the ramp's colours — see `renderRegions` and docs/VOLUME_SCIENCE.md.
  */
 
 import { fetchWeeklySummary } from "./api.js";
@@ -67,6 +71,49 @@ function renderBreakdown(muscles) {
   });
 }
 
+/**
+ * Fill the "inside the muscle" panel: where each subdivided group's work landed.
+ *
+ * Regions are **not** graded. They get no target, no `--level` and none of the
+ * volume ramp's colours, because no evidence establishes how many sets a muscle
+ * head needs (docs/VOLUME_SCIENCE.md). The bar length is the region's share of
+ * the volume the server could place inside the group, and the only judgement
+ * shown is `neglected`, which the server decides.
+ */
+function renderRegions(muscles) {
+  document.querySelectorAll(".region-group").forEach((group) => {
+    const info = muscles[group.dataset.muscle];
+    if (!info) return;
+
+    const attributed = group.querySelector('[data-role="attributed"]');
+    if (!info.worked) {
+      attributed.textContent = "not trained";
+    } else if (!info.region_sets) {
+      // Trained, but by movements with no defensible emphasis inside the group.
+      attributed.textContent = "no placed sets";
+    } else if (info.region_sets < info.sets) {
+      attributed.textContent =
+        `${formatSets(info.region_sets)} of ${formatSets(info.sets)} sets placed`;
+    } else {
+      attributed.textContent = `${formatSets(info.sets)} sets`;
+    }
+
+    const byRegion = new Map(info.regions.map((r) => [r.region, r]));
+    group.querySelectorAll(".region-bar").forEach((bar) => {
+      const region = byRegion.get(bar.dataset.region);
+      if (!region) return;
+
+      bar.querySelector(".region-bar-fill").style.width = `${region.share * 100}%`;
+      bar.querySelector(".region-bar-value").textContent =
+        info.region_sets ? `${Math.round(region.share * 100)}%` : "—";
+      bar.classList.toggle("is-neglected", region.neglected);
+      bar.title = region.neglected
+        ? `${region.label}: ${formatSets(region.sets)} sets — thin next to the rest of this group`
+        : `${region.label}: ${formatSets(region.sets)} sets`;
+    });
+  });
+}
+
 function renderHeader(summary) {
   const start = formatDate(summary.week_start, { month: "short", day: "numeric" });
   const end = formatDate(summary.week_end, { month: "short", day: "numeric", year: "numeric" });
@@ -82,6 +129,10 @@ function renderHeader(summary) {
   if (summary.muscles_over.length) {
     parts.push(`${summary.muscles_over.length} over`);
   }
+  if (summary.regions_neglected.length) {
+    const count = summary.regions_neglected.length;
+    parts.push(`${count} region${count === 1 ? "" : "s"} left thin`);
+  }
   $("#week-meta").textContent = parts.join(" · ");
 }
 
@@ -91,6 +142,7 @@ async function load() {
     renderHeader(summary);
     paintBody(summary.muscles);
     renderBreakdown(summary.muscles);
+    renderRegions(summary.muscles);
     renderEntries($("#week-entries"), summary.entries, {
       showDate: true,
       emptyMessage: "No workouts logged this week yet.",

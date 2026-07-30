@@ -401,6 +401,65 @@
     color: var(--color-over-accent);
   }
 
+  /* -- Region distribution (built by summary.js) ------------------------- */
+  /* Deliberately achromatic. A region has no target and no state, so it must
+     not borrow the volume ramp's greens and reds — that would read as a grade
+     the evidence does not support. Length carries the whole signal. */
+  .region-group {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .region-group-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .region-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 8.5rem) minmax(0, 1fr) 2.5rem;
+    align-items: center;
+    gap: 0.7rem;
+  }
+  .region-bar-label {
+    font-size: 0.78rem;
+    color: var(--color-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .region-bar-track {
+    height: 4px;
+    border-radius: 9999px;
+    background-color: var(--color-rest);
+    overflow: hidden;
+  }
+  .region-bar-fill {
+    display: block;
+    width: 0;
+    height: 100%;
+    border-radius: inherit;
+    background-color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
+    transition: width 0.3s ease;
+  }
+  .region-bar-value {
+    font-size: 0.72rem;
+    text-align: right;
+    color: var(--color-secondary);
+  }
+  /* Thin next to the rest of its group. Marked by weight and a dotted rule,
+     not by hue. */
+  .region-bar.is-neglected .region-bar-label {
+    color: var(--color-base-content);
+    text-decoration: underline dotted;
+    text-underline-offset: 0.25em;
+  }
+  .region-bar.is-neglected .region-bar-track {
+    border: 1px dashed color-mix(in srgb, var(--color-base-content) 30%, transparent);
+    height: 6px;
+    background-color: transparent;
+  }
+
   /* -- Legend swatches -------------------------------------------------- */
   .swatch {
     display: inline-block;

@@ -80,6 +80,24 @@ def test_log_page_browse_offers_every_muscle_group(client):
         assert f'<option value="{muscle}">' in body
 
 
+def test_summary_page_ships_a_region_skeleton_for_the_six_subdivided_groups(client):
+    body = client.get("/summary").data.decode()
+    for muscle in ("chest", "shoulders", "back", "triceps", "hamstrings", "calves"):
+        assert f'class="region-group" data-muscle="{muscle}"' in body
+    for region in ("chest_upper", "delt_front", "delt_side", "delt_rear", "soleus"):
+        assert f'data-region="{region}"' in body
+
+    # Groups without evidence for subdivision must not appear in the panel.
+    for muscle in ("biceps", "abs", "quads", "glutes", "traps", "forearms"):
+        assert f'class="region-group" data-muscle="{muscle}"' not in body
+
+
+def test_summary_page_states_no_region_targets(client):
+    """The panel must not imply a per-region number the evidence lacks."""
+    body = client.get("/summary").data.decode()
+    assert "No region targets" in body
+
+
 def test_summary_page_contains_every_muscle_region(client):
     body = client.get("/summary").data.decode()
     for muscle in MUSCLE_GROUPS:

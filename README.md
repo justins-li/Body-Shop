@@ -137,8 +137,11 @@ Body-Shop/
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the layers fit together and
-[docs/API.md](docs/API.md) for the endpoint reference. [docs/ROADMAP.md](docs/ROADMAP.md)
-specifies where it's going next.
+[docs/API.md](docs/API.md) for the endpoint reference.
+[docs/VOLUME_SCIENCE.md](docs/VOLUME_SCIENCE.md) is the evidence behind the set targets,
+the primary/secondary weighting and the region breakdown — including which numbers are
+sourced and which are convention. [docs/ROADMAP.md](docs/ROADMAP.md) specifies where it's
+going next.
 
 ## The exercise catalog
 

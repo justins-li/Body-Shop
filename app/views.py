@@ -21,7 +21,14 @@ from datetime import date
 
 from flask import Blueprint, current_app, render_template, request
 
-from .exercises import MUSCLE_GROUPS, MUSCLE_LABELS, MUSCLE_TARGETS, all_exercises
+from .exercises import (
+    MUSCLE_GROUPS,
+    MUSCLE_LABELS,
+    MUSCLE_REGIONS,
+    MUSCLE_TARGETS,
+    REGION_LABELS,
+    all_exercises,
+)
 from .models import parse_date
 from .services.weeks import week_bounds
 
@@ -35,6 +42,10 @@ def inject_globals() -> dict:
         "muscle_groups": MUSCLE_GROUPS,
         "muscle_labels": MUSCLE_LABELS,
         "muscle_targets": MUSCLE_TARGETS,
+        # Only six groups are subdivided, and regions carry no target — see
+        # docs/VOLUME_SCIENCE.md.
+        "muscle_regions": MUSCLE_REGIONS,
+        "region_labels": REGION_LABELS,
         "today": date.today(),
     }
 

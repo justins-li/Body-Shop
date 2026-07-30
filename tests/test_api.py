@@ -72,6 +72,24 @@ def test_catalog_payload_carries_a_rank_with_the_staples_first(client):
     assert [e["id"] for e in ranked[:3]] == [BENCH, SQUAT, "Barbell_Deadlift"]
 
 
+def test_weekly_summary_carries_regions_without_grading_them(client, add):
+    add("2026-07-28", BENCH, 10)
+    summary = client.get("/api/summary/week?date=2026-07-28").get_json()
+
+    shoulders = summary["muscles"]["shoulders"]
+    assert shoulders["region_sets"] == 5.0
+    front = next(r for r in shoulders["regions"] if r["region"] == "delt_front")
+    assert front["share"] == 1.0
+    # No target, state or intensity on a region: nothing to grade it against.
+    assert set(front) == {"region", "label", "sets", "share", "neglected"}
+
+    # Groups with no evidence for subdivision say so with an empty list.
+    assert summary["muscles"]["biceps"]["regions"] == []
+
+    flagged = {r["region"] for r in summary["regions_neglected"]}
+    assert {"delt_side", "delt_rear"} <= flagged
+
+
 def test_create_and_list_entry(client, add):
     response = add("2026-07-28", SQUAT, 4)
     assert response.status_code == 201

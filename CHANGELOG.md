@@ -8,6 +8,29 @@ All notable changes to Body Shop are documented here. This project follows
 
 ### Added
 
+- **Muscle regions on the weekly summary.** Six groups — chest, shoulders, back, triceps,
+  hamstrings and calves — break into 13 regions (upper vs. mid/lower chest, the three delt
+  heads, lats vs. mid back, triceps long vs. lateral/medial, knee- vs. hip-dominant
+  hamstrings, gastrocnemius vs. soleus) and report **where a group's volume landed**: each
+  region's share of the sets that could be placed inside it, plus a flag when one is left
+  thin. A shoulder week that was all pressing now reads as one instead of hiding in a
+  total.
+  **Regions carry no target, no state and none of the volume ramp's colours**, because no
+  study has established how many weekly sets a muscle head needs — the subdivisions are
+  a distribution, not a score. Attribution is partial on purpose: a deadlift trains the
+  back without saying anything about lats vs. mid back, so its volume is left unattributed
+  and `region_sets` reports how much could be placed. Import-time validation refuses to
+  attribute a movement to a region whose parent muscle it does not train.
+- **[docs/VOLUME_SCIENCE.md](docs/VOLUME_SCIENCE.md)** — the evidence behind every number
+  in the volume model, which of them are sourced and which are convention, the rules that
+  fall out (regions never get targets; targets partition rather than multiply), and the
+  product-voice rules: never print a set range as advice, and frame the app around
+  coverage rather than maximisation. Notably, Pelland et al. (2025) found that counting
+  indirect sets at **0.5** fit 67 studies better than 1.0 or 0.0 — the weighting Body Shop
+  already uses.
+- `regions_neglected` on `GET /api/summary/week`, and `regions` / `region_sets` on every
+  muscle group in the payload.
+
 - **A popularity ranking, `rank`, on every exercise** — lower sorts first. free-exercise-db
   carries no popularity signal, so `STAPLE_EXERCISE_IDS` in `app/exercises.py` names ~130
   movements most lifters actually program, in order; everything else starts at
@@ -71,6 +94,11 @@ All notable changes to Body Shop are documented here. This project follows
 
 ### Changed
 
+- **Home and summary copy now lead with coverage rather than volume.** The app's purpose
+  is keeping every group — and every region of the six that subdivide — inside a
+  productive range: nothing skipped long enough to become a weak link, nothing hammered
+  while its neighbours idle. The home page's third stat is the region count in place of
+  the raw targets, and step 02 explains the half-weight for assisting muscles.
 - **The `/log` picker leads with Recent and Browse; search is now an icon.** Three equal
   tabs implied search was the way in, but searching a catalog nobody has memorised only
   works if you already know the name. Browse is how you shop for a movement and the only

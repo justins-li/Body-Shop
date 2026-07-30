@@ -148,6 +148,43 @@ instructions: the picker fetches the whole catalog to filter it locally, and the
 full payload is four times the size. `GET /api/exercises/<id>` serves the rest for
 the one movement actually selected.
 
+### Regions: a second layer that is deliberately not graded
+
+Six groups subdivide into regions (`MUSCLE_REGIONS`): chest, shoulders, back, triceps,
+hamstrings and calves. The other six do not, and biceps heads and "upper vs. lower abs"
+are excluded specifically — the evidence there is EMG rather than growth.
+
+The asymmetry with muscle groups is the whole design:
+
+| | Muscle group | Region |
+| --- | --- | --- |
+| Weekly target | Yes (`MUSCLE_TARGETS`) | **None** |
+| `state` / `intensity` | Yes | **None** |
+| Colour | The volume ramp | Achromatic — length only |
+| Reports | Volume against a target | Share of the volume placed inside its parent |
+
+Because no study has ever established how many weekly sets a muscle *head* needs. The
+subdivisions are real — growth within a muscle is non-uniform and follows exercise
+selection — but that supports a *distribution*, not a target, and a fabricated target
+would sit on the summary page indistinguishable from the sourced ones. Full evidence and
+the rules in [VOLUME_SCIENCE.md](VOLUME_SCIENCE.md).
+
+Two consequences worth knowing before editing:
+
+- **Attribution is partial by design.** `EXERCISE_REGIONS` maps a movement to a region
+  only where the emphasis is defensible. A deadlift trains the back without saying
+  anything about lats vs. mid back, so its volume is *unattributed*, and `region_sets`
+  reports how much of the group's total could be placed. Shares are of `region_sets`,
+  never of `sets` — otherwise unplaceable volume would read as neglect.
+- **Import-time validation refuses to attribute a movement to a region whose parent
+  muscle it does not train.** `_check_regions` raises `CatalogError`, which is what keeps
+  a mapping slip from becoming a plausible-looking number on the summary page.
+
+The only invented numbers are `REGION_NEGLECT_SHARE` (0.15) and
+`REGION_NEGLECT_MIN_PARENT_SETS` (4.0, the literature's rough floor for a muscle
+responding at all), both named constants in `services/summary.py` rather than literals, so
+what is opinion stays visible.
+
 ## The volume scale
 
 `app/services/summary.py::summarise_entries` produces, for each of the twelve groups
@@ -281,7 +318,9 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
   ranking's invariants (every staple id resolves, the tiers do not interleave, every
   muscle group has a staple).
 - `tests/test_summary.py` — the muscle-coverage and volume-grading rules, both as
-  pure functions and through the database.
+  pure functions and through the database, plus the region distribution: that regions
+  carry no target or grade, that unplaceable volume is reported rather than spread, and
+  that a balanced week flags nothing.
 - `tests/test_models.py` — the data layer's non-API surface: the retired-id remap and
   the recent-exercise query.
 - `tests/test_api.py` — every endpoint, including the validation failure modes.
