@@ -59,6 +59,99 @@ MUSCLE_LABELS: dict[str, str] = {
 }
 
 
+@dataclass(frozen=True)
+class MuscleBucket:
+    """One heading in a grouped breakdown, and the groups filed under it."""
+
+    key: str
+    label: str
+    muscles: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MuscleScheme:
+    """A way of grouping the twelve muscle groups for reading a week back.
+
+    Twelve rows is an inventory, not a summary — nobody trains "forearms" as a
+    decision. Lifters think in sessions, so the weekly breakdown offers the
+    splits they actually plan in, and a scheme is only a *view*: the same
+    weighted set counts, re-headed. No bucket has a target, since a "push
+    target" would be a number nobody has studied.
+    """
+
+    key: str
+    label: str
+    #: One line under the selector saying what the split means.
+    note: str
+    buckets: tuple[MuscleBucket, ...]
+
+    @property
+    def muscles(self) -> tuple[str, ...]:
+        """Every group the scheme files, in display order."""
+        return tuple(m for bucket in self.buckets for m in bucket.muscles)
+
+
+#: Ways to group the breakdown on /summary, in the order the selector offers them.
+#:
+#: Every scheme must partition :data:`MUSCLE_GROUPS` exactly — a scheme that
+#: dropped a group would hide volume the user logged, so it is checked at import.
+MUSCLE_SCHEMES: tuple[MuscleScheme, ...] = (
+    MuscleScheme(
+        key="push_pull_legs",
+        label="Push · Pull · Legs",
+        note="The way most people plan sessions. Core sits outside the three.",
+        buckets=(
+            MuscleBucket("push", "Push", ("chest", "shoulders", "triceps")),
+            MuscleBucket("pull", "Pull", ("back", "traps", "biceps", "forearms")),
+            MuscleBucket("legs", "Legs", ("quads", "hamstrings", "glutes", "calves")),
+            MuscleBucket("core", "Core", ("abs",)),
+        ),
+    ),
+    MuscleScheme(
+        key="upper_lower",
+        label="Upper · Lower",
+        note="Two sessions rather than three, so pushing and pulling sit together.",
+        buckets=(
+            MuscleBucket(
+                "upper",
+                "Upper body",
+                ("chest", "back", "shoulders", "traps", "biceps", "triceps", "forearms"),
+            ),
+            MuscleBucket(
+                "lower", "Lower body", ("quads", "hamstrings", "glutes", "calves")
+            ),
+            MuscleBucket("trunk", "Core", ("abs",)),
+        ),
+    ),
+    MuscleScheme(
+        key="body_map",
+        label="Front · Back",
+        note="The same split as the two figures above, so the list reads like the map.",
+        buckets=(
+            MuscleBucket(
+                "front",
+                "Front",
+                ("chest", "abs", "shoulders", "biceps", "forearms", "quads"),
+            ),
+            MuscleBucket(
+                "back_view",
+                "Back",
+                ("back", "traps", "triceps", "glutes", "hamstrings", "calves"),
+            ),
+        ),
+    ),
+    MuscleScheme(
+        key="all",
+        label="Every group",
+        note="All twelve, in body-map order.",
+        buckets=(MuscleBucket("every", "Muscle groups", MUSCLE_GROUPS),),
+    ),
+)
+
+#: The scheme the summary page opens on for someone with no stored preference.
+DEFAULT_MUSCLE_SCHEME = "push_pull_legs"
+
+
 #: Weekly set target for a large muscle group.
 LARGE_MUSCLE_TARGET = 20
 
@@ -733,8 +826,40 @@ def _load_catalog(path: Path = CATALOG_PATH) -> dict[str, Exercise]:
         raise CatalogError("STAPLE_EXERCISE_IDS contains duplicates.")
 
     _check_regions(catalog)
+    _check_schemes()
 
     return catalog
+
+
+def _check_schemes() -> None:
+    """Every grouping scheme must file all twelve groups, each exactly once.
+
+    A scheme that dropped a group would hide volume the user logged, and one
+    that repeated a group would count it twice in the bucket totals — both are
+    silent in the UI, so they fail at import instead.
+    """
+    keys = [scheme.key for scheme in MUSCLE_SCHEMES]
+    if len(set(keys)) != len(keys):
+        raise CatalogError(f"Duplicate scheme keys: {keys}.")
+    if DEFAULT_MUSCLE_SCHEME not in keys:
+        raise CatalogError(
+            f"DEFAULT_MUSCLE_SCHEME {DEFAULT_MUSCLE_SCHEME!r} is not a scheme."
+        )
+
+    for scheme in MUSCLE_SCHEMES:
+        filed = scheme.muscles
+        if sorted(filed) != sorted(MUSCLE_GROUPS):
+            missing = sorted(set(MUSCLE_GROUPS) - set(filed))
+            extra = sorted(set(filed) - set(MUSCLE_GROUPS))
+            repeated = sorted({m for m in filed if filed.count(m) > 1})
+            raise CatalogError(
+                f"Scheme {scheme.key!r} does not partition MUSCLE_GROUPS "
+                f"(missing={missing}, unknown={extra}, repeated={repeated})."
+            )
+
+        bucket_keys = [bucket.key for bucket in scheme.buckets]
+        if len(set(bucket_keys)) != len(bucket_keys):
+            raise CatalogError(f"Scheme {scheme.key!r} repeats a bucket key.")
 
 
 def _check_regions(catalog: dict[str, Exercise]) -> None:
@@ -810,6 +935,22 @@ def all_exercises() -> list[Exercise]:
 def get_exercise(exercise_id: str) -> Exercise | None:
     """Return the exercise with ``exercise_id``, or ``None`` if unknown."""
     return EXERCISES.get(exercise_id)
+
+
+def scheme_map() -> dict[str, list[dict]]:
+    """Return the grouping schemes as plain data, for the summary page's JS.
+
+    Shaped for the front end rather than for Python: ``{scheme_key: [{key,
+    label, muscles}, ...]}``. The page reorders its rows against this, so the
+    definition stays here — one place — rather than being duplicated in JS.
+    """
+    return {
+        scheme.key: [
+            {"key": bucket.key, "label": bucket.label, "muscles": list(bucket.muscles)}
+            for bucket in scheme.buckets
+        ]
+        for scheme in MUSCLE_SCHEMES
+    }
 
 
 def regions_of(muscle: str) -> tuple[str, ...]:

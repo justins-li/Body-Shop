@@ -373,6 +373,24 @@
     gap: 0.85rem;
   }
 
+  /* Bucket heading in the breakdown ("Push", "Upper body"). A hairline rule
+     rather than a filled band — separation in this app is a border, never a
+     shade. First-child has no rule above it, since the card already ends. */
+  .muscle-bucket {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+  }
+  .muscle-bucket:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+
   .muscle-bar {
     height: 6px;
     border-radius: 9999px;

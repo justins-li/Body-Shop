@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from app.exercises import MUSCLE_GROUPS
+from app.exercises import DEFAULT_MUSCLE_SCHEME, MUSCLE_GROUPS, MUSCLE_SCHEMES
 
 
 @pytest.mark.parametrize(
@@ -13,7 +13,7 @@ from app.exercises import MUSCLE_GROUPS
         ("/", b"Every set."),
         ("/calendar", b"What you trained"),
         ("/log", b"New entry"),
-        ("/summary", b"Sets by muscle group"),
+        ("/summary", b"Sets by split"),
     ],
 )
 def test_pages_render(client, path, marker):
@@ -78,6 +78,31 @@ def test_log_page_browse_offers_every_muscle_group(client):
     body = client.get("/log").data.decode()
     for muscle in MUSCLE_GROUPS:
         assert f'<option value="{muscle}">' in body
+
+
+def test_summary_page_offers_every_grouping_scheme(client):
+    body = client.get("/summary").data.decode()
+    for scheme in MUSCLE_SCHEMES:
+        assert f'<option value="{scheme.key}"' in body
+        for bucket in scheme.buckets:
+            # Whitespace-insensitive: the two attributes wrap in the template.
+            pattern = (
+                rf'data-scheme="{re.escape(scheme.key)}"\s+'
+                rf'data-bucket="{re.escape(bucket.key)}"'
+            )
+            assert re.search(pattern, body), (scheme.key, bucket.key)
+
+    # The default is selected server-side; summary.js re-heads the list to match.
+    assert re.search(
+        rf'<option value="{DEFAULT_MUSCLE_SCHEME}"[^>]*\bselected\b', body
+    )
+
+
+def test_summary_page_renders_each_muscle_row_once_whatever_the_scheme(client):
+    """Schemes re-head the same twelve rows; duplicating them would double volume."""
+    body = client.get("/summary").data.decode()
+    for muscle in MUSCLE_GROUPS:
+        assert body.count(f'class="muscle-row text-sm" data-muscle="{muscle}"') == 1
 
 
 def test_summary_page_ships_a_region_skeleton_for_the_six_subdivided_groups(client):

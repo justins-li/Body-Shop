@@ -9,8 +9,10 @@ weighting that the weekly summary reads.
 import pytest
 
 from app.exercises import (
+    DEFAULT_MUSCLE_SCHEME,
     EXERCISE_REGIONS,
     EXERCISES,
+    MUSCLE_SCHEMES,
     MUSCLE_GROUPS,
     MUSCLE_LABELS,
     MUSCLE_TARGETS,
@@ -28,6 +30,7 @@ from app.exercises import (
     muscles_for,
     regions_for,
     regions_of,
+    scheme_map,
 )
 
 
@@ -181,6 +184,48 @@ def test_browse_order_leads_with_the_obvious_lifts():
 
 def test_light_payload_carries_the_rank_the_picker_sorts_by():
     assert get_exercise("Barbell_Squat").to_dict()["rank"] == 1
+
+
+# ---- Grouping schemes ------------------------------------------------------
+
+
+@pytest.mark.parametrize("scheme", MUSCLE_SCHEMES, ids=lambda s: s.key)
+def test_every_scheme_files_all_twelve_groups_exactly_once(scheme):
+    """A scheme is a view, not a filter: switching it must never hide volume."""
+    filed = scheme.muscles
+    assert sorted(filed) == sorted(MUSCLE_GROUPS)
+    assert len(filed) == len(set(filed))
+
+
+@pytest.mark.parametrize("scheme", MUSCLE_SCHEMES, ids=lambda s: s.key)
+def test_every_bucket_is_named_and_non_empty(scheme):
+    for bucket in scheme.buckets:
+        assert bucket.label
+        assert bucket.muscles
+
+
+def test_the_default_scheme_is_one_of_the_schemes():
+    assert DEFAULT_MUSCLE_SCHEME in {s.key for s in MUSCLE_SCHEMES}
+
+
+def test_the_front_back_scheme_matches_the_body_map():
+    """It exists to make the list read like the two figures — so it must match."""
+    scheme = next(s for s in MUSCLE_SCHEMES if s.key == "body_map")
+    front, back = scheme.buckets
+    assert front.muscles == ("chest", "abs", "shoulders", "biceps", "forearms", "quads")
+    assert back.muscles == ("back", "traps", "triceps", "glutes", "hamstrings", "calves")
+
+
+def test_scheme_map_is_json_ready_for_the_front_end():
+    payload = scheme_map()
+    assert set(payload) == {s.key for s in MUSCLE_SCHEMES}
+    push = payload["push_pull_legs"][0]
+    assert push == {"key": "push", "label": "Push",
+                    "muscles": ["chest", "shoulders", "triceps"]}
+    assert all(
+        isinstance(bucket["muscles"], list)
+        for buckets in payload.values() for bucket in buckets
+    )
 
 
 # ---- Regions ---------------------------------------------------------------

@@ -8,6 +8,13 @@ All notable changes to Body Shop are documented here. This project follows
 
 ### Added
 
+- **The weekly breakdown groups into a split you choose.** "Sets by muscle group" was
+  twelve rows in body-map order; it is now "Sets by split", headed by **Push · Pull · Legs**
+  (the default), **Upper · Lower**, **Front · Back** — the same split as the two figures —
+  or **Every group** for the flat list. Each heading totals its sets. A scheme is a *view*,
+  never a filter: every one files all twelve groups exactly once, enforced at import, so
+  switching can only regroup volume, never hide it. Buckets carry no target, since a "push
+  target" is a number nobody has studied. The choice is remembered per browser.
 - **Muscle regions on the weekly summary.** Six groups — chest, shoulders, back, triceps,
   hamstrings and calves — break into 13 regions (upper vs. mid/lower chest, the three delt
   heads, lats vs. mid back, triceps long vs. lateral/medial, knee- vs. hip-dominant

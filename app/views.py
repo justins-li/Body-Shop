@@ -22,12 +22,15 @@ from datetime import date
 from flask import Blueprint, current_app, render_template, request
 
 from .exercises import (
+    DEFAULT_MUSCLE_SCHEME,
     MUSCLE_GROUPS,
     MUSCLE_LABELS,
     MUSCLE_REGIONS,
+    MUSCLE_SCHEMES,
     MUSCLE_TARGETS,
     REGION_LABELS,
     all_exercises,
+    scheme_map,
 )
 from .models import parse_date
 from .services.weeks import week_bounds
@@ -104,7 +107,12 @@ def log_page():
 
 @bp.get("/summary")
 def summary_page():
-    """Weekly summary with the body map."""
+    """Weekly summary with the body map.
+
+    The breakdown's grouping schemes are passed as data rather than baked into
+    the JS: ``summary.js`` re-heads the same twelve rows against whichever the
+    reader picks, so both halves have to agree on one definition.
+    """
     day = _requested_date()
     start, end = week_bounds(day, current_app.config.get("WEEK_STARTS_ON", 1))
     return render_template(
@@ -113,4 +121,7 @@ def summary_page():
         selected_date=day,
         week_start=start,
         week_end=end,
+        muscle_schemes=MUSCLE_SCHEMES,
+        default_scheme=DEFAULT_MUSCLE_SCHEME,
+        scheme_buckets=scheme_map(),
     )

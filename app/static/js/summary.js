@@ -22,6 +22,23 @@ import {
 
 let anchorIso; // Any date inside the week being displayed.
 
+/** `{scheme: [{key, label, muscles}, ...]}`, defined once in app/exercises.py. */
+let schemeBuckets = {};
+
+/** The chosen grouping. A view over the same rows — never a filter. */
+let activeScheme;
+
+/** The last week's per-muscle payload, so re-heading the list costs no request. */
+let lastMuscles = null;
+
+/**
+ * Where the chosen split is remembered.
+ *
+ * Not in the URL: `?date=` is shared state that every page honours, while this
+ * is a reading preference that should follow the reader rather than the link.
+ */
+const SCHEME_KEY = "bodyshop:summary-scheme";
+
 /**
  * Apply a group's grade to one element: `--level` drives the colour mix, and
  * the classes pick which ramp CSS mixes along.
@@ -55,7 +72,7 @@ function paintBody(muscles) {
   });
 }
 
-/** Fill the "sets by muscle group" list, each bar scaled against its target. */
+/** Fill the breakdown list, each bar scaled against its target. */
 function renderBreakdown(muscles) {
   document.querySelectorAll(".muscle-row").forEach((row) => {
     const info = muscles[row.dataset.muscle];
@@ -69,6 +86,85 @@ function renderBreakdown(muscles) {
       `${formatSets(info.sets)} / ${info.target}`;
     row.title = describe(info, row.dataset.muscle);
   });
+
+  renderBucketTotals(muscles);
+}
+
+/**
+ * Total each visible bucket.
+ *
+ * Sets only — no bucket target. Summing twelve targets into a "push target"
+ * would put a number on screen that nobody has studied, which is the same
+ * reason regions are not graded (docs/VOLUME_SCIENCE.md).
+ */
+function renderBucketTotals(muscles) {
+  (schemeBuckets[activeScheme] || []).forEach((bucket) => {
+    const heading = document.querySelector(
+      `.muscle-bucket[data-scheme="${activeScheme}"][data-bucket="${bucket.key}"]`,
+    );
+    if (!heading) return;
+
+    const sets = bucket.muscles.reduce(
+      (total, muscle) => total + (muscles[muscle] ? muscles[muscle].sets : 0), 0,
+    );
+    heading.querySelector(".muscle-bucket-sets").textContent =
+      sets ? `${formatSets(sets)} sets` : "nothing logged";
+  });
+}
+
+/**
+ * Re-head the breakdown into `key`.
+ *
+ * Nodes are *moved* rather than given a CSS `order`, so the reading order a
+ * screen reader follows matches the order on screen. Every scheme files all
+ * twelve rows, so nothing can be hidden by switching view — only regrouped.
+ */
+function applyScheme(key) {
+  const buckets = schemeBuckets[key];
+  if (!buckets) return;
+  activeScheme = key;
+
+  const list = $("#muscle-list");
+  const rows = new Map(
+    Array.from(list.querySelectorAll(".muscle-row")).map((row) => [row.dataset.muscle, row]),
+  );
+
+  document.querySelectorAll(".muscle-bucket").forEach((heading) => {
+    heading.hidden = heading.dataset.scheme !== key;
+  });
+
+  buckets.forEach((bucket) => {
+    const heading = list.querySelector(
+      `.muscle-bucket[data-scheme="${key}"][data-bucket="${bucket.key}"]`,
+    );
+    if (heading) list.append(heading);
+    bucket.muscles.forEach((muscle) => {
+      const row = rows.get(muscle);
+      if (row) list.append(row);
+    });
+  });
+
+  // Park the other schemes' headings at the end. They are hidden either way,
+  // but leaving them in front would make one of them `:first-child` and give
+  // the first visible heading a rule above it.
+  list.querySelectorAll(".muscle-bucket[hidden]").forEach((h) => list.append(h));
+
+  const select = $("#scheme-select");
+  select.value = key;
+  $("#scheme-note").textContent = select.selectedOptions[0]?.dataset.note || "";
+
+  try {
+    localStorage.setItem(SCHEME_KEY, key);
+  } catch {
+    // Private browsing, or storage disabled. The choice just won't persist.
+  }
+}
+
+function onSchemeChange(event) {
+  applyScheme(event.target.value);
+  // The week already loaded; the new headings just need totalling. No refetch —
+  // switching view is not new data.
+  if (lastMuscles) renderBucketTotals(lastMuscles);
 }
 
 /**
@@ -139,6 +235,7 @@ function renderHeader(summary) {
 async function load() {
   try {
     const summary = await fetchWeeklySummary(anchorIso);
+    lastMuscles = summary.muscles;
     renderHeader(summary);
     paintBody(summary.muscles);
     renderBreakdown(summary.muscles);
@@ -159,13 +256,28 @@ function shiftWeek(days) {
   load();
 }
 
+/** The stored split, if it is still one the server offers. */
+function storedScheme() {
+  try {
+    const stored = localStorage.getItem(SCHEME_KEY);
+    return stored && schemeBuckets[stored] ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Boot the summary page.
  * @param {string} initialIso - Any date inside the week to show.
+ * @param {Object} buckets - Grouping schemes from `app/exercises.py`, keyed by
+ *   scheme: `{push_pull_legs: [{key, label, muscles}, ...], ...}`.
  */
-export async function initSummary(initialIso) {
+export async function initSummary(initialIso, buckets = {}) {
   anchorIso = initialIso;
+  schemeBuckets = buckets;
   $("#prev-week").addEventListener("click", () => shiftWeek(-7));
   $("#next-week").addEventListener("click", () => shiftWeek(7));
+  $("#scheme-select").addEventListener("change", onSchemeChange);
+  applyScheme(storedScheme() || $("#scheme-select").value);
   await load();
 }

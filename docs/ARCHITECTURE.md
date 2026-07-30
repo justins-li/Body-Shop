@@ -148,6 +148,29 @@ instructions: the picker fetches the whole catalog to filter it locally, and the
 full payload is four times the size. `GET /api/exercises/<id>` serves the rest for
 the one movement actually selected.
 
+### Grouping schemes: one list, four headings
+
+Twelve rows is an inventory, not a summary — nobody trains "forearms" as a decision, they
+train a push day. So `/summary`'s breakdown offers `MUSCLE_SCHEMES`: **Push · Pull · Legs**
+(the default), **Upper · Lower**, **Front · Back** (the same split as the two figures, so
+the list reads like the map) and **Every group** (the flat twelve).
+
+The rules that keep it honest:
+
+- **A scheme is a view, never a filter.** Every scheme must file all twelve groups exactly
+  once, checked at import by `_check_schemes` — a scheme that dropped a group would hide
+  volume the user logged, and one that repeated a group would double it in a bucket total.
+- **Buckets have no target.** Summing twelve targets into a "push target" would put a
+  number on screen that nobody has studied; same reasoning as regions below.
+- **One definition, two consumers.** `scheme_map()` serialises the schemes and
+  `views.summary_page` passes them into `initSummary`, so the JS never restates the split.
+- **The rows are rendered once and *moved*,** not duplicated or re-ordered with CSS
+  `order`: nodes get re-appended in scheme order so a screen reader's reading order
+  matches the screen. Bucket headings for all four schemes ship in the markup and the
+  inactive ones are `hidden`.
+- The choice persists in `localStorage` under `bodyshop:summary-scheme`, not in the URL —
+  `?date=` is shared state every page honours, this is a reading preference.
+
 ### Regions: a second layer that is deliberately not graded
 
 Six groups subdivide into regions (`MUSCLE_REGIONS`): chest, shoulders, back, triceps,

@@ -53,9 +53,45 @@
 
     <section class="card bg-base-100 border hairline" aria-labelledby="breakdown-heading">
       <div class="card-body gap-6 sm:p-7">
-        <h2 id="breakdown-heading" class="type-display text-lg m-0">Sets by muscle group</h2>
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 mb-1.5">
+            <h2 id="breakdown-heading" class="type-display text-lg m-0">Sets by split</h2>
+            {#
+              A view, not a filter. Every scheme files all twelve groups — the
+              headings change, the numbers do not. Rendered as a plain <select>
+              so it works before summary.js runs and needs no ARIA of its own.
+            #}
+            <label class="sr-only" for="scheme-select">Group muscles by</label>
+            <select id="scheme-select"
+                    class="select select-sm w-auto bg-base-200 border hairline text-xs">
+              {% for scheme in muscle_schemes %}
+                <option value="{{ scheme.key }}" data-note="{{ scheme.note }}"
+                        {{ 'selected' if scheme.key == default_scheme else '' }}>
+                  {{ scheme.label }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <p class="type-label text-secondary m-0" id="scheme-note">&nbsp;</p>
+        </div>
 
-        <ul class="list-none m-0 p-0 grid gap-3.5" id="muscle-list">
+        {#
+          One row per muscle group, plus one heading per bucket of every scheme.
+          `summary.js` hides the headings that do not belong to the chosen scheme
+          and re-orders the list into it — moving the nodes rather than styling
+          an order, so what a screen reader hears matches what is on screen.
+        #}
+        <ul class="list-none m-0 p-0 flex flex-col gap-3.5" id="muscle-list">
+          {% for scheme in muscle_schemes %}
+            {% for bucket in scheme.buckets %}
+          <li class="muscle-bucket" data-scheme="{{ scheme.key }}"
+              data-bucket="{{ bucket.key }}" hidden>
+            <span class="type-label">{{ bucket.label }}</span>
+            <span class="muscle-bucket-sets type-label text-secondary tabular-nums"></span>
+          </li>
+            {% endfor %}
+          {% endfor %}
+
           {% for muscle in muscle_groups %}
           <li class="muscle-row text-sm" data-muscle="{{ muscle }}">
             <span class="font-semibold tracking-tight">{{ muscle_labels[muscle] }}</span>
@@ -130,6 +166,6 @@
 {% block scripts %}
 <script type="module">
   import { initSummary } from "{{ url_for('static', filename='js/summary.js') }}";
-  initSummary({{ selected_date.isoformat() | tojson }});
+  initSummary({{ selected_date.isoformat() | tojson }}, {{ scheme_buckets | tojson }});
 </script>
 {% endblock %}
