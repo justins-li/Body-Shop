@@ -1,2 +1,15 @@
 # Runtime dependencies for Body Shop
 Flask>=3.0,<4.0
+
+# Data layer. SQLAlchemy Core (not the ORM) is the dialect-agnostic layer that
+# lets one models.py serve both SQLite and Postgres; Alembic depends on it
+# regardless, so it costs no extra dependency.
+SQLAlchemy>=2.0,<3.0
+alembic>=1.13,<2.0
+
+# Postgres driver. The binary extra ships a wheel, so there is no libpq build.
+psycopg[binary]>=3.1,<4.0
+
+# Reads .env. Flask's CLI picks it up natively when installed, so
+# `flask --app app upgrade-db` sees the same configuration run.py does.
+python-dotenv>=1.0,<2.0

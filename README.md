@@ -55,16 +55,38 @@ pip install -r requirements.txt
 python run.py
 ```
 
-Open <http://127.0.0.1:5000>. The SQLite database is created automatically at
-`instance/bodyshop.sqlite3` on first run — no migration step needed.
-
-To wipe it and start over:
-
-```bash
-flask --app app init-db
-```
+Open <http://127.0.0.1:5000>. `run.py` applies migrations before serving, so a SQLite
+database appears at `instance/bodyshop.sqlite3` on first run with no setup step.
 
 Nothing else is needed to run or change the app — the compiled stylesheet is committed.
+
+## The database
+
+SQLite by default, Postgres when `DATABASE_URL` is set. Schema changes are Alembic
+revisions; `app/tables.py` describes the schema and `migrations/versions/` is how a
+database gets there.
+
+```bash
+flask --app app upgrade-db        # apply migrations — this is the deploy step
+flask --app app init-db           # drop everything and migrate up (destroys data; dev only)
+flask --app app stamp-db 0001     # for a database created before migrations existed
+```
+
+Plain Alembic works too, against the same `DATABASE_URL`:
+
+```bash
+alembic revision -m "add a thing" --autogenerate
+alembic history
+alembic downgrade -1
+```
+
+To run against Postgres, copy `.env.example` to `.env` and set `DATABASE_URL`. With
+Supabase, use the **transaction pooler** (port 6543) for the app and the **session
+pooler or direct connection** (port 5432) for migrations; `.env.example` explains why.
+
+**Changing `app/tables.py` requires a revision in the same commit.** The test suite
+builds SQLite from the metadata, so a missing revision leaves the tests green and the
+migrated schema wrong — `tests/test_migrations.py` is what catches it.
 
 ## Running the tests
 
@@ -72,6 +94,16 @@ Nothing else is needed to run or change the app — the compiled stylesheet is c
 pip install -r requirements-dev.txt
 pytest
 ```
+
+Each test gets its own SQLite file, so order never matters. To run the same suite
+against Postgres — which is how dialect differences surface, and what CI does on a
+`postgres:16` container:
+
+```bash
+BODYSHOP_TEST_DATABASE_URL=postgresql://user:pass@host:5432/scratch pytest
+```
+
+That database is truncated between tests, so point it at a scratch one.
 
 ## Editing the styles
 
@@ -89,22 +121,32 @@ Commit the rebuilt `styles.css` with your change; CI does not build it.
 
 ## Configuration
 
-Everything is environment-driven; nothing is required for local development.
+Everything is environment-driven; nothing is required for local development. Values are
+read from the environment and from a gitignored `.env` — see `.env.example`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `BODYSHOP_CONFIG` | `development` | `development`, `testing` or `production`. |
-| `BODYSHOP_SECRET_KEY` | `dev-secret-change-me` | Flask secret key. **Set this in production.** |
-| `BODYSHOP_DATABASE` | `instance/bodyshop.sqlite3` | Absolute path to the SQLite file. |
+| `BODYSHOP_SECRET_KEY` | `dev-secret-change-me` | Flask secret key. **Production refuses to boot without a real one.** |
+| `DATABASE_URL` | a SQLite file in `instance/` | SQLAlchemy URL. A provider's `postgres://` string works as pasted. Production refuses SQLite. |
+| `BODYSHOP_DATABASE_URL` | — | Wins over `DATABASE_URL`, for pointing the app somewhere other than what a host injected. |
+| `BODYSHOP_TEST_DATABASE_URL` | — | Runs the test suite against this database instead of SQLite. Truncated between tests. |
 | `BODYSHOP_WEEK_STARTS_ON` | `1` (Monday) | ISO weekday the summary week begins on. |
 | `BODYSHOP_EXERCISE_IMAGE_BASE` | jsDelivr, pinned | Origin serving `<exercise_id>/<0\|1>.jpg`. Set this to self-host the images. |
 | `BODYSHOP_HOST` / `BODYSHOP_PORT` | `127.0.0.1` / `5000` | Dev server bind address. |
 
-For production, serve the WSGI app instead of `run.py`:
+`BODYSHOP_DATABASE` (a bare SQLite path) was replaced by `DATABASE_URL` in Phase 3.
+
+For production, serve the WSGI app instead of `run.py` and migrate as a deploy step —
+`wsgi.py` deliberately does not, so that importing the app never changes a schema:
 
 ```bash
 pip install gunicorn
-BODYSHOP_SECRET_KEY=... gunicorn "wsgi:application"
+export BODYSHOP_CONFIG=production
+export BODYSHOP_SECRET_KEY=...            # python -c "import secrets; print(secrets.token_urlsafe(48))"
+export DATABASE_URL=postgresql://...
+flask --app app upgrade-db
+gunicorn "wsgi:application"
 ```
 
 ## Project layout
@@ -114,8 +156,8 @@ Body-Shop/
 ├── app/
 │   ├── __init__.py           # application factory
 │   ├── config.py             # environment-driven settings
-│   ├── db.py                 # SQLite connection + `init-db` / `remap-exercises` CLI
-│   ├── schema.sql            # table definitions
+│   ├── db.py                 # engine, request-scoped connection, migration CLI
+│   ├── tables.py             # the schema, as SQLAlchemy metadata
 │   ├── exercises.py          # catalog loader, muscle groups, targets, volume weights
 │   ├── data/exercises.json   # 873 vendored movements — generated, never hand-edited
 │   ├── models.py             # all SQL lives here: validation + queries
@@ -129,11 +171,14 @@ Body-Shop/
 │       ├── css/input.css     # design system — the file you edit
 │       ├── css/styles.css    # compiled output — generated, committed
 │       └── js/               # api.js, ui.js, and one module per page
+├── migrations/               # Alembic: env.py + versions/
+├── alembic.ini
 ├── tools/                    # fetch_css_toolchain.py, build_exercise_catalog.py
-├── tests/                    # pytest suite (catalog, API, pages, aggregation, dates)
+├── tests/                    # pytest suite (catalog, API, pages, aggregation, migrations)
 ├── docs/                     # architecture + API reference
-├── run.py                    # dev entry point
-└── wsgi.py                   # production entry point
+├── .env.example              # copy to .env
+├── run.py                    # dev entry point — migrates, then serves
+└── wsgi.py                   # production entry point — never migrates
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the layers fit together and
@@ -172,16 +217,18 @@ group's colour behind another's.
 ### Upgrading a database logged before the catalog
 
 The four hand-written exercises that predate it (`squat`, `bench_press`, `pull_ups`,
-`sit_ups`) no longer exist. Move that history onto the catalog:
+`sit_ups`) no longer exist. Moving that history onto the catalog is Alembic revision
+`0002`, so it happens as part of migrating — there is no separate command:
 
 ```bash
-flask --app app remap-exercises
+flask --app app stamp-db 0001     # only for a database created before migrations
+flask --app app upgrade-db
 ```
 
 ## Roadmap
 
-The full technical plan, in execution order — Postgres, **per-set weight and reps**,
-accounts, Vercel hosting, routines and progress tracking, AI-assisted custom exercises,
+The full technical plan, in execution order — **per-set weight and reps**, accounts,
+Vercel hosting, routines and progress tracking, AI-assisted custom exercises,
 then mobile and watch — is in [docs/ROADMAP.md](docs/ROADMAP.md), along with the
 post-launch candidates (auto-progression, social, nutrition) and the reasoning for why
 each waits.

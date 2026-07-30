@@ -36,3 +36,60 @@ jobs:
 
       - name: Check the app boots
         run: python -c "from app import create_app; create_app('testing').test_client().get('/').status_code == 200 or exit(1)"
+
+  test-postgres:
+    name: Tests (Postgres)
+    runs-on: ubuntu-latest
+
+    # The suite's default backend is SQLite, which cannot surface a dialect
+    # difference. This job runs the same tests against real Postgres, where the
+    # migrations execute for real — 0003's `USING` cast and the DATE column only
+    # mean anything here.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bodyshop
+          POSTGRES_PASSWORD: bodyshop
+          POSTGRES_DB: bodyshop_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run tests against Postgres
+        env:
+          BODYSHOP_TEST_DATABASE_URL: postgresql://bodyshop:bodyshop@localhost:5432/bodyshop_test
+        run: pytest -q
+
+      - name: Check migrations round-trip on Postgres
+        env:
+          DATABASE_URL: postgresql://bodyshop:bodyshop@localhost:5432/bodyshop_test
+        run: |
+          python -m flask --app app upgrade-db
+          python -c "
+          from app import create_app
+          from app.db import downgrade_db, upgrade_db
+          app = create_app('development')
+          with app.app_context():
+              downgrade_db('base', app=app)
+              upgrade_db('head', app=app)
+          "
