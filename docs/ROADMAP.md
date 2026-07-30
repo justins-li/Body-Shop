@@ -543,7 +543,8 @@ truthful about what was actually known. Do **not** invent weights.
 Design spec: [2026-07-30-phase-4-set-level-logging-design.md](superpowers/specs/2026-07-30-phase-4-set-level-logging-design.md).
 Built as specified above — parent/child tables, derived count, warm-up exclusion,
 backfill with `NULL` weights — plus the four "ship in this phase" items. Six
-divergences, each forced by something the plan did not anticipate:
+divergences and one missed review flag, each forced by something the plan did not
+anticipate:
 
 **1. The plan never said what a weight *is*.** `weight REAL` has no unit, which is
 ambiguous the moment a second person reads it and impossible to aggregate across in
@@ -580,6 +581,14 @@ every form post with a confusing error instead of an honest 400.
 `filter=` keyword landed in 3.11.4, so the daisyUI half of the fetch raised
 `TypeError`. CI runs 3.10 but does not build CSS, so nothing caught it. Fixed by
 asking `tarfile` whether the keyword exists rather than dropping the filter.
+
+**7. The rest timer needed a second trigger, and the plan only had one.** A review
+flag on the design spec caught it: the entry is one `POST` for the whole exercise
+block, but rest happens *between* sets, so starting the timer on save times the walk
+to the water fountain rather than the rest. It now also starts when you leave a row
+you have filled in, or reach for another row while the last one holds data —
+`focusout` checks focus left the row entirely, so tabbing weight → reps inside one
+row does not start it, and a blank row never does.
 
 Also worth recording: **the constraint-naming rule is asymmetric.** CHECK names are
 bare tokens because the `ck` convention contains `%(constraint_name)s` and prefixes
