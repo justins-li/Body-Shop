@@ -9,11 +9,11 @@ doing most of the work: *anything that will be re-done later should be built lat
 Tailwind is first because every remaining phase adds UI, and UI built before the
 migration gets styled twice.
 
-Current state: **Phases 1, 2 and 3 are done, and Phase 9 landed with Phase 2.** Flask
-+ Jinja + vanilla ES modules, styled with Tailwind v4 + daisyUI (CSS build step, still
-no JS dependencies), one append-only table on **SQLite or Postgres with Alembic
-migrations**, no auth, **873 exercises with images across 12 muscle groups**. See
-[ARCHITECTURE.md](ARCHITECTURE.md).
+Current state: **Phases 1, 2, 3 and 4 are done, and Phase 9 landed with Phase 2.**
+Flask + Jinja + vanilla ES modules, styled with Tailwind v4 + daisyUI (CSS build step,
+still no JS dependencies), two append-only tables on **SQLite or Postgres with Alembic
+migrations**, no auth, **873 exercises with images across 12 muscle groups**, and
+**per-set weight, reps and RPE**. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
@@ -460,7 +460,7 @@ for migrations.
 
 ---
 
-## Phase 4 — Set-level logging: weight, reps and RPE
+## Phase 4 — Set-level logging: weight, reps and RPE ✅ *done*
 
 **Depends on:** Phase 3 (this is a destructive schema change and wants Alembic), Phase 1
 (the set grid is the most interaction-heavy surface in the app). Coordinate with Phase 2 —
@@ -537,6 +537,63 @@ accumulates after this ships.
 Existing rows have a set count and nothing else. Backfill one `workout_set` per counted
 set with `NULL` weight and reps; the muscle map is unchanged and the history stays
 truthful about what was actually known. Do **not** invent weights.
+
+### What shipped, and where it diverged from this plan
+
+Design spec: [2026-07-30-phase-4-set-level-logging-design.md](superpowers/specs/2026-07-30-phase-4-set-level-logging-design.md).
+Built as specified above — parent/child tables, derived count, warm-up exclusion,
+backfill with `NULL` weights — plus the four "ship in this phase" items. Six
+divergences, each forced by something the plan did not anticipate:
+
+**1. The plan never said what a weight *is*.** `weight REAL` has no unit, which is
+ambiguous the moment a second person reads it and impossible to aggregate across in
+Phase 7. The column is now **kilograms, always**; `kg`/`lb` is a display preference in
+`localStorage`, converted only in `ui.js`. Rejected: a per-set `unit` column (every
+Phase 7 aggregate converts anyway) and a config-only label (flipping it would silently
+relabel every past row).
+
+**2. `summary.py` was *not* untouched, and the plan's central claim was wrong.** The
+derived-property trick did keep the aggregation code working — but `summarise_entries`
+set `worked = True` unconditionally, which was unreachable while `CHECK (sets > 0)`
+held and became reachable the moment an all-warm-up entry could exist. Such an entry
+reported `worked: true` beside `sets: 0.0` and `state: "rest"`. Both `worked` and the
+`exercises` list are now gated on a non-zero contribution, restoring the rule CLAUDE.md
+already documented.
+
+**3. The migration's order of operations inverts on SQLite.** The plan said create →
+backfill → drop. Dropping a column on SQLite means rebuilding the table, and
+`app/db.py` enables foreign keys on every connection, so `DROP TABLE workout_entry`
+with child rows pointing at it is a constraint violation. SQLite reads the counts,
+rebuilds the parent *first*, then creates and fills `workout_set`. Postgres keeps the
+original order. Same trap family as `0003`, one level up.
+
+**4. UUIDs do not round-trip as strings.** `sa.Uuid(as_uuid=False)` stores 32-character
+hex and returns the hyphenated 36-character form. Both are accepted on input, so
+lookups work either way, but any test comparing a returned id to `uuid4().hex` fails.
+The API emits the hyphenated form.
+
+**5. `POST /api/entries` dropped form encoding**, which the plan did not mention. A
+nested array cannot be form-encoded, so accepting `request.form` would mean failing
+every form post with a confusing error instead of an honest 400.
+
+**6. `tools/fetch_css_toolchain.py` was broken on Python 3.10.** `TarFile.extract`'s
+`filter=` keyword landed in 3.11.4, so the daisyUI half of the fetch raised
+`TypeError`. CI runs 3.10 but does not build CSS, so nothing caught it. Fixed by
+asking `tarfile` whether the keyword exists rather than dropping the filter.
+
+Also worth recording: **the constraint-naming rule is asymmetric.** CHECK names are
+bare tokens because the `ck` convention contains `%(constraint_name)s` and prefixes
+them; the `uq` convention does not, so a UNIQUE constraint must be left *unnamed* or
+its explicit name is used verbatim. CLAUDE.md previously documented only the first
+half.
+
+### Left for later
+
+- **Per-set notes**, which the parent/child split now makes cheap.
+- **A grid keyboard path** — the set grid is mouse-and-tab today; repeating the last
+  set with a single key is the obvious next affordance.
+- **The kg/lb preference has no home per user** until Phase 5 adds a user table;
+  it currently lives in `localStorage`, so it does not follow you across devices.
 
 ---
 
@@ -1154,7 +1211,7 @@ whether anyone looks at the result twice.
 | 1 | Tailwind + DaisyUI ✅ | — | Soft dependency of every later UI surface; cheapest at three pages |
 | 2 | Exercise catalog, 12 muscle groups, picker, images ✅ | 1 | Highest-value work independent of infrastructure; defines the vocabulary Phase 8 emits into. Absorbed Phase 9 |
 | 3 | Migrations + Postgres ✅ | — | Blocked 4, 5 and 6; ran parallel to 1–2 |
-| 4 | **Set-level logging: weight, reps, RPE** | 3 | The gate on the whole competitive feature set; everything in Phase 7 reads it |
+| 4 | **Set-level logging: weight, reps, RPE** ✅ | 3 | The gate on the whole competitive feature set; everything in Phase 7 reads it |
 | 5 | Auth, `user_id`, CSRF, rate limiting | 3 | Needs migrations and a real database |
 | 6 | Vercel deploy, CI gates | 3, 5 | Critical path to being online; don't expose an unauthenticated app |
 | 7 | **Training essentials: routines, PRs, 1RM, charts, export** | 4, 5 | Competitive parity, not differentiation — the app reads as a prototype without it |
@@ -1197,10 +1254,10 @@ A phase whose gating decisions are still open has not started — it is being im
    front/side/rear, so splitting later is a data change plus SVG paths, not a re-model.
 7. **AI feature scope** — per-user custom exercises only, or a review queue that promotes
    popular ones into the shared catalog?
-8. **Does `workout_entry` survive Phase 4?** The parent/child split keeps the muscle map
-   untouched, but a single flat `workout_set` table carrying `entry_date` and `exercise_id`
-   is simpler and loses only the ability to attach a note to a whole exercise block.
-   Decide before writing the migration, not after.
+8. ~~**Does `workout_entry` survive Phase 4?**~~ — **answered: yes, as the parent.**
+   A flat `workout_set` would rewrite every aggregation in `summary.py`, silently
+   redefine the picker's `uses` from sessions to sets, and make the same movement
+   logged twice in a day indistinguishable from one longer block.
 9. **Charting approach** — recommendation: **inline SVG.** Phase 7's charts are simple
    time series (weight, estimated 1RM, volume-load over dates), well inside inline-SVG
    territory; the repo already demonstrates hand-written-SVG fluency in the body map,
