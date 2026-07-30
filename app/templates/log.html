@@ -119,6 +119,26 @@
           </div>
         </div>
 
+        {#
+          The timer runs entirely in the browser — no schema, no endpoint. The
+          page ships its controls; `timer.js` owns the count. Phase 10 moves the
+          alert to a watch, where you can see it without unlocking a phone.
+        #}
+        <div class="rest-timer flex flex-wrap items-center gap-2.5" id="rest-timer">
+          <span class="type-label text-secondary">Rest</span>
+          <span class="rest-timer-readout tabular-nums" data-timer-readout>2:00</span>
+          <label class="sr-only" for="rest-duration">Rest length</label>
+          <select id="rest-duration" data-timer-duration
+                  class="select select-sm bg-base-200 border hairline">
+            <option value="60">1:00</option>
+            <option value="90">1:30</option>
+            <option value="120">2:00</option>
+            <option value="180">3:00</option>
+          </select>
+          <button type="button" data-timer-toggle
+                  class="btn btn-sm btn-outline rounded-full hairline">Start / stop</button>
+        </div>
+
         <p class="alert alert-error text-sm py-2.5 px-4 rounded-xl m-0"
            id="form-error" role="alert" hidden></p>
 

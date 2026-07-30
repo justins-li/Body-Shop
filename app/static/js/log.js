@@ -32,6 +32,8 @@ import {
   $, formatDate, formatWeight, loadUnit, renderEntries, retargetLinks,
   saveUnit, syncUrlDate, toKg, toast,
 } from "./ui.js";
+import { DEFAULT_BAR, describePlates } from "./plates.js";
+import { initRestTimer, startRestTimer } from "./timer.js";
 
 let selectedIso;
 let catalog = [];
@@ -416,7 +418,19 @@ function setRow(index, previous) {
     renumberRows();
   });
 
-  row.append(number, weight, reps, rpe, type, remove);
+  // What to load to make the number just typed. Pure arithmetic on the value
+  // in the box — it spans the row beneath the inputs, and stays empty (and so
+  // `display: none`) until there is something to say.
+  const hint = document.createElement("span");
+  hint.className = "plate-hint";
+  const updateHint = () => {
+    hint.textContent = weight.value.trim() === ""
+      ? ""
+      : describePlates(Number(weight.value), DEFAULT_BAR[unit], unit);
+  };
+  weight.addEventListener("input", updateHint);
+
+  row.append(number, weight, reps, rpe, type, remove, hint);
   return row;
 }
 
@@ -636,6 +650,7 @@ async function onSubmit(event) {
       sets,
     });
     toast(`Logged ${entry.set_count} × ${entry.exercise_name}.`);
+    startRestTimer();
     await Promise.all([refreshDay(), loadRecent(), loadPreviousSets(entry.exercise_id)]);
   } catch (err) {
     showError(err.message);
@@ -668,6 +683,7 @@ export async function initLog(initialIso) {
     renderSetGrid();
   });
   $("#add-set").addEventListener("click", addSetRow);
+  initRestTimer($("#rest-timer"));
   renderSetGrid();
 
   retargetLinks([$("#view-summary")], selectedIso);

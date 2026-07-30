@@ -164,3 +164,10 @@ def test_summary_page_uses_requested_week(client):
 
 def test_bad_date_falls_back_to_today(client):
     assert client.get("/summary?date=nonsense").status_code == 200
+
+
+def test_log_page_ships_the_rest_timer_shell(client):
+    """The timer is client-side; the page only provides its controls."""
+    body = client.get("/log").data.decode()
+    for marker in ('id="rest-timer"', "data-timer-readout", "data-timer-toggle"):
+        assert marker in body
