@@ -57,6 +57,17 @@ def test_log_page_renders_a_picker_shell_not_the_catalog(client):
     assert body.count('data-panel="') == 3
 
 
+def test_log_page_renders_a_set_grid_shell(client):
+    """Rows are built by log.js; the page ships the container and the controls."""
+    body = client.get("/log").data.decode()
+    for marker in ('id="set-grid"', 'id="add-set"', 'id="weight-unit"'):
+        assert marker in body
+
+    # The old flat-count stepper is gone, not hidden.
+    assert 'id="entry-sets"' not in body
+    assert 'data-step="-1"' not in body
+
+
 def test_log_page_leads_with_recent_and_browse_and_demotes_search(client):
     """Browse is a way in; search is a fallback, so it is only an icon."""
     body = client.get("/log").data.decode()

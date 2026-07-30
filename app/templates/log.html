@@ -91,14 +91,31 @@
         </fieldset>
 
         <div>
-          <label class="type-label text-secondary block mb-2.5" for="entry-sets">Sets</label>
-          <div class="flex items-center gap-3">
-            <button type="button" class="btn btn-circle btn-outline border-base-content/25 text-base"
-                    data-step="-1" aria-label="One fewer set">−</button>
-            <input type="number" id="entry-sets" name="sets" value="3" min="1" max="100" required
-                   class="input w-24 text-center bg-base-200 border hairline font-semibold tabular-nums">
-            <button type="button" class="btn btn-circle btn-outline border-base-content/25 text-base"
-                    data-step="1" aria-label="One more set">+</button>
+          <div class="flex items-baseline justify-between mb-2.5 gap-3">
+            <span class="type-label text-secondary">Sets</span>
+            <div class="flex items-center gap-1.5">
+              <label class="sr-only" for="weight-unit">Weight unit</label>
+              <select id="weight-unit" class="select select-sm bg-base-200 border hairline">
+                <option value="kg">kg</option>
+                <option value="lb">lb</option>
+              </select>
+            </div>
+          </div>
+
+          {#
+            One row per set, built by log.js. The header is here rather than in
+            JS so the column names survive with no script, and because Tailwind
+            only sees classes it can read as literal text in a template.
+          #}
+          <div class="set-grid-head type-label text-secondary" aria-hidden="true">
+            <span>#</span><span>Weight</span><span>Reps</span><span>RPE</span><span>Type</span><span></span>
+          </div>
+          <div id="set-grid" class="grid gap-1.5"></div>
+
+          <div class="flex flex-wrap items-center gap-2.5 mt-2.5">
+            <button type="button" id="add-set"
+                    class="btn btn-sm btn-outline rounded-full hairline">Add set</button>
+            <p class="picker-note m-0" id="prefill-note" hidden></p>
           </div>
         </div>
 
