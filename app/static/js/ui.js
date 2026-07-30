@@ -103,6 +103,12 @@ export function describeSet(set, unit = loadUnit()) {
     parts.push(parts.length ? `× ${set.reps}` : `${set.reps} reps`);
   }
   if (set.rpe !== null && set.rpe !== undefined) parts.push(`@${set.rpe}`);
+  // Say which sets the count left out. Without this a warm-up reads as a
+  // working set: an entry of one working set plus one warm-up shows "1 set"
+  // above two identical lines, which looks like a bug in the count.
+  if (parts.length && set.set_type && set.set_type !== "normal") {
+    parts.push(`(${set.set_type})`);
+  }
   return parts.join(" ");
 }
 
