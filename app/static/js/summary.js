@@ -176,23 +176,45 @@ function onSchemeChange(event) {
  * the volume the server could place inside the group, and the only judgement
  * shown is `neglected`, which the server decides.
  */
+/**
+ * Say which sets the bars below are a share *of*, and why it can be fewer than
+ * the group's total.
+ *
+ * Always the same shape — "based on …" — because the two cases differ only in
+ * whether every set could be placed, and phrasing them differently made them
+ * look like unrelated readings.
+ */
+function setBasis(element, info) {
+  const total = formatSets(info.sets);
+  const placed = formatSets(info.region_sets);
+  const missed = formatSets(info.sets - info.region_sets);
+
+  if (!info.worked) {
+    element.textContent = "not trained this week";
+    element.title = "";
+  } else if (!info.region_sets) {
+    element.textContent = "no split to show";
+    element.title =
+      `All ${total} sets came from movements that do not favour one region of `
+      + "this group, so there is nothing to divide up.";
+  } else if (info.region_sets < info.sets) {
+    element.textContent = `based on ${placed} of ${total} sets`;
+    element.title =
+      `${missed} of this group's ${total} sets came from movements that do not `
+      + "favour one region — a deadlift trains the back without telling you "
+      + "lats or mid back — so they count for the group but not for a bar here.";
+  } else {
+    element.textContent = `based on all ${total} sets`;
+    element.title = `Every one of this group's ${total} sets favoured a region.`;
+  }
+}
+
 function renderRegions(muscles) {
   document.querySelectorAll(".region-group").forEach((group) => {
     const info = muscles[group.dataset.muscle];
     if (!info) return;
 
-    const attributed = group.querySelector('[data-role="attributed"]');
-    if (!info.worked) {
-      attributed.textContent = "not trained";
-    } else if (!info.region_sets) {
-      // Trained, but by movements with no defensible emphasis inside the group.
-      attributed.textContent = "no placed sets";
-    } else if (info.region_sets < info.sets) {
-      attributed.textContent =
-        `${formatSets(info.region_sets)} of ${formatSets(info.sets)} sets placed`;
-    } else {
-      attributed.textContent = `${formatSets(info.sets)} sets`;
-    }
+    setBasis(group.querySelector('[data-role="basis"]'), info);
 
     const byRegion = new Map(info.regions.map((r) => [r.region, r]));
     group.querySelectorAll(".region-bar").forEach((bar) => {
