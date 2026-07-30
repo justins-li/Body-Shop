@@ -292,6 +292,24 @@ All three access paths shipped: **Recent** (default, from entry history), **Sear
 **Browse** (muscle → equipment). The selected movement shows its two frames cross-fading
 in CSS — `steps(1)` on stacked `<img>` elements, no JS timer — plus its instructions.
 
+**Revised after the fact: the three paths are not equals.** Giving them three identical
+tabs made search look like the primary way in, when searching a catalog nobody has
+memorised is the *narrow* case — it only works if you already know the name. Browse is
+how you shop for a movement and the only path a first-time user can succeed on, so
+Recent and Browse now carry the labelled tabs and search is reduced to a magnifier icon.
+
+The deeper problem was that browse did not deserve promotion as built. It sorted
+alphabetically and truncated at 40 rows, which put "Alternating Floor Press" at the top
+of chest and pushups (70th of 147) beyond reach entirely. Fixed by `Exercise.rank`
+(see ARCHITECTURE.md — curated staples, then facet-derived order, zero-volume categories
+last), by ranking your own logged movements above both, and by replacing the silent cap
+with a "Show all 147" footer. Browse is also indexed by muscle at load instead of
+re-scanning 873 rows per dropdown change.
+
+Not done, and the obvious next step: **the body map as the picker** — tapping a region on
+the figure to browse that group, reusing the `_body_figure.html` macro. It needs a
+selectable variant of the macro and mobile layout work, and `rank` was the prerequisite.
+
 ### Images (formerly Phase 9)
 
 The licensing question that gated Phase 9 dissolved: free-exercise-db is public domain,
@@ -301,6 +319,33 @@ git, so they are served from jsDelivr pinned to the same commit, behind an
 
 Two frames per movement rather than the planned single still image, which is what makes
 them read as a movement rather than a pose.
+
+### Muscle regions — the answer to "split the chest and the delts"
+
+Added after Phase 2, in response to wanting upper/mid/lower chest and the three deltoid
+heads. Researching it first changed the shape of the answer, and the reasoning now lives
+in [VOLUME_SCIENCE.md](VOLUME_SCIENCE.md). The short version:
+
+**Regional growth is real and follows exercise selection — but no study has ever
+established a weekly set target for a muscle head.** Nobody has run that experiment, for
+any muscle. So subdividing a group into targets would mean inventing numbers and printing
+them next to sourced ones, and three 10-set chest regions silently sets a 30-set chest
+target that makes every user read as under-trained.
+
+What shipped instead: six groups (chest, shoulders, back, triceps, hamstrings, calves)
+break into 13 regions that report **where a group's volume landed** — share of the sets
+that could be placed inside it, plus a `neglected` flag. No targets, no colour from the
+volume ramp. Attribution is partial on purpose, so a deadlift's back volume sits
+unattributed rather than being split between lats and mid back.
+
+Deliberately excluded: biceps long/short head and "upper vs. lower abs" (EMG, not
+hypertrophy data). Quads, glutes and traps are plausible but their movement-to-region
+mapping is muddier — they can come later.
+
+**The remaining work is data, not design.** `EXERCISE_REGIONS` covers ~140 movements of
+873, because free-exercise-db carries nothing sub-muscular. Extending it is hand work or a
+job for Phase 8's classifier — which must emit into `MUSCLE_REGIONS` rather than inventing
+its own vocabulary. Should a region ever earn a target, it must **sum** into its parent's.
 
 ### Left for later
 

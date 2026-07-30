@@ -30,7 +30,8 @@ it once and filters client-side, and including them quadruples the payload. Use
       "level": "beginner",
       "force": "push",
       "mechanic": "compound",
-      "counts_toward_volume": true
+      "counts_toward_volume": true,
+      "rank": 0
     }
   ]
 }
@@ -47,6 +48,7 @@ it once and filters client-side, and including them quadruples the payload. Use
 | `force` | `push`, `pull`, `static` or `null`. |
 | `mechanic` | `compound`, `isolation` or `null`. |
 | `counts_toward_volume` | `false` for stretching, cardio and plyometrics — still loggable, but graded as zero sets. |
+| `rank` | How prominently to offer the movement, **lower first**. Not a field of the source data: it is Body Shop's "common lifts first" ordering (`STAPLE_EXERCISE_IDS` in `app/exercises.py`). `0`–~130 are the curated staples in order; `1000+` is everything else, ordered by `mechanic`, `level` and `equipment`, with zero-volume categories last. Sort on it; do not read meaning into the number. |
 
 The twelve muscle group slugs are `chest`, `abs`, `shoulders`, `biceps`, `forearms`,
 `quads`, `back`, `traps`, `triceps`, `glutes`, `hamstrings` and `calves`.
@@ -66,8 +68,16 @@ cannot be derived from the catalog payload.
 | --- | --- | --- |
 | `limit` | `12` | Clamped to 1–50. |
 
-Same object shape as `GET /api/exercises`. Returns an empty list before anything has
-been logged.
+Same object shape as `GET /api/exercises`, **plus `uses`** — how many entries have been
+logged against that exercise:
+
+```json
+{ "exercises": [ { "id": "Barbell_Squat", "uses": 14, "rank": 1, "…": "…" } ] }
+```
+
+`/log` asks for 50, lists the first 12, and keeps the rest for their counts: `uses`
+outranks `rank` in browse and search, so your own movements lead every list. Returns an
+empty list before anything has been logged.
 
 ---
 
@@ -89,6 +99,7 @@ One exercise in full: everything above, plus its instructions and image URLs.
     "force": "push",
     "mechanic": "compound",
     "counts_toward_volume": true,
+    "rank": 1,
     "instructions": [
       "This exercise is best performed inside a squat rack for safety purposes. …",
       "…"
@@ -230,10 +241,17 @@ triceps). Groups omitted for brevity all look like `abs`.
   "muscles_worked": ["chest", "shoulders", "triceps"],
   "muscles_at_target": [],
   "muscles_over": [],
+  "regions_neglected": [
+    { "muscle": "shoulders", "region": "delt_side", "label": "Side delt" },
+    { "muscle": "shoulders", "region": "delt_rear", "label": "Rear delt" }
+  ],
   "sets_per_day": { "2026-07-28": 12, "...": 0 },
   "entries": [ /* same shape as GET /api/entries */ ]
 }
 ```
+
+Every group additionally carries `regions` and `region_sets`, specified in full under
+[Regions](#regions) below. They are left out of the example above only for line width.
 
 ### Weighted sets
 
@@ -271,6 +289,39 @@ ones (abs, biceps, triceps, forearms, traps, calves).
 
 `muscles_at_target` lists groups whose sets have reached `target`; `muscles_over`
 lists the subset that went past it. Both are in `MUSCLE_GROUPS` display order.
+
+### Regions
+
+Six groups break into regions that respond to different movements: `chest`,
+`shoulders`, `back`, `triceps`, `hamstrings` and `calves`. The other six carry
+`"regions": []` and `"region_sets": 0.0`.
+
+```json
+"shoulders": {
+  "muscle": "shoulders", "label": "Shoulders", "worked": true, "sets": 6.0,
+  "target": 20, "over": 0.0, "state": "trained", "intensity": 0.3,
+  "exercises": ["Barbell Bench Press - Medium Grip"],
+  "region_sets": 6.0,
+  "regions": [
+    { "region": "delt_front", "label": "Front delt", "sets": 6.0, "share": 1.0,  "neglected": false },
+    { "region": "delt_side",  "label": "Side delt",  "sets": 0.0, "share": 0.0,  "neglected": true  },
+    { "region": "delt_rear",  "label": "Rear delt",  "sets": 0.0, "share": 0.0,  "neglected": true  }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `region_sets` | The group's volume that could be **placed** in a region. `≤ sets`: a deadlift trains the back without saying anything about lats vs. mid back, so it is attributed to neither. |
+| `regions[].sets` | Region volume, same weighting as the parent. A movement emphasising two regions splits its contribution evenly. |
+| `regions[].share` | Fraction of `region_sets`, **not** of `sets` — otherwise unplaceable volume would read as neglect. `0.0` when `region_sets` is `0`. |
+| `regions[].neglected` | `true` when the group received real volume (`region_sets ≥ 4.0`) and this region took under 15% of it. |
+
+**Regions carry no `target`, `state` or `intensity`, and this is deliberate.** No study
+has established a weekly set target for a muscle head — see
+[docs/VOLUME_SCIENCE.md](VOLUME_SCIENCE.md). Clients must render regions as a
+distribution, never on the volume ramp's colours. `regions_neglected` is the flat list
+of every flagged region, in group then region order.
 
 ---
 

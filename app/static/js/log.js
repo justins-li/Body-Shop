@@ -3,12 +3,22 @@
  *
  * The catalog is 873 movements, so the picker is the page. It fetches
  * `/api/exercises` once (the light shape: no instructions, no images) and
- * filters it locally through three access paths, which serve different moments:
+ * filters it locally through three access paths, in deliberate order of
+ * prominence:
  *
  *   Recent — the default, and the 90% path. Most people cycle through 10–20
  *            movements, so history beats search almost every time.
- *   Search — substring match over name, equipment, muscles and category.
- *   Browse — muscle group then equipment, for finding something new.
+ *   Browse — muscle group then equipment. The way you *shop* for a movement,
+ *            and the path a new user has to succeed on, so it is a full tab.
+ *   Search — behind an icon. It is the fallback for when you already know the
+ *            name, which is the narrower case, and giving it equal billing
+ *            invited typing at a catalog nobody has memorised.
+ *
+ * Every list is ordered by the same three keys, most significant first: whether
+ * the movement trains the chosen muscle *primarily*, how often **you** have
+ * logged it, then `rank` — the server's "common lifts first" ordering (see
+ * `STAPLE_EXERCISE_IDS` in app/exercises.py). Alphabetical is the last resort,
+ * never the first: it used to open chest with "Alternating Floor Press".
  *
  * Only the *selected* exercise costs a second request, for its instructions and
  * the two photographs the card animates between.
@@ -27,8 +37,28 @@ let catalog = [];
 let byId = new Map();
 let selectedId = null;
 
+/** muscle slug → its movements, pre-sorted. Built once, after the one fetch. */
+let byMuscle = new Map();
+
+/** muscle slug → the equipment values that muscle actually has. */
+let equipmentByMuscle = new Map();
+
+/** exercise id → times logged, from `/api/exercises/recent`. */
+let personalUses = new Map();
+
+/** Whether browse is showing its whole list rather than the first page. */
+let browseExpanded = false;
+
 /** Most results anyone scans before retyping; keeps the DOM small. */
 const MAX_RESULTS = 40;
+
+/**
+ * How many recents to *fetch*. Only `RECENT_SHOWN` are listed; the rest are
+ * kept for their `uses` counts, which rank browse and search. One request
+ * either way, so ask for the wider history.
+ */
+const RECENT_FETCHED = 50;
+const RECENT_SHOWN = 12;
 
 /**
  * Gym shorthand the catalog's own words don't cover, so "incl db bench" finds
@@ -62,6 +92,50 @@ function haystack(exercise) {
   ].join(" ").toLowerCase();
 }
 
+// ---- Ordering --------------------------------------------------------------
+
+/** Times the user has logged this movement — 0 if never. */
+const uses = (exercise) => personalUses.get(exercise.id) || 0;
+
+/**
+ * Index the catalog by muscle group, so browsing is a lookup rather than a scan.
+ *
+ * Each list is sorted once, here, by primary-first then `rank` then name — every
+ * key that does not depend on history. `uses` is applied at render time
+ * instead, because the recents request can land after this runs and because a
+ * stable sort over an already-ranked list preserves the rest of the order.
+ */
+function buildIndexes() {
+  byMuscle = new Map();
+  equipmentByMuscle = new Map();
+
+  for (const exercise of catalog) {
+    for (const muscle of exercise.muscles) {
+      if (!byMuscle.has(muscle)) byMuscle.set(muscle, []);
+      byMuscle.get(muscle).push(exercise);
+    }
+  }
+
+  for (const [muscle, exercises] of byMuscle) {
+    exercises.sort((a, b) =>
+      Number(!a.primary.includes(muscle)) - Number(!b.primary.includes(muscle))
+      || a.rank - b.rank
+      || a.name.localeCompare(b.name));
+    equipmentByMuscle.set(muscle, [...new Set(exercises.map((e) => e.equipment))].sort());
+  }
+}
+
+/**
+ * Re-order a muscle's pre-sorted list to put the user's own movements first.
+ *
+ * `Array.prototype.sort` is stable, and the input is already ordered by rank
+ * and name, so comparing only these two tiers leaves everything else intact.
+ */
+function personalFirst(exercises, muscle) {
+  const tier = (e) => Number(!e.primary.includes(muscle)) * 2 + Number(uses(e) === 0);
+  return [...exercises].sort((a, b) => tier(a) - tier(b));
+}
+
 // ---- Searching ------------------------------------------------------------
 
 /**
@@ -69,24 +143,30 @@ function haystack(exercise) {
  *
  * Every whitespace-separated token must match, so tokens narrow rather than
  * widen. Name matches outrank matches on equipment or muscle, and a name that
- * *starts* with the query outranks one that merely contains it.
+ * *starts* with the query outranks one that merely contains it. Within a tier
+ * it is your own history first, then the catalog's `rank` — so "press" leads
+ * with the bench press rather than the Anti-Gravity Press.
  */
 function search(query) {
   const tokens = query.toLowerCase().split(/\s+/).filter(Boolean)
     .map((token) => ALIASES[token] || token);
   if (!tokens.length) return [];
 
+  const phrase = tokens.join(" ");
   const scored = [];
   for (const exercise of catalog) {
     if (!tokens.every((token) => exercise._haystack.includes(token))) continue;
 
     const name = exercise.name.toLowerCase();
-    const phrase = tokens.join(" ");
     const score = name.startsWith(phrase) ? 0 : name.includes(phrase) ? 1 : 2;
     scored.push({ exercise, score });
   }
 
-  scored.sort((a, b) => a.score - b.score || a.exercise.name.localeCompare(b.exercise.name));
+  scored.sort((a, b) =>
+    a.score - b.score
+    || uses(b.exercise) - uses(a.exercise)
+    || a.exercise.rank - b.exercise.rank
+    || a.exercise.name.localeCompare(b.exercise.name));
   return scored.slice(0, MAX_RESULTS).map((s) => s.exercise);
 }
 
@@ -241,23 +321,39 @@ function showTab(name) {
 
 async function loadRecent() {
   try {
-    const recent = await fetchRecentExercises();
+    const recent = await fetchRecentExercises(RECENT_FETCHED);
+    personalUses = new Map(recent.map((e) => [e.id, e.uses || 0]));
     renderResults(
-      $("#recent-results"), recent,
-      "Nothing logged yet — search or browse to find your first movement.",
+      $("#recent-results"), recent.slice(0, RECENT_SHOWN),
+      "Nothing logged yet — browse by muscle group to find your first movement.",
     );
+    // A first-time user has nothing to be shown, so start them where the
+    // catalog is actually navigable rather than on an empty list.
+    if (!recent.length) showTab("browse");
+    // Browse may have rendered before these counts existed.
+    if (byMuscle.size) renderBrowse({ keepPage: true });
   } catch (err) {
     toast(err.message, "error");
   }
 }
 
-/** Fill the equipment dropdown from whatever the chosen muscle actually has. */
-function renderBrowse() {
+/**
+ * Fill the browse panel: equipment options for the chosen muscle, then its
+ * movements in ranked order.
+ *
+ * The list is capped at `MAX_RESULTS` with the rest one click away. The cap used
+ * to be a silent truncation of an alphabetical list, which put pushups (70th of
+ * 147 for chest) out of reach of browsing altogether.
+ *
+ * @param {{keepPage?: boolean}} [options] - Keep an expanded list expanded;
+ *   changing a filter collapses it back to the first page.
+ */
+function renderBrowse({ keepPage = false } = {}) {
   const muscle = $("#browse-muscle").value;
   const equipmentSelect = $("#browse-equipment");
-  const forMuscle = catalog.filter((e) => e.muscles.includes(muscle));
+  if (!keepPage) browseExpanded = false;
 
-  const available = [...new Set(forMuscle.map((e) => e.equipment))].sort();
+  const available = equipmentByMuscle.get(muscle) || [];
   const previous = equipmentSelect.value;
   equipmentSelect.textContent = "";
   equipmentSelect.append(new Option("Any", ""));
@@ -265,15 +361,38 @@ function renderBrowse() {
   equipmentSelect.value = available.includes(previous) ? previous : "";
 
   const equipment = equipmentSelect.value;
-  const matches = forMuscle
-    .filter((e) => !equipment || e.equipment === equipment)
-    // Primary first: the movements that actually train the chosen group.
-    .sort((a, b) =>
-      Number(b.primary.includes(muscle)) - Number(a.primary.includes(muscle))
-      || a.name.localeCompare(b.name))
-    .slice(0, MAX_RESULTS);
+  const matches = personalFirst(byMuscle.get(muscle) || [], muscle)
+    .filter((e) => !equipment || e.equipment === equipment);
+  const shown = browseExpanded ? matches : matches.slice(0, MAX_RESULTS);
 
-  renderResults($("#browse-results"), matches, "No movements match that combination.");
+  renderResults($("#browse-results"), shown, "No movements match that combination.");
+  renderBrowseNote(shown.length, matches.length);
+}
+
+/** Say how much of the list is showing, and offer the rest. */
+function renderBrowseNote(shownCount, totalCount) {
+  const note = $("#browse-note");
+  note.textContent = "";
+  note.hidden = totalCount === 0;
+  if (!totalCount) return;
+
+  const label = document.createElement("span");
+  label.textContent = shownCount < totalCount
+    ? `Showing ${shownCount} of ${totalCount} — most common first.`
+    : `All ${totalCount} — most common first.`;
+  note.append(label);
+
+  if (shownCount < totalCount) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "picker-more";
+    more.textContent = `Show all ${totalCount}`;
+    more.addEventListener("click", () => {
+      browseExpanded = true;
+      renderBrowse({ keepPage: true });
+    });
+    note.append(more);
+  }
 }
 
 function onSearchInput(event) {
@@ -374,8 +493,8 @@ export async function initLog(initialIso) {
   $("#entry-date").addEventListener("change", onDateChange);
   $("#entry-form").addEventListener("submit", onSubmit);
   $("#exercise-search").addEventListener("input", onSearchInput);
-  $("#browse-muscle").addEventListener("change", renderBrowse);
-  $("#browse-equipment").addEventListener("change", renderBrowse);
+  $("#browse-muscle").addEventListener("change", () => renderBrowse());
+  $("#browse-equipment").addEventListener("change", () => renderBrowse());
   document.querySelectorAll("[data-tab]").forEach((tab) => {
     tab.addEventListener("click", () => showTab(tab.dataset.tab));
   });
@@ -388,6 +507,7 @@ export async function initLog(initialIso) {
       exercise._haystack = haystack(exercise);
     });
     byId = new Map(catalog.map((exercise) => [exercise.id, exercise]));
+    buildIndexes();
     renderBrowse();
   } catch (err) {
     toast(err.message, "error");

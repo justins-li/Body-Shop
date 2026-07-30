@@ -197,3 +197,98 @@ def test_weekly_summary_only_includes_the_target_week(app):
     assert sorted(summary["muscles_worked"]) == ["abs", "back", "biceps"]
     assert summary["sets_per_day"]["2026-07-27"] == 5
     assert summary["sets_per_day"]["2026-07-30"] == 0
+
+
+# ---- Regions ---------------------------------------------------------------
+#
+# Six groups subdivide into regions. Regions are a *distribution*, never a grade:
+# no target, no state, no intensity. See docs/VOLUME_SCIENCE.md.
+
+INCLINE_DB = "Incline_Dumbbell_Press"
+LATERAL_RAISE = "Side_Lateral_Raise"
+FACE_PULL = "Face_Pull"
+DEADLIFT = "Barbell_Deadlift"
+PULLDOWN = "Wide-Grip_Lat_Pulldown"
+
+
+def test_only_six_groups_carry_regions():
+    summary = summarise_entries([])
+    subdivided = [m for m in MUSCLE_GROUPS if summary[m]["regions"]]
+    assert subdivided == ["chest", "shoulders", "back", "triceps", "hamstrings", "calves"]
+
+
+def test_regions_never_carry_a_target_or_a_grade():
+    """The whole point: there is no evidence to grade a muscle head against."""
+    summary = summarise_entries([entry(BENCH, 6)])
+    for muscle in MUSCLE_GROUPS:
+        for region in summary[muscle]["regions"]:
+            assert set(region) == {"region", "label", "sets", "share", "neglected"}
+
+
+def test_regions_split_a_groups_volume_by_emphasis():
+    summary = summarise_entries([entry(BENCH, 4), entry(INCLINE_DB, 2)])
+    chest = summary["chest"]
+    assert chest["sets"] == 6
+    assert chest["region_sets"] == 6
+    assert {r["region"]: r["sets"] for r in chest["regions"]} == {
+        "chest_upper": 2.0,
+        "chest_mid_lower": 4.0,
+    }
+
+
+def test_secondary_weighting_carries_into_regions():
+    """Bench press gives shoulders half a set each, all of it front delt."""
+    shoulders = summarise_entries([entry(BENCH, 6)])["shoulders"]
+    assert shoulders["sets"] == 3.0
+    assert {r["region"]: r["sets"] for r in shoulders["regions"]}["delt_front"] == 3.0
+
+
+def test_pressing_leaves_the_other_delt_heads_flagged():
+    summary = summarise_entries([entry(BENCH, 10)])
+    by_region = {r["region"]: r for r in summary["shoulders"]["regions"]}
+    assert by_region["delt_front"]["share"] == 1.0
+    assert by_region["delt_side"]["neglected"] is True
+    assert by_region["delt_rear"]["neglected"] is True
+
+
+def test_a_balanced_shoulder_week_flags_nothing():
+    entries = [entry(BENCH, 6), entry(LATERAL_RAISE, 4), entry(FACE_PULL, 4)]
+    regions = summarise_entries(entries)["shoulders"]["regions"]
+    assert not any(r["neglected"] for r in regions)
+
+
+def test_unplaceable_volume_is_reported_rather_than_spread():
+    """A deadlift trains the back without saying lats or mid back."""
+    back = summarise_entries([entry(DEADLIFT, 6), entry(PULLDOWN, 4)])["back"]
+    assert back["sets"] == 10.0  # both movements train back primarily
+    assert back["region_sets"] == 4.0  # only the pulldown could be placed
+    by_region = {r["region"]: r for r in back["regions"]}
+    # The pulldown's 4 sets are all the lats', and shares are of what was placed.
+    assert by_region["lats"]["sets"] == 4.0
+    assert by_region["lats"]["share"] == 1.0
+    assert by_region["mid_back"]["sets"] == 0.0
+
+
+def test_a_barely_trained_group_is_not_reported_as_imbalanced():
+    """Under the parent floor, thin regions mean nothing yet."""
+    regions = summarise_entries([entry(INCLINE_DB, 3)])["chest"]["regions"]
+    assert not any(r["neglected"] for r in regions)
+
+
+def test_untrained_groups_have_zero_shares_and_no_flags():
+    chest = summarise_entries([])["chest"]
+    assert chest["region_sets"] == 0.0
+    assert all(r["share"] == 0.0 and not r["neglected"] for r in chest["regions"])
+
+
+def test_weekly_summary_lists_every_neglected_region(app):
+    with app.app_context():
+        add_entry("2026-07-28", BENCH, 10)
+        summary = weekly_summary(date(2026, 7, 28))
+
+    flagged = {(r["muscle"], r["region"]) for r in summary["regions_neglected"]}
+    assert ("shoulders", "delt_side") in flagged
+    assert ("shoulders", "delt_rear") in flagged
+    assert ("chest", "chest_upper") in flagged
+    # Every entry names its parent and carries a label for display.
+    assert all({"muscle", "region", "label"} == set(r) for r in summary["regions_neglected"])

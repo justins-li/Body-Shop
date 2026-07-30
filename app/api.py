@@ -17,7 +17,7 @@ from .models import (
     delete_entry,
     list_entries,
     parse_date,
-    recent_exercise_ids,
+    recent_exercise_usage,
     sets_by_date,
 )
 from .services.summary import weekly_summary
@@ -62,13 +62,23 @@ def get_recent_exercises():
     """Recently logged exercises, most recent first — the picker's default view.
 
     Unlike search and browse this reads entry history, so it cannot be done
-    client-side from the catalog payload.
+    client-side from the catalog payload. Each entry carries ``uses``, the number
+    of times it has been logged, which the picker folds into the ordering of
+    search and browse as well: your own history outranks the catalog's own idea
+    of what is popular.
     """
     limit = request.args.get("limit", type=int) or 12
     limit = max(1, min(limit, 50))
 
-    exercises = [get_exercise(i) for i in recent_exercise_ids(limit)]
-    return jsonify({"exercises": [e.to_dict() for e in exercises if e is not None]})
+    exercises = [
+        {**exercise.to_dict(), "uses": uses}
+        for exercise, uses in (
+            (get_exercise(exercise_id), uses)
+            for exercise_id, uses in recent_exercise_usage(limit)
+        )
+        if exercise is not None
+    ]
+    return jsonify({"exercises": exercises})
 
 
 @bp.get("/exercises/<exercise_id>")
