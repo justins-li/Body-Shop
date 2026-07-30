@@ -430,6 +430,15 @@ function setRow(index, previous) {
   };
   weight.addEventListener("input", updateHint);
 
+  // Rest happens *between* sets, but the entry is one POST at the end — so
+  // leaving a row you have filled in is the earliest honest signal that a set
+  // just finished. `focusout` with the check below fires when focus leaves the
+  // row entirely, not when it moves weight -> reps inside it.
+  row.addEventListener("focusout", (event) => {
+    if (row.contains(event.relatedTarget)) return;
+    if (rowHasData(row)) startRestTimer();
+  });
+
   row.append(number, weight, reps, rpe, type, remove, hint);
   return row;
 }
@@ -456,7 +465,18 @@ function addSetRow() {
     showError(`An entry can hold at most ${MAX_SETS} sets.`);
     return;
   }
+  // Reaching for another row means the one above it is done, so this is the
+  // other end of the same signal as the row's own `focusout`.
+  const last = grid.lastElementChild;
+  if (last && rowHasData(last)) startRestTimer();
   grid.append(setRow(index, previousSets[index - 1]));
+}
+
+/** Whether a row records anything yet — a blank row is not a finished set. */
+function rowHasData(row) {
+  return ["set-weight", "set-reps", "set-rpe"].some(
+    (field) => row.querySelector(`.${field}`).value.trim() !== "",
+  );
 }
 
 /** Rebuild the grid from scratch, one row per remembered set (min 1). */

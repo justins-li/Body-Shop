@@ -94,12 +94,23 @@ def fetch_daisyui() -> None:
     if target.exists():
         shutil.rmtree(target)
 
-    # The extraction filter landed in Python 3.11.4; on 3.10 ``extract()`` has
-    # no such parameter and passing it is a TypeError. ``tarfile.data_filter``
-    # exists exactly when the keyword is supported, so ask for it rather than
-    # comparing version tuples — and keep asking, because dropping the filter
-    # outright would give a tarball write access outside ``target``.
-    extract_kwargs = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
+    # PEP 706's extraction filter shipped in 3.12 and was backported to 3.11.4,
+    # 3.10.12, 3.9.17 and 3.8.17 — so the interpreter version alone does not
+    # tell you whether ``extract()`` accepts ``filter=``; on an older patch
+    # release passing it is a TypeError. ``tarfile.data_filter`` landed with the
+    # keyword, so probe for that instead of comparing version tuples.
+    #
+    # Where it is missing the extraction is unfiltered, which is how a malicious
+    # tarball would write outside ``target``. That is narrow here — a pinned
+    # package over HTTPS from the npm registry — but it is a trust decision, so
+    # say so rather than degrading in silence.
+    filtered = hasattr(tarfile, "data_filter")
+    extract_kwargs = {"filter": "data"} if filtered else {}
+    if not filtered:
+        print(
+            "  !  this Python predates PEP 706, so the tarball is extracted "
+            "unfiltered; upgrade to 3.10.12+ / 3.11.4+ to restore it"
+        )
 
     with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
         for member in archive.getmembers():

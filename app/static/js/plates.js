@@ -29,10 +29,14 @@ export const DEFAULT_BAR = { kg: 20, lb: 45 };
 export function platesFor(target, bar, unit) {
   const perSide = (target - bar) / 2;
   if (!Number.isFinite(perSide) || perSide <= 0) return { plates: [], remainder: 0 };
+  // Refuse an unknown unit rather than quietly handing back kilo plates
+  // labelled as something else — a wrong loadout is worse than no hint.
+  const stock = PLATES[unit];
+  if (!stock) return { plates: [], remainder: 0 };
 
   const plates = [];
   let left = perSide;
-  for (const plate of PLATES[unit] || PLATES.kg) {
+  for (const plate of stock) {
     // The epsilon keeps 2.5 from being rejected by float dust at 2.4999999996.
     while (left >= plate - 1e-9) {
       plates.push(plate);

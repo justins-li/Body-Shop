@@ -44,7 +44,8 @@ function tick() {
   remaining -= 1;
   if (remaining <= 0) {
     remaining = 0;
-    stop();
+    stop(); // paints on its way out, so this tick is already drawn
+    return;
   }
   paint();
 }
