@@ -110,6 +110,32 @@ critical paths now start at their next link: **5 → 6** to be on the internet, 
 
 ---
 
+## The launch line, and a warning about parity
+
+Three findings from the 2026-07-30 planning review that sit above any single phase.
+
+**Launch is Phase 6 plus a named slice of Phase 7 — and the slice is smaller than
+Phase 7.** The stated goal ("hosted, multi-user product") is technically met the moment
+Phase 6 deploys, but shipping without a parity floor reads as a prototype. The floor:
+previous-values-inline already ships with Phase 4, so the launch-blocking remainder is
+**routines and entry editing**. Everything else in Phase 7 — 1RM, PRs, charts,
+measurements — improves a launched app and should not delay one.
+
+**Parity is a floor, not a strategy.** Every phase after 2 chases feature parity with
+free, mature incumbents, while the thing they cannot copy — the volume-coverage model
+and the body map — receives no deepening work anywhere in this plan: per-exercise
+secondary weights, region expansion, the tap-a-muscle body-map picker and the coverage
+widget are all parked in "left for later" notes. A solo project does not out-feature
+Hevy. After launch, alternate parity work with work that widens that gap, starting from
+the parked items.
+
+**Add a user-contact checkpoint after Phase 6.** Phase 8's "measure the miss rate
+before building" is currently the only place real usage feeds a decision. Make it the
+rule rather than the exception: get a handful of people logging for a month before
+finalising Phase 7's internal order — what they stumble on should reorder it.
+
+---
+
 ## Phase 1 — Tailwind + DaisyUI ✅ *done*
 
 **Depends on:** nothing. **First because it is a soft dependency of everything else** —
@@ -565,6 +591,21 @@ that skips the join is the same IDOR wearing a different hat.
 | Enumeration | Login and reset must return identical responses for unknown vs known emails. |
 | Transport | HTTPS only, HSTS. Free with Vercel. |
 
+**Recommendation, recorded so this phase does not start with it open: take Supabase
+Auth, with bearer tokens.** (Closes open decision 3 and the auth half of decision 2.)
+Three arrows already point the same way: the database is already Supabase, Phase 10
+requires token auth and mobile SDKs, and most of the table above — password hashing,
+email flows, rate-limiting infrastructure, enumeration — exists only to support the
+self-hosted option and becomes the provider's problem otherwise. Token auth also
+dissolves the CSRF row, which is a cookie-session problem. Keeping Flask-Login on the
+table is silently keeping the most expensive version of this phase alive.
+
+**Design account deletion here, not in Phase 10.** Apple's 5.1.1(v) is what eventually
+*requires* `DELETE /api/account`, but a launched app holding emails and training
+history needs it as ordinary privacy hygiene — and it is a cascade design question
+(`workout_entry`, `workout_set`, and every later per-user table), cheapest to answer
+while the `user_id` sweep is already open.
+
 Existing rows have no owner: either wipe or backfill to a seed account. Decide before
 writing the migration — `NOT NULL` without a default fails on a non-empty table.
 
@@ -597,6 +638,16 @@ building the exercise picker twice. Option A gets you deployed, authenticated an
 persistent with the app you already have. Revisit Option B only if Python cold starts hurt
 in practice.
 
+**But challenge the host before the framework.** The table above compares Flask-on-Vercel
+to a rewrite and skips the cheaper question: Vercel versus a container host (Fly,
+Railway, Render) running the already-documented `gunicorn "wsgi:application"` entry
+point as-is — no `api/index.py` shim, no Python cold starts (the weakness the table
+itself concedes), and `NullPool` can become a real pool. Nothing from Phase 3 is wasted
+either way; the no-DDL factory and env-driven config are good hygiene on any host. If
+Vercel wins, it should be for a recorded reason (free tier, existing account), not by
+default — as written, the plan optimises for the harder deployment target without
+saying why.
+
 ### Deployment shape
 
 ```
@@ -616,6 +667,36 @@ since the platform imports the app object directly.
 
 Gate production deploys on the Postgres CI job added in Phase 3.
 
+### The launch floor
+
+Deployment is not launch. Before pointing anyone at the URL, the operational and legal
+minimums for holding strangers' training history:
+
+- **Backups with a tested restore.** Supabase's automated backups are a start; what
+  matters is having actually restored one.
+- **Error monitoring.** A Flask app failing silently in the cloud is invisible; wire in
+  Sentry or equivalent before there are users to hit the errors.
+- **A privacy policy.** Filed under Phase 10's store logistics until now, but the moment
+  real emails and workout data are collected it is a launch requirement, not a store one.
+- **CSV export** — moved here from Phase 7. One endpoint, trivial once the set model
+  exists, and the honest answer to "can I leave?"; worth having before asking anyone to
+  trust the app with a training history.
+
+### Revisiting the stack — tripwires, not a debate
+
+A full Vercel/Supabase stack (Next.js, or clients talking to Postgres through RLS) was
+considered and rejected in the 2026-07-30 review: the rewrite hits the most valuable
+code — the grading rules, region attribution and the tested API surface — and RLS can
+express *ownership* but not "secondaries count 0.5 and warm-ups don't count", so the
+rules would move into edge functions or the client, dissolving the one-place-rules
+design. Adopting Supabase's *services* (Postgres, Auth) is not a stack switch and is
+already the plan.
+
+Revisit only if a tripwire fires: Python cold starts measurably hurt **and** Vercel is a
+fixed constraint; Phase 7's routines UI outgrows vanilla JS; or mobile becomes the
+primary surface, where one React codebase has real consolidation value. None of these is
+decidable before launch.
+
 ---
 
 ## Phase 7 — Training essentials
@@ -626,7 +707,11 @@ per-user variants — Phase 5. Placed immediately after deployment because this 
 differentiators. Shipping without them reads as a prototype next to Hevy or Strong.
 
 Sequenced within the phase by cost-to-value, cheapest first. The first three are days of
-work each; routines are the expensive one.
+work each; routines are the expensive one. One caution on that ordering: routines are
+also the *point* — what makes the app repeatable rather than a diary — so cheapest-first
+means the phase's reason for existing is what gets cut if time runs short. If the phase
+must shrink, cut from the pure functions, not from routines and editing (see *The launch
+line* above).
 
 | Feature | Shape | Notes |
 | --- | --- | --- |
@@ -634,7 +719,7 @@ work each; routines are the expensive one.
 | **PR detection** | Query + a badge | Per exercise: heaviest weight, best estimated 1RM, best volume-load. A live "new PR" toast on save is the single most-cited delight feature in the category. Cache per `(user_id, exercise_id)` only if the query proves slow — it will not at this scale. |
 | **Per-exercise progress graphs** | New page + endpoint | `GET /api/exercises/<id>/history` → weight, est. 1RM and volume-load over time. **This is the first chart in the app**; pick a rendering approach deliberately — inline SVG keeps the zero-JS-dependency rule that Phase 1 already bent, a charting library breaks it further. |
 | **Body weight and measurements** | New table | `body_metric(user_id, recorded_on, metric, value)` — long format, so adding waist/bodyfat/photos later is rows, not columns. Feeds nothing else; it is a standalone tab. |
-| **CSV export** | One endpoint | Was a README to-do. Trivial once the set model exists, and it is the honest answer to "can I leave?" — worth having before asking anyone to trust the app with a training history. |
+| **Entry and set editing** | `PATCH` + a form | New with Phase 4: per-set data makes delete-and-relog genuinely punishing — one fat-fingered weight in a five-row grid means re-entering everything. Cheap against a flat count, missing entirely now. Design it aware of Phase 10: an edit is not replayable the way an insert is, so it sits in the same family as the delete tombstones. *(CSV export moved to Phase 6's launch floor.)* |
 | **Routines / templates** | New tables + real UI | The expensive one. A routine is an ordered list of exercises with target sets/reps; starting a workout instantiates it into `workout_entry` rows. This is what makes the app repeatable rather than a diary, and it is the prerequisite for any programming feature later. Budget more than the rest of the phase combined. |
 
 ### What this phase deliberately excludes
@@ -814,6 +899,13 @@ to.
 
 **But two of its constraints have to be honoured in Phase 5, not here.** See *Decisions
 this forces earlier* below; retrofitting either is expensive.
+
+**And re-plan it before starting it.** This is a program wearing a phase's clothes:
+offline-first sync, a native client, a watch app and two store reviews is more work than
+Phases 1–7 combined, and the "Alembic revisions rather than rewrites" framing below
+covers only the schema — the easy part. The offline queue and replay logic are a client
+rearchitecture. When its turn comes, it gets its own roadmap with its own phases rather
+than one row in the summary table.
 
 ### The asset you already have
 
@@ -1055,16 +1147,26 @@ whether anyone looks at the result twice.
 
 ## Open decisions
 
+A process rule, learned the hard way: **an open decision attaches to the phase that
+needs it, as an entry gate.** Decision 2 said "answer before Phase 4"; nothing enforced
+that, and Phase 4 started anyway (it hedged the set-id slice, which was the cheap part).
+A phase whose gating decisions are still open has not started — it is being improvised.
+
 1. ~~**Image licensing**~~ — **answered: adopt free-exercise-db.** Public domain, images
    included, which collapsed Phase 9 into Phase 2 exactly as predicted.
-2. **Mobile approach — PWA, Capacitor shell, or React Native?** Last to build, but
-   **answer it before Phase 4**: it decides token auth vs cookie sessions, whether an
-   in-app account-deletion endpoint is required, and whether `workout_set` needs
-   client-generated ids from the start. Route C would also make the Phase 6 Next.js
-   question moot.
-3. **Auth: self-hosted or provider?** Flask-Login is more code and more responsibility;
-   Clerk/Supabase is faster and safer, adds a vendor, and ships mobile SDKs — which
-   matters more once decision 2 is settled.
+2. **Mobile approach — PWA, Capacitor shell, or React Native?** The "before Phase 4"
+   deadline slipped; Phase 4's design spec answered the set-id slice (server-minted
+   UUIDs, buying the client-id option without exercising it). The remaining halves —
+   token auth and in-app account deletion — are **Phase 5 entry gates**, and Phase 5's
+   recommendation (Supabase Auth with bearer tokens) satisfies both whichever route
+   wins. Note that route C also retires the Phase 6 Next.js question permanently: Flask
+   stays the API and the Jinja + vanilla-JS web app becomes the *permanent* lightweight
+   web surface, not a placeholder awaiting a rewrite.
+3. **Auth: self-hosted or provider?** Recommendation recorded under Phase 5: **Supabase
+   Auth, with bearer tokens.** Barely open — the database is already Supabase, Phase 10
+   requires tokens and mobile SDKs, and most of Phase 5's requirements table exists only
+   to support the self-hosted option. Confirm before Phase 5 starts; it roughly halves
+   the phase.
 4. **Secondary-muscle weighting** — **shipped at 0.5, with fractional counting in the UI.**
    Still open as a refinement: one flat number stands in for a spectrum, and per-exercise
    weights are possible once there is evidence for them.
@@ -1079,9 +1181,12 @@ whether anyone looks at the result twice.
    untouched, but a single flat `workout_set` table carrying `entry_date` and `exercise_id`
    is simpler and loses only the ability to attach a note to a whole exercise block.
    Decide before writing the migration, not after.
-9. **Charting approach** — inline SVG or a charting library? Phase 7's progress graphs are
-   the first chart in the app, and a library is the second breach of the zero-JS-dependency
-   rule after Tailwind. Cheap to decide now, expensive to switch once several charts exist.
+9. **Charting approach** — recommendation: **inline SVG.** Phase 7's charts are simple
+   time series (weight, estimated 1RM, volume-load over dates), well inside inline-SVG
+   territory; the repo already demonstrates hand-written-SVG fluency in the body map,
+   and this preserves the zero-JS-dependency rule. A library earns its keep on
+   interactivity, zoom, or many chart types — none of which Phase 7 or the post-launch
+   list needs.
 
 Decisions 1 and 2 can change the plan's *shape* rather than its detail — worth resolving
 early even though both belong to late phases. Decision 8 gates Phase 4, which is now on

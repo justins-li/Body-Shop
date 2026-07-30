@@ -1871,6 +1871,12 @@ is briefly mixed."
 
 Both are pure client-side, need no schema and no endpoint, and are small enough to review together.
 
+> **Before starting: the timer's trigger changed in review.** The design spec's
+> rest-timer section gained a 2026-07-30 review flag — firing only from `onSubmit`
+> starts the timer after the *last* set, when rest is over. Read that flag first:
+> the recommendation is to also fire `startRestTimer()` on set-row completion, with
+> the existing on-save call covering the final set. Steps 2–3 below predate it.
+
 **Files:**
 - Create: `app/static/js/timer.js`
 - Create: `app/static/js/plates.js`

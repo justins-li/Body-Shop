@@ -275,6 +275,13 @@ One consequence, and it is why the old `sets > 0` check cannot survive: **an ent
 of nothing but warm-ups has `sets == 0`** and contributes no volume. That is the
 right answer, and the summary already handles a zero contribution.
 
+**Review flag (2026-07-30): the exclusion now has two definitions.** `WorkoutEntry.sets`
+excludes `'warmup'` in Python and `sets_by_date` excludes it again in SQL — the first
+business rule in the app with two homes that can drift, in a codebase organised around
+one-place rules. Cheap fix while the branch is open: one named constant (the excluded
+types, or the counted ones) that both the property and the SQL expression are built
+from, plus a test asserting the two paths agree on the same fixture.
+
 ### Function-by-function
 
 | Function | Change |
@@ -410,6 +417,14 @@ Starts on save, counts down in the page, with a 60/90/120/180s select. Pure
 client-side — no schema, no endpoint. Native notifications are explicitly Phase 10,
 and this phase ships only the logic that phase will move to the wrist.
 
+**Review flag (2026-07-30), decide before building Task 5: "on save" is the wrong
+trigger on its own.** The save model is one `POST` for the whole exercise block, but
+rest happens *between* sets, before anything is posted — a timer that only starts
+after the last set times the walk to the water fountain. Recommendation: also fire
+`startRestTimer()` on set-row completion (the user adds the next row, or leaves a
+filled row), keeping the on-save start as the final set's timer. The plan's Task 5
+wiring (`onSubmit` → `startRestTimer()`) covers only that final case.
+
 ### Plate calculator (`app/static/js/plates.js`, new)
 
 A pure function of target weight and bar weight, returning plates per side. Bar
@@ -491,7 +506,14 @@ untouched.
 
 Deferred to Phase 7, which wants history to read against and history only
 accumulates after this ships: 1RM estimates, PR detection, per-exercise progress
-graphs, volume-load charts, CSV export.
+graphs, volume-load charts. (CSV export moved to Phase 6's launch floor in the
+2026-07-30 review.)
+
+Also deferred to Phase 7, now explicitly on its list rather than an omission:
+**entry and set editing.** Delete-and-relog was tolerable against a flat count;
+against a five-row grid of weights it is a punishment. It stays out of this phase
+because it interacts with Phase 10's sync design — an edit is not replayable the
+way an insert is — and deserves its own design pass.
 
 Deferred to Phase 10: native rest-timer notifications, the offline queue. The UUID
 decision above is the only concession this phase makes to either.
