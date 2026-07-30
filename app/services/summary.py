@@ -130,9 +130,16 @@ def summarise_entries(entries: list[WorkoutEntry]) -> dict[str, dict]:
                 continue
             weighted = entry.sets * exercise.weight_for(muscle)
             bucket["sets"] += weighted
-            bucket["worked"] = True
-            if entry.exercise_name not in bucket["exercises"]:
-                bucket["exercises"].append(entry.exercise_name)
+            # Zero is reachable now: an entry of only warm-up sets has
+            # entry.sets == 0, so weighted is 0 for every muscle it touches.
+            # Before Phase 4 this branch was unreachable — CHECK (sets > 0)
+            # guaranteed at least one real set — so don't drop the guard back
+            # to an unconditional assignment; that would light the body map
+            # for a group that received no volume.
+            if weighted > 0:
+                bucket["worked"] = True
+                if entry.exercise_name not in bucket["exercises"]:
+                    bucket["exercises"].append(entry.exercise_name)
 
             # A movement with no defensible emphasis inside the group — a
             # deadlift for the back — leaves this volume unattributed rather

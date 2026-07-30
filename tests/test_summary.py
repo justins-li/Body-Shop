@@ -117,6 +117,35 @@ def test_non_strength_movements_do_not_count_toward_volume():
     assert summary["hamstrings"]["state"] == "rest"
 
 
+def test_an_all_warmup_entry_does_not_mark_worked_or_list_the_exercise():
+    """entry.sets excludes warm-ups, so an all-warm-up entry weighs zero.
+
+    Before Phase 4 this case couldn't happen — the flat ``sets`` column had a
+    ``CHECK (sets > 0)`` constraint, so a stored entry always contributed some
+    volume. A child-row entry can now be all warm-ups and still exist.
+    """
+    warmup_entry = WorkoutEntry(
+        id=1,
+        entry_date=date.fromisoformat("2026-07-28"),
+        exercise_id=BENCH,
+        set_rows=(
+            WorkoutSet(
+                id="set-1", set_index=1, weight=None, reps=None,
+                rpe=None, set_type="warmup",
+            ),
+            WorkoutSet(
+                id="set-2", set_index=2, weight=None, reps=None,
+                rpe=None, set_type="warmup",
+            ),
+        ),
+    )
+    summary = summarise_entries([warmup_entry])
+    assert summary["chest"]["worked"] is False
+    assert summary["chest"]["sets"] == 0.0
+    assert summary["chest"]["state"] == "rest"
+    assert summary["chest"]["exercises"] == []
+
+
 def test_sets_accumulate_across_entries_and_exercises():
     summary = summarise_entries(
         [entry(BENCH, 3), entry(PULLUP, 2), entry(SQUAT, 4), entry(SITUP, 1)]

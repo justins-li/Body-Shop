@@ -94,7 +94,7 @@ def test_create_and_list_entry(client, add):
     response = add("2026-07-28", SQUAT, 4)
     assert response.status_code == 201
     entry = response.get_json()["entry"]
-    assert entry["sets"] == 4
+    assert entry["set_count"] == 4
     assert entry["exercise_name"] == "Barbell Squat"
     assert entry["muscles"] == ["quads", "back", "calves", "glutes", "hamstrings"]
 
@@ -112,14 +112,155 @@ def test_entries_can_be_filtered_by_range(client, add):
     assert {e["date"] for e in entries} == {"2026-07-27", "2026-07-30"}
 
 
+def test_entries_carry_their_sets_and_a_count(client, add):
+    add("2026-07-28", SQUAT, [
+        {"weight": 100, "reps": 5},
+        {"weight": 100, "reps": 5},
+        {"weight": 105, "reps": 3, "rpe": 8.5, "set_type": "failure"},
+    ])
+
+    entry = client.get("/api/entries?date=2026-07-28").get_json()["entries"][0]
+    assert entry["set_count"] == 3
+    assert [s["set_index"] for s in entry["sets"]] == [1, 2, 3]
+    assert entry["sets"][0]["weight"] == 100.0
+    assert entry["sets"][2]["rpe"] == 8.5
+    assert entry["sets"][2]["set_type"] == "failure"
+
+
+def test_blank_sets_are_stored_as_nulls(client, add):
+    """Logging bare sets stays possible — the backfill produces the same shape."""
+    add("2026-07-28", SQUAT, [{}, {}])
+    entry = client.get("/api/entries?date=2026-07-28").get_json()["entries"][0]
+
+    assert entry["set_count"] == 2
+    assert all(s["weight"] is None and s["reps"] is None for s in entry["sets"])
+    assert all(s["set_type"] == "normal" for s in entry["sets"])
+
+
+def test_warmup_sets_are_stored_but_excluded_from_the_count(client, add):
+    add("2026-07-28", SQUAT, [
+        {"weight": 40, "reps": 5, "set_type": "warmup"},
+        {"weight": 100, "reps": 5},
+        {"weight": 100, "reps": 5},
+    ])
+
+    entry = client.get("/api/entries?date=2026-07-28").get_json()["entries"][0]
+    assert len(entry["sets"]) == 3
+    assert entry["set_count"] == 2
+
+
+def test_warmup_sets_do_not_inflate_the_muscle_map(client, add):
+    """The correctness requirement: a warm-up must not shade the body map."""
+    add("2026-07-28", BENCH, [{"set_type": "warmup"}] * 4 + [{}] * 2)
+
+    summary = client.get("/api/summary/week?date=2026-07-28").get_json()
+    assert summary["muscles"]["chest"]["sets"] == 2.0
+    assert summary["total_sets"] == 2
+
+
+def test_warmup_sets_do_not_inflate_the_calendar(client, add):
+    add("2026-07-28", SQUAT, [{"set_type": "warmup"}, {}, {}])
+    days = client.get("/api/calendar?year=2026&month=7").get_json()["days"]
+    assert days == {"2026-07-28": 2}
+
+
+def test_an_entry_of_only_warmups_contributes_no_volume(client, add):
+    add("2026-07-28", BENCH, [{"set_type": "warmup"}] * 3)
+
+    entry = client.get("/api/entries?date=2026-07-28").get_json()["entries"][0]
+    assert entry["set_count"] == 0
+
+    summary = client.get("/api/summary/week?date=2026-07-28").get_json()
+    assert summary["muscles"]["chest"]["worked"] is False
+    assert summary["total_sets"] == 0
+
+
+def test_set_ids_are_distinct_uuids(client, add):
+    from uuid import UUID
+
+    add("2026-07-28", SQUAT, [{}, {}, {}])
+    sets = client.get("/api/entries?date=2026-07-28").get_json()["entries"][0]["sets"]
+
+    ids = [s["id"] for s in sets]
+    assert len(set(ids)) == 3
+    # Parse rather than compare: the stored form is hex, the read form hyphenated.
+    assert all(UUID(value) for value in ids)
+
+
+def test_weights_round_trip_in_kilograms(client, add):
+    add("2026-07-28", SQUAT, [{"weight": 102.5, "reps": 5}])
+    sets = client.get("/api/entries?date=2026-07-28").get_json()["entries"][0]["sets"]
+    assert sets[0]["weight"] == 102.5
+
+
+def test_deleting_an_entry_cascades_to_its_sets(client, add, app):
+    import sqlalchemy as sa
+
+    from app.db import get_db
+    from app.tables import workout_set
+
+    entry_id = add("2026-07-28", SQUAT, [{}, {}, {}]).get_json()["entry"]["id"]
+    client.delete(f"/api/entries/{entry_id}")
+
+    with app.app_context():
+        remaining = get_db().execute(
+            sa.select(sa.func.count()).select_from(workout_set)
+        ).scalar()
+    assert remaining == 0
+
+
+@pytest.mark.parametrize(
+    "sets",
+    [
+        3,                                        # the old integer shape
+        [],                                       # empty
+        "three",                                  # not a list
+        [{}] * 101,                               # over the cap
+        [{"weight": -1}],                         # negative weight
+        [{"reps": 0}],                            # reps below range
+        [{"reps": 1001}],                         # reps above range
+        [{"rpe": 0.9}],                           # rpe below range
+        [{"rpe": 10.5}],                          # rpe above range
+        [{"rpe": 8.3}],                           # not a 0.5 step
+        [{"set_type": "backoff"}],                # unknown type
+        ["not-an-object"],                        # not a dict
+    ],
+)
+def test_invalid_set_payloads_are_rejected(client, sets):
+    response = client.post(
+        "/api/entries",
+        json={"date": "2026-07-28", "exercise_id": SQUAT, "sets": sets},
+    )
+    assert response.status_code == 400
+    assert "error" in response.get_json()
+
+
+def test_last_sets_returns_the_most_recent_session(client, add):
+    add("2026-07-20", SQUAT, [{"weight": 95, "reps": 5}])
+    add("2026-07-27", SQUAT, [{"weight": 100, "reps": 5}, {"weight": 100, "reps": 4}])
+    add("2026-07-27", BENCH, [{"weight": 60, "reps": 8}])
+
+    data = client.get(f"/api/exercises/{SQUAT}/last-sets").get_json()
+    assert data["date"] == "2026-07-27"
+    assert [s["weight"] for s in data["sets"]] == [100.0, 100.0]
+    assert [s["reps"] for s in data["sets"]] == [5, 4]
+
+
+def test_last_sets_is_empty_for_an_unlogged_movement(client):
+    data = client.get(f"/api/exercises/{PULLUP}/last-sets").get_json()
+    assert data == {"date": None, "sets": []}
+
+
+def test_last_sets_404s_for_an_unknown_exercise(client):
+    assert client.get("/api/exercises/not_a_movement/last-sets").status_code == 404
+
+
 @pytest.mark.parametrize(
     "payload",
     [
-        {"date": "not-a-date", "exercise_id": SQUAT, "sets": 3},
-        {"date": "2026-07-28", "exercise_id": "squat", "sets": 3},  # retired id
-        {"date": "2026-07-28", "exercise_id": SQUAT, "sets": 0},
-        {"date": "2026-07-28", "exercise_id": SQUAT, "sets": "many"},
-        {"date": "", "exercise_id": SQUAT, "sets": 3},
+        {"date": "not-a-date", "exercise_id": SQUAT, "sets": [{}]},
+        {"date": "2026-07-28", "exercise_id": "squat", "sets": [{}]},  # retired id
+        {"date": "", "exercise_id": SQUAT, "sets": [{}]},
     ],
 )
 def test_invalid_entries_are_rejected(client, payload):

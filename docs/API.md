@@ -6,6 +6,10 @@ body of `{"error": "<message>"}`.
 Dates are ISO-8601 strings (`YYYY-MM-DD`) throughout, in the user's local calendar —
 no time zone conversion is performed.
 
+**Units.** Weight is kilograms everywhere in this API. The kg/lb choice shown to the
+user is a display preference the front end applies on read — it never crosses the
+wire.
+
 ---
 
 ## `GET /api/exercises`
@@ -121,6 +125,43 @@ free-exercise-db commit the catalog was generated from.
 
 ---
 
+## `GET /api/exercises/<id>/last-sets`
+
+The sets from the most recent session of this movement — backs the `/log` grid's
+prefill.
+
+```json
+{
+  "date": "2026-07-27",
+  "sets": [
+    {
+      "id": "1f6a2b3c-4d5e-4f60-8a1b-9c0d1e2f3a4b",
+      "set_index": 1,
+      "weight": 100.0,
+      "reps": 5,
+      "rpe": null,
+      "set_type": "normal"
+    },
+    {
+      "id": "2a7b3c4d-5e6f-4071-9b2c-0d1e2f3a4b5c",
+      "set_index": 2,
+      "weight": 100.0,
+      "reps": 4,
+      "rpe": null,
+      "set_type": "normal"
+    }
+  ]
+}
+```
+
+Same set-field shape as `GET /api/entries`. `date` and `sets` are `null`/`[]` when the
+movement has never been logged — the page renders that as empty placeholders, not an
+error.
+
+**404** with `{"error": "Unknown exercise: …"}` if the id is not in the catalog.
+
+---
+
 ## `GET /api/entries`
 
 List workout entries, newest first.
@@ -142,15 +183,45 @@ With no parameters, returns every entry.
       "exercise_id": "Barbell_Bench_Press_-_Medium_Grip",
       "exercise_name": "Barbell Bench Press - Medium Grip",
       "muscles": ["chest", "shoulders", "triceps"],
-      "sets": 3
+      "set_count": 2,
+      "sets": [
+        {
+          "id": "1f6a2b3c-4d5e-4f60-8a1b-9c0d1e2f3a4b",
+          "set_index": 1,
+          "weight": 100.0,
+          "reps": 5,
+          "rpe": null,
+          "set_type": "normal"
+        },
+        {
+          "id": "2a7b3c4d-5e6f-4071-9b2c-0d1e2f3a4b5c",
+          "set_index": 2,
+          "weight": 105.0,
+          "reps": 3,
+          "rpe": 8.5,
+          "set_type": "failure"
+        }
+      ]
     }
   ]
 }
 ```
 
 `muscles` is `primary + secondary` and does not say which is which — fetch the
-exercise if you need the split. `sets` is the whole number the user logged, not a
-weighted figure.
+exercise if you need the split.
+
+`set_count` is the number of sets counting toward weekly volume — **warm-up sets are
+stored but excluded from it**, same as everywhere else volume is counted. `sets` is
+every set the entry has, in logged order, including warm-ups.
+
+| Set field | Meaning |
+| --- | --- |
+| `id` | A UUID, unique per set. |
+| `set_index` | 1-based position within the entry, assigned by submission order. |
+| `weight` | Kilograms. `null` when not recorded. |
+| `reps` | `null` when not recorded. |
+| `rpe` | `null` when not recorded. |
+| `set_type` | One of `normal`, `warmup`, `drop`, `failure`. |
 
 **400** if a date parameter is not a valid ISO date.
 
@@ -158,24 +229,47 @@ weighted figure.
 
 ## `POST /api/entries`
 
-Create an entry. Accepts a JSON body or form encoding.
+Create an entry and its sets. Accepts a JSON body only — **form encoding is no
+longer accepted**: it cannot carry a nested array, so keeping it would mean failing
+every form post with a confusing message rather than an honest 400.
 
 ```json
-{ "date": "2026-07-28", "exercise_id": "Barbell_Squat", "sets": 4 }
+{
+  "date": "2026-07-28",
+  "exercise_id": "Barbell_Squat",
+  "sets": [
+    { "weight": 100, "reps": 5 },
+    { "weight": 100, "reps": 5 },
+    { "weight": 105, "reps": 3, "rpe": 8.5, "set_type": "failure" }
+  ]
+}
 ```
 
 | Field | Rules |
 | --- | --- |
 | `date` | Required, ISO-8601. |
 | `exercise_id` | Required, must exist in the catalog. Case-sensitive. |
-| `sets` | Required, integer 1–100. |
+| `sets` | Required, array of 1–100 set objects. |
+
+Each set object:
+
+| Field | Rules |
+| --- | --- |
+| `weight` | Optional. Kilograms, ≥ 0. |
+| `reps` | Optional. Integer, 1–1000. |
+| `rpe` | Optional. 1–10, in steps of 0.5. |
+| `set_type` | Optional. One of `normal`, `warmup`, `drop`, `failure`. Defaults to `normal`. |
+
+**The integer form is no longer accepted** — three bare sets are `[{}, {}, {}]`, not
+`3`. There were no external consumers before Phase 6 deploys, and this was the last
+cheap moment to make the break.
 
 **201** with `{"entry": {...}}` on success, **400** with an explanatory `error` otherwise.
 
 ```bash
 curl -X POST http://127.0.0.1:5000/api/entries \
   -H 'Content-Type: application/json' \
-  -d '{"date":"2026-07-28","exercise_id":"Barbell_Squat","sets":4}'
+  -d '{"date":"2026-07-28","exercise_id":"Barbell_Squat","sets":[{},{},{},{}]}'
 ```
 
 ---
@@ -208,6 +302,9 @@ Total sets per day for a month — what the calendar dots are drawn from.
 
 Days with nothing logged are omitted. **400** if `month` is outside 1–12.
 
+Warm-up sets are excluded from every count here, same as `set_count` on an entry — a
+day of only warm-ups is indistinguishable from a day with nothing logged.
+
 ---
 
 ## `GET /api/summary/week`
@@ -217,6 +314,9 @@ today). This is the endpoint that drives the body map.
 
 Example below: 12 sets of barbell bench press (primary chest; secondary shoulders and
 triceps). Groups omitted for brevity all look like `abs`.
+
+Warm-up sets are excluded from every count on this page — `total_sets`, each group's
+`sets`, and `sets_per_day` — same as `set_count` on an entry.
 
 ```json
 {
