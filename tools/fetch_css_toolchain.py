@@ -94,6 +94,13 @@ def fetch_daisyui() -> None:
     if target.exists():
         shutil.rmtree(target)
 
+    # The extraction filter landed in Python 3.11.4; on 3.10 ``extract()`` has
+    # no such parameter and passing it is a TypeError. ``tarfile.data_filter``
+    # exists exactly when the keyword is supported, so ask for it rather than
+    # comparing version tuples — and keep asking, because dropping the filter
+    # outright would give a tarball write access outside ``target``.
+    extract_kwargs = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
+
     with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
         for member in archive.getmembers():
             # npm tarballs nest everything under "package/"; flatten that away.
@@ -101,7 +108,7 @@ def fetch_daisyui() -> None:
                 continue
             member.name = member.name[len("package/") :]
             if member.name:
-                archive.extract(member, target, filter="data")
+                archive.extract(member, target, **extract_kwargs)
 
     print(f"  -> {target.relative_to(TOOLS.parent)}/")
 
