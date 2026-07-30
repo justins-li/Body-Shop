@@ -85,7 +85,13 @@ is re-derived from the new tokens or retired outright, and carry the answer into
 2. Write a design plan: 5–6 named colour tokens (they live in `@theme` and the
    daisyUI theme block — that *is* the token file), two typefaces with defined
    roles plus a tabular-figure monospace for every number in the app, a layout
-   concept, and one signature element (the training graph below).
+   concept, and one signature element (the training graph below). The plan
+   includes a **screen-by-screen map**: what lives on each page and why. Restyling
+   a function in place needs no permission; **moving a function between pages is
+   flagged explicitly in the plan** — propose it with the reason, and wait for
+   approval on those items specifically. The current groupings carry documented
+   rationale, so a relocation argues against that rationale, not against a blank
+   slate.
 3. Critique your own plan. For each choice ask: "would I have produced this for any
    fitness app?" If yes, revise it and say what changed and why.
 4. **Present the plan for approval before building.** Use plan mode; do not start
