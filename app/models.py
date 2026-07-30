@@ -9,18 +9,30 @@ the caller has to format.
 Dates cross this boundary as :class:`datetime.date` objects and leave it as
 ISO-8601 strings, in :meth:`WorkoutEntry.to_dict` and :func:`sets_by_date`. The
 backend performs no time-zone conversion anywhere.
+
+Phase 4 split the flat ``workout_entry.sets`` count into a ``workout_set``
+child table: an entry is the parent row (date, exercise), and each set — its
+weight, reps, RPE and type — lives in its own child row. ``WorkoutEntry.sets``
+is derived from those rows rather than stored, so it can never disagree with
+them.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from uuid import uuid4
 
 import sqlalchemy as sa
 
 from .db import get_db
 from .exercises import get_exercise
-from .tables import workout_entry
+from .tables import workout_entry, workout_set
+
+#: The four set types. Only ``warmup`` is excluded from weekly volume.
+SET_TYPES = ("normal", "warmup", "drop", "failure")
+MAX_SETS_PER_ENTRY = 100
+MAX_REPS = 1000
 
 
 class ValidationError(ValueError):
@@ -28,13 +40,48 @@ class ValidationError(ValueError):
 
 
 @dataclass(frozen=True)
+class WorkoutSet:
+    """One set: what was lifted, how many times, and how hard it felt."""
+
+    id: str
+    set_index: int
+    weight: float | None   # kilograms; None when not recorded
+    reps: int | None
+    rpe: float | None
+    set_type: str
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "set_index": self.set_index,
+            "weight": self.weight,
+            "reps": self.reps,
+            "rpe": self.rpe,
+            "set_type": self.set_type,
+        }
+
+
+@dataclass(frozen=True)
 class WorkoutEntry:
-    """One logged movement: N sets of an exercise on a given day."""
+    """One logged movement on a given day, plus the sets that made it up."""
 
     id: int
     entry_date: date
     exercise_id: str
-    sets: int
+    set_rows: tuple[WorkoutSet, ...] = ()
+
+    @property
+    def sets(self) -> int:
+        """Sets counting toward weekly volume — warm-ups excluded.
+
+        Derived rather than stored, which is what keeps ``services/summary.py``
+        unchanged across Phase 4: it still reads ``entry.sets`` as an int.
+
+        Excluding warm-ups is a correctness requirement, not a nicety. Counting
+        them would inflate the muscle map the moment anyone logged properly, and
+        the volume ramp would start overstating the week.
+        """
+        return sum(1 for row in self.set_rows if row.set_type != "warmup")
 
     @property
     def exercise_name(self) -> str:
@@ -53,17 +100,11 @@ class WorkoutEntry:
             "exercise_id": self.exercise_id,
             "exercise_name": self.exercise_name,
             "muscles": list(self.muscles),
-            "sets": self.sets,
+            # Named so no client reads it as len(sets): warm-ups are in `sets`
+            # but not in this count.
+            "set_count": self.sets,
+            "sets": [row.to_dict() for row in self.set_rows],
         }
-
-
-def _row_to_entry(row) -> WorkoutEntry:
-    return WorkoutEntry(
-        id=row.id,
-        entry_date=row.entry_date,
-        exercise_id=row.exercise_id,
-        sets=row.sets,
-    )
 
 
 def parse_date(value: str | date | None, *, field: str = "date") -> date:
@@ -80,61 +121,191 @@ def parse_date(value: str | date | None, *, field: str = "date") -> date:
         ) from exc
 
 
-def validate_entry(entry_date, exercise_id, sets) -> tuple[date, str, int]:
-    """Validate raw user input and return normalised values."""
+def validate_entry(entry_date, exercise_id) -> tuple[date, str]:
+    """Validate the entry's own fields. Sets are validated separately."""
     parsed_date = parse_date(entry_date)
-
     if not exercise_id or get_exercise(str(exercise_id)) is None:
         raise ValidationError(f"Unknown exercise: {exercise_id!r}.")
+    return parsed_date, str(exercise_id)
 
+
+def _weight(raw, index: int) -> float | None:
+    if raw is None or raw == "":
+        return None
     try:
-        parsed_sets = int(sets)
+        value = float(raw)
     except (TypeError, ValueError) as exc:
-        raise ValidationError("'sets' must be a whole number.") from exc
-    if parsed_sets < 1:
-        raise ValidationError("'sets' must be at least 1.")
-    if parsed_sets > 100:
-        raise ValidationError("'sets' must be 100 or fewer.")
-
-    return parsed_date, str(exercise_id), parsed_sets
+        raise ValidationError(f"Set {index}: 'weight' must be a number.") from exc
+    if value < 0:
+        raise ValidationError(f"Set {index}: 'weight' cannot be negative.")
+    return value
 
 
-def add_entry(entry_date, exercise_id: str, sets: int) -> WorkoutEntry:
-    """Insert a workout entry after validating it. Returns the stored row."""
-    parsed_date, parsed_exercise, parsed_sets = validate_entry(
-        entry_date, exercise_id, sets
+def _reps(raw, index: int) -> int | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(f"Set {index}: 'reps' must be a whole number.") from exc
+    if not 1 <= value <= MAX_REPS:
+        raise ValidationError(f"Set {index}: 'reps' must be between 1 and {MAX_REPS}.")
+    return value
+
+
+def _rpe(raw, index: int) -> float | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(f"Set {index}: 'rpe' must be a number.") from exc
+    if not 1.0 <= value <= 10.0:
+        raise ValidationError(f"Set {index}: 'rpe' must be between 1 and 10.")
+    # RPE is recorded in half points — 7, 7.5, 8. Anything finer is false
+    # precision about a subjective reading, so it is rejected rather than
+    # rounded, which would silently change what the user said.
+    if (value * 2) % 1 != 0:
+        raise ValidationError(f"Set {index}: 'rpe' must be in steps of 0.5.")
+    return value
+
+
+def _set_type(raw, index: int) -> str:
+    if raw is None or raw == "":
+        return "normal"
+    value = str(raw)
+    if value not in SET_TYPES:
+        raise ValidationError(
+            f"Set {index}: 'set_type' must be one of {', '.join(SET_TYPES)}."
+        )
+    return value
+
+
+def validate_sets(raw_sets) -> list[dict]:
+    """Validate the ``sets`` array and return rows ready to insert.
+
+    ``set_index`` is assigned here from submission order rather than read from
+    the payload, so it cannot arrive duplicated or with a gap.
+    """
+    if not isinstance(raw_sets, list):
+        raise ValidationError("'sets' must be a list of sets.")
+    if not raw_sets:
+        raise ValidationError("'sets' must contain at least one set.")
+    if len(raw_sets) > MAX_SETS_PER_ENTRY:
+        raise ValidationError(
+            f"'sets' must contain {MAX_SETS_PER_ENTRY} sets or fewer."
+        )
+
+    rows = []
+    for index, raw in enumerate(raw_sets, start=1):
+        if not isinstance(raw, dict):
+            raise ValidationError(f"Set {index} must be an object.")
+        rows.append(
+            {
+                "set_index": index,
+                "weight": _weight(raw.get("weight"), index),
+                "reps": _reps(raw.get("reps"), index),
+                "rpe": _rpe(raw.get("rpe"), index),
+                "set_type": _set_type(raw.get("set_type"), index),
+            }
+        )
+    return rows
+
+
+def _rows_to_sets(rows) -> dict[int, list[WorkoutSet]]:
+    grouped: dict[int, list[WorkoutSet]] = {}
+    for row in rows:
+        grouped.setdefault(row.entry_id, []).append(
+            WorkoutSet(
+                # SQLAlchemy's Uuid returns the hyphenated form of the hex it
+                # stored, so this is a 36-character string. str() rather than a
+                # cast because Postgres hands back a UUID-like object.
+                id=str(row.id),
+                set_index=row.set_index,
+                weight=row.weight,
+                reps=row.reps,
+                rpe=row.rpe,
+                set_type=row.set_type,
+            )
+        )
+    return grouped
+
+
+def _sets_for(entry_ids: list[int]) -> dict[int, list[WorkoutSet]]:
+    """Fetch every set for the given entries in **one** query.
+
+    One batched query rather than one per entry: the day panel renders every
+    entry's sets, and a per-entry fetch would be an N+1 the moment anyone logs
+    a full session.
+    """
+    if not entry_ids:
+        return {}
+    rows = (
+        get_db()
+        .execute(
+            sa.select(workout_set)
+            .where(workout_set.c.entry_id.in_(entry_ids))
+            .order_by(workout_set.c.entry_id, workout_set.c.set_index)
+        )
+        .all()
     )
+    return _rows_to_sets(rows)
+
+
+def _entries_from(rows) -> list[WorkoutEntry]:
+    by_entry = _sets_for([row.id for row in rows])
+    return [
+        WorkoutEntry(
+            id=row.id,
+            entry_date=row.entry_date,
+            exercise_id=row.exercise_id,
+            set_rows=tuple(by_entry.get(row.id, ())),
+        )
+        for row in rows
+    ]
+
+
+def add_entry(entry_date, exercise_id: str, sets) -> WorkoutEntry:
+    """Insert an entry and its sets after validating both."""
+    parsed_date, parsed_exercise = validate_entry(entry_date, exercise_id)
+    rows = validate_sets(sets)
+
     db = get_db()
     result = db.execute(
         sa.insert(workout_entry).values(
-            entry_date=parsed_date,
-            exercise_id=parsed_exercise,
-            sets=parsed_sets,
+            entry_date=parsed_date, exercise_id=parsed_exercise
         )
     )
-    db.commit()
-    return WorkoutEntry(
-        # The dialect supplies this from lastrowid on SQLite and RETURNING on
-        # Postgres; Core papers over the difference.
-        id=int(result.inserted_primary_key[0]),
-        entry_date=parsed_date,
-        exercise_id=parsed_exercise,
-        sets=parsed_sets,
+    # The dialect supplies this from lastrowid on SQLite and RETURNING on
+    # Postgres; Core papers over the difference.
+    entry_id = int(result.inserted_primary_key[0])
+    db.execute(
+        sa.insert(workout_set),
+        [{"id": uuid4().hex, "entry_id": entry_id, **row} for row in rows],
     )
+    db.commit()
+
+    # Re-read rather than rebuilding in Python, so the returned ids are in the
+    # same canonical form every other read produces.
+    stored = get_entry(entry_id)
+    if stored is None:  # pragma: no cover - the insert just succeeded
+        raise ValidationError("Entry could not be stored.")
+    return stored
 
 
 def get_entry(entry_id: int) -> WorkoutEntry | None:
-    """Return a single entry by id, or ``None``."""
-    row = (
+    """Return a single entry with its sets, or ``None``."""
+    rows = (
         get_db()
         .execute(sa.select(workout_entry).where(workout_entry.c.id == entry_id))
-        .first()
+        .all()
     )
-    return _row_to_entry(row) if row else None
+    entries = _entries_from(rows)
+    return entries[0] if entries else None
 
 
 def list_entries(start: date | None = None, end: date | None = None) -> list[WorkoutEntry]:
-    """Return entries within the inclusive ``start``–``end`` range."""
+    """Return entries within the inclusive ``start``–``end`` range, with sets."""
     query = sa.select(workout_entry)
     if start is not None:
         query = query.where(workout_entry.c.entry_date >= start)
@@ -143,9 +314,7 @@ def list_entries(start: date | None = None, end: date | None = None) -> list[Wor
     query = query.order_by(
         workout_entry.c.entry_date.desc(), workout_entry.c.id.desc()
     )
-
-    rows = get_db().execute(query).all()
-    return [_row_to_entry(row) for row in rows]
+    return _entries_from(get_db().execute(query).all())
 
 
 def delete_entry(entry_id: int) -> bool:
@@ -189,14 +358,53 @@ def recent_exercise_ids(limit: int = 12) -> list[str]:
     return [exercise_id for exercise_id, _uses in recent_exercise_usage(limit)]
 
 
+def last_sets_for_exercise(exercise_id: str) -> tuple[date | None, list[WorkoutSet]]:
+    """The most recent entry's sets for ``exercise_id`` — the /log prefill.
+
+    **Joins back through ``workout_entry`` rather than reading ``workout_set``
+    directly.** That costs nothing today and is mandatory from Phase 5: once
+    entries carry a ``user_id``, a set query that skips this join is the same
+    IDOR as an unguarded ``delete_entry``, wearing a different hat.
+    """
+    row = (
+        get_db()
+        .execute(
+            sa.select(workout_entry.c.id, workout_entry.c.entry_date)
+            .where(workout_entry.c.exercise_id == exercise_id)
+            .order_by(
+                workout_entry.c.entry_date.desc(), workout_entry.c.id.desc()
+            )
+            .limit(1)
+        )
+        .first()
+    )
+    if row is None:
+        return None, []
+    return row.entry_date, _sets_for([row.id]).get(row.id, [])
+
+
 def sets_by_date(start: date, end: date) -> dict[str, int]:
-    """Return ``{iso_date: total_sets}`` for the inclusive range (calendar dots)."""
-    total = sa.func.sum(workout_entry.c.sets).label("total")
+    """Return ``{iso_date: total_sets}`` for the inclusive range (calendar dots).
+
+    Counts child rows rather than summing a column, and excludes warm-ups for
+    the same reason ``WorkoutEntry.sets`` does. Days whose entries are all
+    warm-ups drop out, which reads the same as a day with nothing logged — the
+    endpoint omits empty days either way.
+    """
+    total = sa.func.count(workout_set.c.id).label("total")
     rows = (
         get_db()
         .execute(
             sa.select(workout_entry.c.entry_date, total)
-            .where(workout_entry.c.entry_date.between(start, end))
+            .select_from(
+                workout_entry.join(
+                    workout_set, workout_set.c.entry_id == workout_entry.c.id
+                )
+            )
+            .where(
+                workout_entry.c.entry_date.between(start, end),
+                workout_set.c.set_type != "warmup",
+            )
             .group_by(workout_entry.c.entry_date)
         )
         .all()

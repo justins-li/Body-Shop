@@ -8,12 +8,13 @@ query behind the ``/log`` picker's default tab.
 from __future__ import annotations
 
 from datetime import date
+from uuid import uuid4
 
 import sqlalchemy as sa
 
 from app.db import get_db
 from app.models import recent_exercise_ids
-from app.tables import workout_entry
+from app.tables import workout_entry, workout_set
 
 SQUAT = "Barbell_Squat"
 
@@ -21,10 +22,26 @@ SQUAT = "Barbell_Squat"
 def log_entry(exercise_id: str, sets: int = 3, day: str = "2026-07-28") -> None:
     """Insert directly, bypassing the API and its validation."""
     db = get_db()
-    db.execute(
+    result = db.execute(
         sa.insert(workout_entry).values(
-            entry_date=date.fromisoformat(day), exercise_id=exercise_id, sets=sets
+            entry_date=date.fromisoformat(day), exercise_id=exercise_id
         )
+    )
+    entry_id = int(result.inserted_primary_key[0])
+    db.execute(
+        sa.insert(workout_set),
+        [
+            {
+                "id": uuid4().hex,
+                "entry_id": entry_id,
+                "set_index": index,
+                "weight": None,
+                "reps": None,
+                "rpe": None,
+                "set_type": "normal",
+            }
+            for index in range(1, sets + 1)
+        ],
     )
     db.commit()
 

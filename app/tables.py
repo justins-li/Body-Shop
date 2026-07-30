@@ -33,7 +33,7 @@ NAMING_CONVENTION = {
 
 metadata = sa.MetaData(naming_convention=NAMING_CONVENTION)
 
-#: One logged movement: N sets of an exercise on a given day.
+#: One logged movement on a given day; its sets live in ``workout_set``.
 #:
 #: Append-only, and there is no per-day "workout" parent row, which keeps logging
 #: a single insert and range queries trivial. No ``user_id`` yet — see Phase 5.
@@ -48,7 +48,6 @@ workout_entry = sa.Table(
     sa.Column("entry_date", sa.Date, nullable=False),
     #: Catalog id from app/exercises.py, e.g. ``Barbell_Squat``.
     sa.Column("exercise_id", sa.Text, nullable=False),
-    sa.Column("sets", sa.Integer, nullable=False),
     # CURRENT_TIMESTAMP rather than sa.func.now(), which renders as now() on
     # Postgres and CURRENT_TIMESTAMP on SQLite. Spelling it literally means the
     # metadata and the migrations produce the same default on both dialects,
@@ -59,9 +58,51 @@ workout_entry = sa.Table(
         nullable=False,
         server_default=sa.text("CURRENT_TIMESTAMP"),
     ),
-    sa.CheckConstraint("sets > 0", name="sets_positive"),
     sa.Index("idx_workout_entry_date", "entry_date"),
     # Preserves the AUTOINCREMENT the hand-written schema had: without it SQLite
     # reuses the ids of deleted rows. Ignored by every other dialect.
     sqlite_autoincrement=True,
+)
+
+#: The sets that make up one entry — the unit weight, reps and RPE attach to.
+#:
+#: ``workout_entry.sets`` used to be an integer column here. It is now derived:
+#: ``WorkoutEntry.sets`` counts these rows, excluding warm-ups. A denormalised
+#: cache was considered and rejected — a cache that can disagree with its source
+#: is the bug this app's single-source-of-truth design exists to avoid.
+#:
+#: The primary key is a UUID rather than an autoincrement integer so Phase 10's
+#: offline queue can mint ids on the client without a migration. It is generated
+#: server-side today; accepting a client-supplied one later is an API change.
+workout_set = sa.Table(
+    "workout_set",
+    metadata,
+    sa.Column("id", sa.Uuid(as_uuid=False), primary_key=True),
+    sa.Column(
+        "entry_id",
+        sa.Integer,
+        sa.ForeignKey("workout_entry.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    #: 1-based position within the entry. Assigned by the server from submission
+    #: order, so it can never arrive with a gap.
+    sa.Column("set_index", sa.Integer, nullable=False),
+    #: **Kilograms, always.** NULL means the weight was not recorded — which is
+    #: what revision 0004 backfills, and what a blank grid row saves as.
+    sa.Column("weight", sa.Float),
+    sa.Column("reps", sa.Integer),
+    sa.Column("rpe", sa.Float),
+    #: warmup is excluded from volume; the other three all count.
+    sa.Column("set_type", sa.Text, nullable=False, server_default=sa.text("'normal'")),
+    sa.CheckConstraint("set_index > 0", name="set_index_positive"),
+    sa.CheckConstraint("weight IS NULL OR weight >= 0", name="weight_non_negative"),
+    sa.CheckConstraint("reps IS NULL OR (reps > 0 AND reps <= 1000)", name="reps_in_range"),
+    sa.CheckConstraint("rpe IS NULL OR (rpe >= 1 AND rpe <= 10)", name="rpe_in_range"),
+    sa.CheckConstraint(
+        "set_type IN ('normal', 'warmup', 'drop', 'failure')", name="set_type_known"
+    ),
+    # Unnamed on purpose: the `uq` convention has no %(constraint_name)s token,
+    # so an explicit name would be used verbatim instead of being prefixed.
+    sa.UniqueConstraint("entry_id", "set_index"),
+    sa.Index("idx_workout_set_entry", "entry_id"),
 )
