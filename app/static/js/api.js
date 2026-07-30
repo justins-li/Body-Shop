@@ -80,7 +80,10 @@ export async function fetchEntriesInRange(startIso, endIso) {
 
 /**
  * Create an entry.
- * @param {{date: string, exercise_id: string, sets: number}} entry
+ * @param {{date: string, exercise_id: string, sets: Array<object>}} entry
+ *   `sets` is an array of `{weight?, reps?, rpe?, set_type?}` — weight in
+ *   **kilograms**, which is the only unit that crosses the wire. Three bare
+ *   sets are `[{}, {}, {}]`.
  */
 export async function createEntry(entry) {
   const data = await request("/entries", {
@@ -89,6 +92,14 @@ export async function createEntry(entry) {
     body: JSON.stringify(entry),
   });
   return data.entry;
+}
+
+/**
+ * The sets from the last session of a movement — what the grid prefills from.
+ * @returns {Promise<{date: string|null, sets: Array<object>}>}
+ */
+export async function fetchLastSets(id) {
+  return request(`/exercises/${encodeURIComponent(id)}/last-sets`);
 }
 
 /** Delete an entry by id. */
