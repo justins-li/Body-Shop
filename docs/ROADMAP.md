@@ -540,6 +540,26 @@ truthful about what was actually known. Do **not** invent weights.
 
 ---
 
+## Phase 4.5 — UI revamp *(interstitial, added 2026-07-30)*
+
+**Depends on:** Phase 4 merged. Unplanned, but deliberately slotted here for the same
+reason Tailwind sat at Phase 1: all current surfaces exist and are stable after Phase 4,
+and the biggest UI-adding phases (5's auth pages, 7's routines and charts) come after —
+new surfaces get built once, in the new design.
+
+Dark-first, instrument-like redesign plus a canvas training graph on a new `/progress`
+page. The full brief — including which design invariants survive (the volume ramp must
+still win the eye), which are consciously revised (the achromatic palette), and how the
+graph is scoped to data that exists pre-Phase-7 — is
+[redesign-brief.md](redesign-brief.md).
+
+**Presentation layer only**: read-only endpoints at most, no schema changes. Runs on a
+`redesign` branch. Timeboxed — it sits on the critical path to launch, and its claim to
+the slot is that it sharpens the differentiator (the heatmap-first aesthetic), not that
+it delays Phase 5 for polish.
+
+---
+
 ## Phase 5 — Secure user login
 
 **Depends on:** Phase 3 (migrations + Postgres), Phase 1 (login/signup pages styled once).
