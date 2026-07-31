@@ -581,131 +581,161 @@
   }
 
   /* -- Home masthead ------------------------------------------------------
-     A single screen in three columns: updates on the left, the wordmark and
-     the specimen down the middle, the contents index on the right. The rails
-     are separated by hairline rules rather than boxes — the same rule the rest
-     of the app follows, which is what stops this reading as three cards.
+     Modelled closely on glukhovsky.com: one full-height screen, a centre
+     column a little under two-thirds of the viewport, and everything sized in
+     `vw` so the composition scales rather than reflows. Their measurements,
+     kept: hero column 63.59vw, wordmark 7.15vw / weight 300 / -0.21vw
+     tracking / 106% leading, subheading strip 1.53vw tall and clipped.
 
-     Below `lg` the columns stack (centre first, so the specimen still leads).
-     A proper mobile pass comes later. */
+     What is deliberately *not* copied is the palette. That site is black on
+     warm cream; Phase 4.5 retired this app's light theme on purpose, and the
+     volume ramp only reads correctly climbing in luminance on a dark ground.
+     So: their structure, scale, type and motion, on our ground. */
   .home-masthead {
     display: grid;
     gap: 2.5rem;
-    padding-block: 2.5rem 4rem;
+    padding-block: 2rem 3.5rem;
   }
   @media (width >= 64rem) {
     .home-masthead {
-      grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) minmax(0, 17rem);
+      grid-template-columns: minmax(0, 1fr) 63.59vw minmax(0, 1fr);
       gap: 0;
-      align-items: start;
-      padding-block: 3.5rem 5rem;
-    }
-    .home-rail-left {
-      padding-right: 2.25rem;
-      border-right: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
-    }
-    .home-rail-right {
-      padding-left: 2.25rem;
-      border-left: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
-    }
-    .home-centre {
-      padding-inline: 3rem;
+      align-items: stretch;
+      min-height: calc(100vh - 4rem);
+      padding-block: 0 2vw;
     }
   }
 
+  /* The rails hang from the top and push their last child to the foot, the
+     way their `.flex-menu` does at 100dvh. */
   .home-rail {
-    display: grid;
-    gap: 1.5rem;
-    align-content: start;
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+  }
+  @media (width >= 64rem) {
+    .home-rail { padding-top: 7vw; }
+    .home-rail-left { padding-right: 2vw; }
+    .home-rail-right { padding-left: 2vw; }
   }
   .home-rail-head {
-    padding-bottom: 0.65rem;
+    padding-bottom: 0.6rem;
     border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
   }
-  /* Order matters below `lg`, where the grid is one column: the centre leads. */
   .home-centre { order: -1; }
   @media (width >= 64rem) {
     .home-centre { order: 0; }
   }
 
-  /* Placeholder cards for marketing and feature news. Deliberately quiet — a
-     stub should not out-shout the product it sits beside. */
-  .home-stub {
-    padding-bottom: 1.35rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 10%, transparent);
-  }
   .home-stub-line {
-    font-size: 1.5rem;
-    line-height: 1.05;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: 1.6rem;
+    line-height: 1.1;
     margin: 0 0 0.5rem;
     color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
   }
+  .home-stub {
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 10%, transparent);
+  }
 
-  /* -- Centre column ---------------------------------------------------- */
+  /* -- Centre column ----------------------------------------------------
+     `text-align:center`, column flex, full height — their `.hero-wrapper`. */
   .home-centre {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
     text-align: center;
   }
+  @media (width >= 64rem) {
+    .home-centre { padding-top: 6vw; }
+  }
+
+  /* Rotating subheading. Their `.block-subheading` is a short strip with
+     `overflow:hidden` and a column inside that translates, so lines arrive
+     from below rather than cross-fading — that vertical travel is most of
+     what the motion reads as. */
   .home-kicker {
-    display: block;
-    height: 1.4em;
-    margin-bottom: 0.9rem;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    width: 100%;
+    height: 1.9em;
+    overflow: hidden;
+    margin-bottom: clamp(0.75rem, 1.2vw, 1.5rem);
     color: var(--color-secondary);
   }
-  /* Every line occupies the same grid cell, so the block does not reflow as it
-     cycles and nothing below it moves. */
   .home-rotator {
-    display: inline-grid;
-    vertical-align: top;
-  }
-  .home-rotator > span {
-    grid-area: 1 / 1;
-    opacity: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     animation: home-rotate 20s infinite;
   }
-  .home-rotator > span:nth-child(2) { animation-delay: 4s; }
-  .home-rotator > span:nth-child(3) { animation-delay: 8s; }
-  .home-rotator > span:nth-child(4) { animation-delay: 12s; }
-  .home-rotator > span:nth-child(5) { animation-delay: 16s; }
+  .home-rotator > span {
+    height: 1.9em;
+    line-height: 1.9em;
+    flex: none;
+  }
 
+  /* Five lines, so each step is -100% of one line height and holds. */
   @keyframes home-rotate {
-    0%, 2%   { opacity: 0; }
-    4%, 18%  { opacity: 1; }
-    20%, 100% { opacity: 0; }
+    0%, 16%   { transform: translateY(0); }
+    20%, 36%  { transform: translateY(-1.9em); }
+    40%, 56%  { transform: translateY(-3.8em); }
+    60%, 76%  { transform: translateY(-5.7em); }
+    80%, 96%  { transform: translateY(-7.6em); }
+    100%      { transform: translateY(-9.5em); }
   }
-
   @media (prefers-reduced-motion: reduce) {
-    .home-rotator > span { animation: none; opacity: 0; }
-    .home-rotator > span:first-child { opacity: 1; }
+    .home-rotator { animation: none; }
   }
 
+  /* The signature: a light serif at 7.15vw with negative tracking. */
   .home-title {
-    font-size: clamp(3.25rem, 11vw, 6.5rem);
-    line-height: 0.92;
-    margin: 0 0 1.1rem;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(2.75rem, 7.15vw, 9rem);
+    letter-spacing: -0.21vw;
+    line-height: 106%;
+    margin: 0;
+    text-transform: none;
   }
   .home-tagline {
-    max-width: 44ch;
-    margin: 0 auto 2.25rem;
+    max-width: 46ch;
+    margin: clamp(1rem, 1.6vw, 2rem) auto 0;
     color: var(--color-secondary);
+    font-size: clamp(0.9rem, 1.05vw, 1.05rem);
     line-height: 1.6;
   }
   .home-specimen {
-    max-width: 30rem;
-    margin-inline: auto;
+    width: min(100%, 30vw);
+    min-width: 18rem;
+    margin: clamp(1.5rem, 2.5vw, 3rem) auto 0;
     text-align: left;
   }
 
-  /* Empty until the accounts exist. Square, hairline, and inert: a slot that
-     is obviously a slot reads better than an icon that goes nowhere. */
+  .home-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: clamp(1.5rem, 2vw, 2.5rem);
+  }
+
+  /* Their `.follow-text-block` sits at the foot of the hero, centred, with a
+     label and a row of marks. Empty until the accounts exist. */
   .home-follow {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
     gap: 0.6rem;
-    margin-top: 2.75rem;
-    padding-top: 1.75rem;
-    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+    width: 100%;
+    margin-top: auto;
+    padding-top: clamp(2rem, 4.4vw, 4rem);
   }
   .home-follow-slot {
     width: 2.4rem;
@@ -716,50 +746,53 @@
   }
 
   /* -- Contents index ---------------------------------------------------
-     The logbook metaphor: numbered chapters, each a hairline row that lifts
-     on hover. The number is the only mono figure, so the column reads as an
-     index rather than a menu. */
+     Their `.content-chapter` is a space-between row: the name on the left, the
+     chapter mark on the right, hairline-separated. The number is large and
+     quiet — `.block-menu-qty` at 4.27vw against a 0.97vw count. */
   .home-chapters {
     display: grid;
   }
   .home-chapter {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: baseline;
-    gap: 0.85rem;
-    /* 44pt target: this is the primary navigation on the landing page. */
+    gap: 0.75rem;
     min-height: 2.75rem;
-    padding: 0.85rem 0;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 10%, transparent);
+    padding: clamp(0.7rem, 0.9vw, 1.1rem) 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
     text-decoration: none;
     color: inherit;
-    transition: border-color 0.15s ease, padding-left 0.15s ease;
+    transition: color 0.15s ease, border-color 0.15s ease;
   }
   .home-chapter:hover,
   .home-chapter:focus-visible {
     border-bottom-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
-    padding-left: 0.35rem;
-  }
-  .home-chapter-index {
-    font-size: 0.72rem;
-    color: var(--color-secondary);
-  }
-  .home-chapter-body {
-    display: grid;
-    gap: 0.2rem;
   }
   .home-chapter-title {
-    font-size: 1.35rem;
-    line-height: 1.05;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(1.25rem, 1.9vw, 2.1rem);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
   }
   .home-chapter-blurb {
-    font-size: 0.75rem;
+    display: block;
+    margin-top: 0.3rem;
+    font-size: clamp(0.68rem, 0.8vw, 0.78rem);
     line-height: 1.4;
     color: var(--color-secondary);
   }
+  .home-chapter:hover .home-chapter-blurb {
+    color: var(--color-base-content);
+  }
+  /* "01 Chp." — their bracketed count, in our mono voice. */
   .home-chapter-mark {
+    display: flex;
+    align-items: baseline;
+    gap: 0.3rem;
     font-size: 0.62rem;
-    color: color-mix(in srgb, var(--color-base-content) 35%, transparent);
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--color-base-content) 40%, transparent);
   }
 
   /* -- Home: the three steps -------------------------------------------

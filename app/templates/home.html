@@ -120,7 +120,7 @@
       </dl>
     </figure>
 
-    <div class="flex flex-wrap items-center justify-center gap-3 mt-9">
+    <div class="home-actions">
       <a class="btn-brick" href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}">
         Log a workout
       </a>
@@ -151,12 +151,14 @@
         <li>
           <a class="home-chapter"
              href="{{ anchor if anchor else url_for(endpoint, date=selected_date.isoformat()) }}">
-            <span class="home-chapter-index type-data" aria-hidden="true">{{ number }}</span>
-            <span class="home-chapter-body">
-              <span class="home-chapter-title type-display">{{ title }}</span>
+            <span>
+              <span class="home-chapter-title">{{ title }}</span>
               <span class="home-chapter-blurb">{{ blurb }}</span>
             </span>
-            <span class="home-chapter-mark type-label" aria-hidden="true">Chp.</span>
+            {# Their "N Chp." mark, right-aligned across a space-between row. #}
+            <span class="home-chapter-mark type-data" aria-hidden="true">
+              {{ number }} <span class="type-label">Chp.</span>
+            </span>
           </a>
         </li>
       {% endfor %}
