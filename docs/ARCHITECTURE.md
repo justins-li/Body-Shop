@@ -28,10 +28,12 @@ Which backend is in use is decided entirely by `DATABASE_URL`, and nothing above
 `lastrowid` versus `RETURNING`, `AUTOINCREMENT` versus `IDENTITY`, and how a
 `DATE` is stored, so `models.py` expresses queries once.
 
-`app/views.py` renders six server-side shells (`/`, `/how-to-use`, `/calendar`, `/log`,
+`app/views.py` renders six server-side shells (`/`, `/how-to-use`, `/routines`, `/log`,
 `/summary`, `/progress`); everything dynamic is fetched by the page's JavaScript module
 from the same `/api` the tests exercise. That means the HTML never diverges from the
-API, and the API is testable without a browser.
+API, and the API is testable without a browser. `/calendar` was a seventh until Phase
+8.3 folded it into `/summary`; it survives as a 301 so shared `?date=` links still land
+on the right week.
 
 `/` and `/how-to-use` are the exceptions: static pages with no JS module and no API
 calls. `/` is the one page that will render identically for a visitor and a signed-in
@@ -53,6 +55,7 @@ user, which is why it is worth having before auth exists.
 | `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses, or decide what a target *is*. |
 | `app/services/graph.py` | The training graph's rules: what a window means, what makes a movement an orphan, and joining this week's coverage and personal bests onto the nodes. | Query the database, or invent a strength *standard* (see below). |
 | `app/services/strength.py` | Estimating a one-rep max from the user's own sets, and reducing a window to one best per movement. | Query the database, or compare a user to anyone but themselves. |
+| `app/routines.py` | The suggested sessions, and the time estimate derived from their sets. Editorial content, validated against the catalog at import. | Touch the database, or state a duration that is not computed from the sets listed. |
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
 | `app/views.py` | Page shells and template context. | Contain business rules. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
@@ -61,6 +64,9 @@ user, which is why it is worth having before auth exists.
 | `app/static/js/layout.js` | The force-directed layout — a pure, deterministic function of the graph. | Touch the canvas, the DOM, or `Math.random`. |
 | `app/static/js/progress.js` | The canvas, the gestures, the size-by control and the detail panel on `/progress`. | Contain layout maths, or re-simulate on a render. |
 | `app/static/js/onboarding.js` | The one-time first-run question, and the record that it was asked. | Open on `/` or `/how-to-use`, or ask twice. |
+| `app/static/js/setgrid.js` | **What a set is**: the rows, weight modes, added weight, the RPE gate, plate hints, repeat, and starting the rest timer. Mounted by `/log` and by a routine's quick-log. | Know which page it is on, or fetch anything. |
+| `app/static/js/routines.js` | The routines page: choosing a session, drawing its movements, and pointing the shared grid at one. | Reimplement any part of the grid. |
+| `app/static/js/weekstrip.js` | The calendar strip on `/summary`: seven boxes, expanding to the month. | Own the anchor date — it reports a click and the page decides. |
 | `app/static/css/input.css` | The design system: theme pair, tokens, and every hand-written rule. | — (`styles.css` beside it is generated; never edit it) |
 
 ## Styling
@@ -268,6 +274,73 @@ Three decisions worth keeping:
 - **A field the mode does not call for is removed from the DOM, not hidden.** `log.js`
   reads the grid back through those nodes, and a hidden input still carries its value, so
   a weight typed before "Added weight" was unticked would submit anyway.
+
+## Routines, and one set grid
+
+Phase 8.1. The app could always say what your week *was*; it had nothing to say about
+what a session could be, and a new user's first screen was an empty picker over 873
+movements — the worst possible introduction to a catalog.
+
+`app/routines.py` holds five sessions, each focused on one thing. They are **editorial
+content in code**, the same status as `STAPLE_EXERCISE_IDS`: `exercises.json` is
+generated from a pinned commit and never hand-edited, and a routine is a judgement about
+training rather than a fact about the source. `_check_routines` runs at import and
+refuses an id that no longer resolves, a movement listed twice, or a routine with no
+exercises — the first would render a card with a blank name and a dead log button.
+
+Two rules worth keeping:
+
+- **The time estimate is derived, never typed.** `estimate_minutes` builds it from the
+  prescribed sets via `training.MINUTES_PER_WORKING_SET` plus the per-session overhead
+  that module already names, then rounds to five minutes because it is not known better
+  than that. A hand-written "45 min" drifts the first time anyone edits the list above
+  it. It also means the routines come out at one session of Phase 6's `REFERENCE_PLAN`,
+  which is not a coincidence — both are the same arithmetic.
+- **A routine is a suggestion, and its prescription is a placeholder.** The quick log
+  opens with the routine's set count and its reps as placeholders, exactly as `/log`
+  offers last session's numbers. An untouched row still saves as `NULL`. Recording what
+  a routine *told you to do* as though it happened is the one thing a training log must
+  never do.
+
+`MINUTES_PER_WORKING_SET` is new, and mildly contradicts Phase 6, which pointedly needed
+no such constant: scaling targets is a ratio against the reference plan, so a per-set
+cost appears in both halves and cancels. An estimate is an absolute answer, where nothing
+cancels — so the number is now stated in one place rather than implied.
+
+### One grid, two entrances
+
+`setgrid.js` is what a set *is*: rows, weight modes and their plate hints, the
+added-weight toggle, the RPE gate, warm-ups, units, repeat, and starting the rest timer.
+It lived inside `log.js` while `/log` was the only way to record anything. Routines added
+a second entrance, and a "quick log" with its own simpler grid would have been a second
+set of rules about all of the above — the exact divergence this codebase keeps one copy
+of everything to avoid. The two entrances differ in what they are *for*, not in what a
+set is.
+
+The component **builds its own markup**, including the header. That reverses a stated
+reason: the header used to be server-rendered so the column names survived with no
+script. The rows never did, so it bought a header over nothing — and it cannot be true of
+a grid mounted into a dialog. `/log` now ships `<div id="set-grid-mount">`.
+
+## The calendar, folded in
+
+Phase 8.3 retired `/calendar`. A whole chapter for a month grid was more room than the
+feature earned: it answered "what did I do that day", which the summary's own entry list
+already answers for the week being read.
+
+What was worth keeping is the *shape of a month* — which days you trained, and how hard.
+So it collapses. `weekstrip.js` draws **this week's seven boxes** by default, costing one
+row above the body map, and expands to the surrounding month on request. Both states are
+the same `.day-cell` against the same fixed `FULL_DAY_SETS` reference, so expanding
+changes how many are drawn and never what one means; scaling to the range's own busiest
+day would make the strip and the expanded month incomparable, and they are the same cells.
+
+The whole month's totals are fetched even when a week is drawn — one request either way,
+and it makes expanding instant. Clicking a day goes through `goToDate` in `summary.js`,
+the one place the anchor moves, because `?date=` is shared state every page honours.
+
+The shelf became **Routines, keeping chapter 02**, so Log, Weekly summary and Graph did
+not renumber around the change: a chapter mark you can navigate by is one that stays put.
 
 ## The trainer setup
 
