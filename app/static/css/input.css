@@ -980,24 +980,22 @@
      is the rotation, which is the only thing here depicting a physical object. */
 
   .page-veil {
-    /* Must match `TURN_MS` in pageturn.js — the script waits for this, and the
-       mark's entrance below is timed as a fraction of it. */
+    /* Must match `TURN_MS` in pageturn.js — the script waits for this. */
     --page-turn-ms: 460ms;
+    /* One leaf going over, twice inside the hold. */
+    --flip-ms: 230ms;
 
     position: fixed;
     inset: 0;
     z-index: 80;
     display: grid;
-    place-items: center;
-    /* The leaf does the covering, so the veil itself only catches the edge of
-       the screen the leaf has not reached yet. */
-    background-color: transparent;
+    grid-auto-flow: row;
+    place-content: center;
+    justify-items: center;
+    gap: 1rem;
+    background-color: var(--color-base-200);
     opacity: 0;
     pointer-events: none;
-    /* A page has thickness only because you are looking at it from somewhere.
-       Without a perspective the rotation below is a horizontal squash. */
-    perspective: 1600px;
-    perspective-origin: center;
     transition: opacity 0.12s ease;
   }
   .page-veil.is-visible {
@@ -1005,62 +1003,90 @@
     pointer-events: auto;
   }
 
-  /* The leaf. Edge-on to flat, hinged on the spine — a page falling closed
-     rather than a panel sliding in. `[data-turn]` is set by pageturn.js from
-     which shelf stack was clicked, so the fall agrees with where the chapter
-     you asked for was standing. */
-  .page-veil::before {
+  /* -- The flipbook ------------------------------------------------------
+     A little open book with one leaf going over. Sized to the wordmark under
+     it rather than to the screen: a full-screen page turning is a transition
+     happening *to* you, and at this size it is a small object you are watching
+     instead — which is the difference between a effect and a mark.
+
+     Boxes and borders only, no image: it has to recolour with the theme, and
+     at 3rem an SVG would be carrying detail nobody can see. */
+  .flipbook {
+    position: relative;
+    display: block;
+    width: 3.1rem;
+    height: 2.15rem;
+    /* Without a perspective the leaf's rotation is a horizontal squash rather
+       than a page lifting off the one beneath it. Short, because the object is
+       small and a distant camera flattens it. */
+    perspective: 260px;
+    perspective-origin: 50% 50%;
+  }
+
+  /* The two pages lying open. The spine is where they meet, and it is the only
+     part drawn heavier — a book is mostly edges. */
+  .flipbook::before,
+  .flipbook::after {
     content: "";
     position: absolute;
-    inset: 0;
-    background-color: var(--color-base-200);
-    backface-visibility: hidden;
-    transform-origin: right center;
-    transform: rotateY(-92deg);
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 38%, transparent);
+    background-color: var(--color-base-100);
   }
-  .page-veil.is-visible::before {
-    animation: page-turn-forward var(--page-turn-ms) cubic-bezier(0.32, 0, 0.24, 1) both;
+  .flipbook::before {
+    left: 0;
+    border-right-width: 0;
   }
-  .page-veil[data-turn="back"]::before {
+  .flipbook::after {
+    right: 0;
+    border-left-width: 0;
+  }
+
+  /* The leaf going over. Hinged at the spine, starting on the right-hand page
+     and landing on the left — the direction a page turns when you read
+     forward. `[data-turn="back"]` mirrors it, so the book agrees with which
+     shelf stack was clicked. */
+  .flipbook-leaf {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 50%;
     transform-origin: left center;
+    transform-style: preserve-3d;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 38%, transparent);
+    background-color: var(--color-base-100);
   }
-  .page-veil[data-turn="back"].is-visible::before {
-    animation-name: page-turn-back;
+  .page-veil.is-visible .flipbook-leaf {
+    animation: flipbook-forward var(--flip-ms) ease-in-out infinite;
   }
-
-  /* Forward: the leaf comes over from the right, where the later chapters
-     stand. It starts edge-on (invisible) and lands flat. The hairline is the
-     paper's own edge catching the light as it falls, and fades once it is
-     lying flat and there is no edge left to see. */
-  @keyframes page-turn-forward {
-    from {
-      transform: rotateY(-92deg);
-      border-left: 1px solid color-mix(in srgb, var(--color-base-content) 30%, transparent);
-    }
-    to {
-      transform: rotateY(0deg);
-      border-left: 1px solid transparent;
-    }
+  .page-veil[data-turn="back"] .flipbook-leaf {
+    left: auto;
+    right: 50%;
+    transform-origin: right center;
   }
-  @keyframes page-turn-back {
-    from {
-      transform: rotateY(92deg);
-      border-right: 1px solid color-mix(in srgb, var(--color-base-content) 30%, transparent);
-    }
-    to {
-      transform: rotateY(0deg);
-      border-right: 1px solid transparent;
-    }
+  .page-veil[data-turn="back"].is-visible .flipbook-leaf {
+    animation-name: flipbook-back;
   }
 
-  /* The wordmark rides on top of the leaf, and arrives with it rather than
-     pulsing: the old pulse was a loading spinner's idea, and there is nothing
-     to wait for any more. */
+  /* Edge-on at the halfway point is what reads as paper rather than as a door
+     swinging: the leaf all but disappears as it passes the spine. */
+  @keyframes flipbook-forward {
+    from { transform: rotateY(0deg); }
+    to   { transform: rotateY(-180deg); }
+  }
+  @keyframes flipbook-back {
+    from { transform: rotateY(0deg); }
+    to   { transform: rotateY(180deg); }
+  }
+
+  /* The wordmark under the book, at the size the book is drawn to match. It
+     arrives rather than pulsing — the old pulse was a loading spinner's idea,
+     and there is nothing to wait for any more. */
   .page-veil-mark {
-    position: relative;
-    z-index: 1;
-    animation: veil-mark-in calc(var(--page-turn-ms) * 0.8) ease-out both;
-    animation-delay: calc(var(--page-turn-ms) * 0.35);
+    animation: veil-mark-in 200ms ease-out both;
   }
   @keyframes veil-mark-in {
     from { opacity: 0; }
@@ -1082,8 +1108,11 @@
      it: the rotation goes, the hold shortens (pageturn.js), and the leaf just
      appears. */
   @media (prefers-reduced-motion: reduce) {
-    .page-veil.is-visible::before,
-    .page-veil[data-turn="back"].is-visible::before {
+    /* The book stays — it is the mark — but it stops flipping, and the hold
+       shortens in pageturn.js. Asking for less movement is not asking to be
+       kept waiting for it. */
+    .page-veil.is-visible .flipbook-leaf,
+    .page-veil[data-turn="back"].is-visible .flipbook-leaf {
       animation: none;
       transform: none;
     }
@@ -2616,6 +2645,31 @@
   .routine-card-blurb {
     font-size: 0.875rem;
     line-height: 1.4;
+    color: var(--color-secondary);
+  }
+
+  /* [experimental]. Mono and bracketed like the chapter marks, so it reads as
+     an annotation on the thing rather than as a badge sold with it. Deliberately
+     not the accent: the accent means "act on this", and this means the
+     opposite. */
+  .routine-tag {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
+    white-space: nowrap;
+  }
+  /* A dashed rule down the side: the same "provisional" grammar the warm-up
+     row already uses in the set grid. */
+  .routine-card.is-experimental {
+    border-style: dashed;
+  }
+  .routine-detail-note {
+    margin: 0 0 1.25rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px dashed color-mix(in srgb, var(--color-base-content) 25%, transparent);
     color: var(--color-secondary);
   }
 

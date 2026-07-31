@@ -553,3 +553,38 @@ def test_every_shelf_is_a_real_link(client):
     shelves = re.findall(r'<a class="shelf[^"]*" data-nav\s+href="([^"]+)"', body)
     assert shelves, "no shelves found"
     assert all(href.startswith("/") for href in shelves)
+
+
+def test_the_veil_carries_a_flipbook_rather_than_a_full_screen_leaf(client):
+    """The transition is a small object you watch, not something happening to
+    the whole screen — sized to the wordmark beneath it."""
+    body = client.get("/log").data.decode()
+    assert 'class="flipbook"' in body
+    assert 'class="flipbook-leaf"' in body
+    assert 'class="page-veil-mark type-label">Body Shop' in body
+
+
+@pytest.mark.parametrize(
+    "athlete",
+    ["Dwayne", "Tom Brady", "Michael Phelps", "Usain Bolt", "Serena Williams"],
+)
+def test_the_athlete_routines_are_listed_and_attributed(client, athlete):
+    body = client.get("/routines").data.decode()
+    assert athlete in body
+
+
+def test_every_athlete_routine_is_tagged_on_its_card(client):
+    """The tag is not decoration: it is the difference between a session we
+    stand behind and a reconstruction of someone else's."""
+    from app.routines import ATHLETE_ROUTINES
+
+    body = client.get("/routines").data.decode()
+    assert body.count("[experimental]") >= len(ATHLETE_ROUTINES)
+
+
+def test_the_tag_is_explained_on_the_page(client):
+    """A tag nobody can decode is a badge. This one has to say what it means,
+    and that nobody named endorsed anything."""
+    body = client.get("/routines").data.decode()
+    assert "reconstructed from published coverage" in body.lower()
+    assert "Nobody named has endorsed these" in body

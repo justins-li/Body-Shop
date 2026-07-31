@@ -140,9 +140,31 @@ function exerciseCard(item, index) {
 function renderRoutine() {
   const panel = $("#routine-detail");
   panel.hidden = false;
-  $("#routine-detail-heading").textContent = routine.name;
+  $("#routine-detail-heading").textContent = routine.experimental
+    ? `${routine.inspired_by} — ${routine.name}`
+    : routine.name;
   $("#routine-detail-meta").textContent =
     `~${routine.minutes} min · ${routine.total_sets} sets`;
+
+  // The tag travels with the routine rather than living only on the card that
+  // opened it: someone who scrolled straight to the exercises should still be
+  // told this is a reconstruction, and be able to check where it came from.
+  const note = $("#routine-detail-note");
+  note.textContent = "";
+  note.hidden = !routine.experimental;
+  if (routine.experimental) {
+    const tag = document.createElement("span");
+    tag.className = "routine-tag";
+    tag.textContent = "[experimental]";
+    note.append(
+      tag,
+      document.createTextNode(
+        ` Reconstructed from published coverage — ${routine.source}. `
+        + `Not endorsed by ${routine.inspired_by}, and separated from the coaching `
+        + "and the rest of the week that made it make sense.",
+      ),
+    );
+  }
 
   const list = $("#routine-exercises");
   list.textContent = "";

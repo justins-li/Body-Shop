@@ -205,6 +205,15 @@
     itself is `::before`; this element is the stage it rotates in.
   #}
   <div class="page-veil" id="page-veil" aria-hidden="true">
+    {#
+      A little book, flipping. Sized to the wordmark under it rather than to the
+      screen: a full-screen leaf turning over is a transition happening *to* you,
+      and at this size it is a small object you are watching instead. Two static
+      pages, a spine, and one leaf going over — all CSS boxes, no image.
+    #}
+    <span class="flipbook" aria-hidden="true">
+      <span class="flipbook-leaf"></span>
+    </span>
     <span class="page-veil-mark type-label">Body Shop</span>
   </div>
 
