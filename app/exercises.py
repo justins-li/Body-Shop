@@ -191,6 +191,64 @@ PRIMARY_WEIGHT = 1.0
 SECONDARY_WEIGHT = 0.5
 
 
+#: How a movement's weight is recorded, decided by the equipment it uses.
+#:
+#: Phase 6.5. The set grid used to treat every movement as a loaded barbell: it
+#: labelled the column "Weight", and printed a plate breakdown — "20kg bar +
+#: 25 / 5 per side" — under whatever number was typed. That is right for a
+#: barbell and wrong for everything else. A cable stack has no bar, a dumbbell
+#: number is per bell rather than a total, and a pull-up's weight is the *extra*
+#: weight hung off you, if any at all.
+#:
+#: The mode is a property of the equipment, so it is derived rather than stored:
+#: one rule here decides the column's label, whether a plate breakdown is
+#: offered, and whether the weight field is asked for at all.
+WEIGHT_MODES: tuple[str, ...] = (
+    "barbell",     # A loaded bar. The number is the total, bar included.
+    "ez_bar",      # As above, on a lighter bar — so the plate maths differs.
+    "dumbbell",    # Per dumbbell, never the pair's total.
+    "kettlebell",  # Per bell.
+    "stack",       # A pin in a weight stack, or a plate-loaded machine.
+    "bodyweight",  # You and gravity. Weight means *added* weight, and is optional.
+    "implement",   # Bands, balls, sleds, odd objects. Weight is whatever fits.
+)
+
+#: The mode a movement takes when its equipment is not named below.
+DEFAULT_WEIGHT_MODE = "implement"
+
+#: Equipment value → weight mode. Every value in the catalog appears here, which
+#: ``tests/test_exercises.py`` asserts: a new equipment string silently falling
+#: through to the default is how the wrong hint came back last time.
+#:
+#: ``body only`` and ``none`` are both :data:`bodyweight` — "none" is the
+#: dataset's word for a stretch you do on the floor, which is the same logging
+#: situation as a pull-up: nothing to weigh unless you strapped something on.
+EQUIPMENT_WEIGHT_MODES: dict[str, str] = {
+    "barbell": "barbell",
+    "e-z curl bar": "ez_bar",
+    "dumbbell": "dumbbell",
+    "kettlebells": "kettlebell",
+    "cable": "stack",
+    "machine": "stack",
+    "body only": "bodyweight",
+    "none": "bodyweight",
+    "bands": "implement",
+    "medicine ball": "implement",
+    "exercise ball": "implement",
+    "foam roll": "implement",
+    "other": "implement",
+}
+
+#: Modes where the weight recorded is *added to* the lifter rather than lifted
+#: on its own — so the field is optional, and offered behind a toggle.
+ADDED_WEIGHT_MODES: frozenset[str] = frozenset({"bodyweight"})
+
+
+def weight_mode_for(equipment: str) -> str:
+    """Return the logging mode for an equipment value."""
+    return EQUIPMENT_WEIGHT_MODES.get(equipment, DEFAULT_WEIGHT_MODE)
+
+
 #: Categories whose sets count toward weekly muscle volume.
 #:
 #: The catalog also carries stretches, plyometrics and cardio. They are fully
@@ -690,6 +748,26 @@ class Exercise:
         return self.category in VOLUME_CATEGORIES
 
     @property
+    def weight_mode(self) -> str:
+        """How weight is recorded for this movement — see :data:`WEIGHT_MODES`.
+
+        Derived from ``equipment`` rather than stored, so it cannot drift from
+        the catalog. It decides what ``/log`` calls the weight column, whether a
+        plate breakdown makes sense, and whether the field is asked for at all.
+        """
+        return weight_mode_for(self.equipment)
+
+    @property
+    def is_bodyweight(self) -> bool:
+        """Whether a recorded weight means weight *added* to the lifter.
+
+        True for pull-ups, dips and push-ups, where "0kg" is the normal case and
+        anything else is a belt or a vest. ``/log`` keeps the field behind a
+        toggle for these, so the usual set is two fields rather than three.
+        """
+        return self.weight_mode in ADDED_WEIGHT_MODES
+
+    @property
     def rank(self) -> int:
         """How prominently to offer this movement. **Lower sorts first.**
 
@@ -749,6 +827,8 @@ class Exercise:
             "force": self.force,
             "mechanic": self.mechanic,
             "counts_toward_volume": self.counts_toward_volume,
+            "weight_mode": self.weight_mode,
+            "is_bodyweight": self.is_bodyweight,
             "rank": self.rank,
         }
 
@@ -827,8 +907,32 @@ def _load_catalog(path: Path = CATALOG_PATH) -> dict[str, Exercise]:
 
     _check_regions(catalog)
     _check_schemes()
+    _check_weight_modes(catalog)
 
     return catalog
+
+
+def _check_weight_modes(catalog: dict[str, Exercise]) -> None:
+    """Every equipment value in the catalog must name a weight mode explicitly.
+
+    Falling through to :data:`DEFAULT_WEIGHT_MODE` is silent, and the failure it
+    produces is the one Phase 6.5 exists to fix: a movement quietly logged as
+    though it were a loaded barbell. So an unmapped equipment value is an
+    import-time error, and adding equipment upstream means deciding how it is
+    weighed.
+    """
+    unmapped = sorted(
+        {e.equipment for e in catalog.values()} - set(EQUIPMENT_WEIGHT_MODES)
+    )
+    if unmapped:
+        raise CatalogError(
+            f"Equipment values with no entry in EQUIPMENT_WEIGHT_MODES: {unmapped}. "
+            "Add each one — the fallback would log it as a loaded barbell."
+        )
+
+    unknown = sorted(set(EQUIPMENT_WEIGHT_MODES.values()) - set(WEIGHT_MODES))
+    if unknown:
+        raise CatalogError(f"EQUIPMENT_WEIGHT_MODES names unknown modes: {unknown}.")
 
 
 def _check_schemes() -> None:

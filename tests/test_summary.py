@@ -344,3 +344,52 @@ def test_weekly_summary_lists_every_neglected_region(app):
     assert ("chest", "chest_upper") in flagged
     # Every entry names its parent and carries a label for display.
     assert all({"muscle", "region", "label"} == set(r) for r in summary["regions_neglected"])
+
+
+# ---- Grading against a trainer setup (Phase 6) -----------------------------
+
+
+def test_summarise_entries_grades_against_the_profiles_targets():
+    """The only thing the trainer setup changes here: the number the same sets
+    are measured against."""
+    from app.training import resolve_profile
+
+    entries = [entry(BENCH, sets=12)]
+    beginner = resolve_profile("beginner", 6, 90)
+
+    baseline = summarise_entries(entries)["chest"]
+    scaled = summarise_entries(entries, beginner)["chest"]
+
+    # Identical volume, different targets — so a covered week becomes an
+    # over-target one without a single set changing.
+    assert baseline["sets"] == scaled["sets"] == 12.0
+    assert baseline["target"] == 20 and baseline["state"] == "trained"
+    assert scaled["target"] == 12 and scaled["state"] == "trained"
+    assert scaled["intensity"] == 1.0
+
+
+def test_regions_stay_ungraded_whatever_the_profile():
+    """Regions carry no target at any experience level — there is no evidence
+    to scale (docs/VOLUME_SCIENCE.md §3.1)."""
+    from app.training import resolve_profile
+
+    summary = summarise_entries(
+        [entry(BENCH, sets=10)], resolve_profile("advanced", 7, 120)
+    )
+    for bucket in summary.values():
+        for region in bucket["regions"]:
+            assert "target" not in region
+            assert "state" not in region
+            assert "intensity" not in region
+
+
+def test_weekly_summary_reports_the_profile_it_used(app):
+    from app.training import resolve_profile
+
+    with app.app_context():
+        add_entry("2026-07-28", BENCH, logged(4))
+        profile = resolve_profile("beginner", 3, 45)
+        summary = weekly_summary(date(2026, 7, 28), profile=profile)
+
+    assert summary["profile"]["experience"] == "beginner"
+    assert summary["profile"]["targets"]["chest"] == summary["muscles"]["chest"]["target"]

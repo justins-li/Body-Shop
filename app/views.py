@@ -1,19 +1,20 @@
 """HTML page routes.
 
-Five pages:
+Six pages, numbered as chapters by the shelf navigation in ``base.html``:
 
-* ``/``         — home: what the app is, and the way in
-* ``/calendar`` — month calendar of logged workouts
-* ``/log``      — input form for date / exercise / sets
-* ``/summary``  — weekly summary with the muscle-coverage body map
-* ``/progress`` — the training graph (Phase 4.5)
+* ``/``            — home: what the app is, and the way in
+* ``/how-to-use``  — the explainer: the idea, and what the colours mean
+* ``/calendar``    — month calendar of logged workouts
+* ``/log``         — input form for date / exercise / sets
+* ``/summary``     — weekly summary, the body map, and the trainer setup
+* ``/progress``    — the training graph (Phase 4.5)
 
 Pages are server-rendered shells; the dynamic parts are filled in by the
-JavaScript modules in ``app/static/js`` talking to the JSON API. ``/`` is the
-exception — it is static, reads nothing, and is the one page that renders
-identically for a visitor and a user. When auth arrives it becomes the
-signed-out half of a split (see docs/ROADMAP.md, Phase 4); the calendar already
-lives at its own URL so that change stays additive.
+JavaScript modules in ``app/static/js`` talking to the JSON API. ``/`` and
+``/how-to-use`` are the exceptions — static, reading nothing. ``/`` is the one
+page that renders identically for a visitor and a user. When auth arrives it
+becomes the signed-out half of a split (see docs/ROADMAP.md, Phase 5); the
+calendar already lives at its own URL so that change stays additive.
 """
 
 from __future__ import annotations
@@ -37,6 +38,14 @@ from .models import parse_date
 from .services.graph import DEFAULT_WINDOW as DEFAULT_GRAPH_WINDOW
 from .services.graph import WINDOW_LABELS as GRAPH_WINDOW_LABELS
 from .services.weeks import week_bounds
+from .training import (
+    DEFAULT_PROFILE,
+    MAX_MINUTES,
+    MAX_SESSIONS,
+    MIN_MINUTES,
+    MIN_SESSIONS,
+    level_options,
+)
 
 bp = Blueprint("views", __name__)
 
@@ -47,6 +56,11 @@ def inject_globals() -> dict:
     return {
         "muscle_groups": MUSCLE_GROUPS,
         "muscle_labels": MUSCLE_LABELS,
+        # The *baseline* targets, which is all a server-rendered shell can know:
+        # the trainer setup lives in the browser until Phase 5 gives it a user
+        # row to sit on, so `summary.js` overwrites these once it has fetched
+        # the week. They are here so the skeleton reads as numbers rather than
+        # blanks before that lands.
         "muscle_targets": MUSCLE_TARGETS,
         # Only six groups are subdivided, and regions carry no target — see
         # docs/VOLUME_SCIENCE.md.
@@ -119,6 +133,24 @@ def log_page():
     )
 
 
+def _trainer_setup_context() -> dict:
+    """Template context for the trainer-setup control (Phase 6).
+
+    The bounds travel with the options so the markup's ``min``/``max`` cannot
+    drift from what :func:`app.training.resolve_profile` will clamp to.
+    """
+    return {
+        "experience_levels": level_options(),
+        "default_profile": DEFAULT_PROFILE.to_dict(),
+        "session_bounds": {
+            "min_sessions": MIN_SESSIONS,
+            "max_sessions": MAX_SESSIONS,
+            "min_minutes": MIN_MINUTES,
+            "max_minutes": MAX_MINUTES,
+        },
+    }
+
+
 @bp.get("/progress")
 def progress_page():
     """The training graph.
@@ -156,4 +188,5 @@ def summary_page():
         muscle_schemes=MUSCLE_SCHEMES,
         default_scheme=DEFAULT_MUSCLE_SCHEME,
         scheme_buckets=scheme_map(),
+        **_trainer_setup_context(),
     )

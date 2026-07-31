@@ -6,6 +6,8 @@
  * `try { ... } catch (err) { toast(err.message) }`.
  */
 
+import { profileQuery } from "./ui.js";
+
 const BASE = "/api";
 
 /**
@@ -116,17 +118,30 @@ export async function fetchMonth(year, month) {
   return data.days;
 }
 
-/** Weekly muscle-coverage summary for the week containing `isoDate`. */
+/**
+ * Weekly muscle-coverage summary for the week containing `isoDate`.
+ *
+ * Carries the trainer setup, which is what decides each group's target. The
+ * response echoes the profile the server resolved, so the page renders the
+ * targets it was actually graded against rather than its own idea of them.
+ */
 export async function fetchWeeklySummary(isoDate) {
-  return request(`/summary/week?date=${encodeURIComponent(isoDate)}`);
+  const query = `date=${encodeURIComponent(isoDate)}&${profileQuery()}`;
+  return request(`/summary/week?${query}`);
 }
 
 /**
  * The training graph: movements as nodes, same-day pairings as edges.
+ *
+ * The trainer setup rides along for the same reason it does above: node colour
+ * *is* the body map's grading, so a graph fetched without it would disagree
+ * with `/summary` about the same week.
+ *
  * @param {"8w"|"6m"|"all"} window
  * @param {string} isoDate - Anchors both the window and the colouring week.
  */
 export async function fetchTrainingGraph(window, isoDate) {
-  const query = `window=${encodeURIComponent(window)}&date=${encodeURIComponent(isoDate)}`;
+  const query = `window=${encodeURIComponent(window)}&date=${encodeURIComponent(isoDate)}`
+    + `&${profileQuery()}`;
   return request(`/progress/graph?${query}`);
 }

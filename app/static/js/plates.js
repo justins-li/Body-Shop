@@ -16,6 +16,39 @@ const PLATES = {
 export const DEFAULT_BAR = { kg: 20, lb: 45 };
 
 /**
+ * The bar each barbell weight mode is loaded on, per unit.
+ *
+ * Keyed by the server's `weight_mode` (see `EQUIPMENT_WEIGHT_MODES` in
+ * `app/exercises.py`). Only the two modes that *have* a bar appear: a movement
+ * whose mode is missing here gets no plate breakdown at all, which is the whole
+ * point of Phase 6.5 — a cable stack has no bar, and printing "20kg bar + …"
+ * under a pulldown was arithmetic about equipment that is not in the room.
+ *
+ * The kg and lb figures are not conversions of each other (45lb is 20.4kg).
+ * Gyms stock one bar or the other, so each unit names the bar that unit's gym
+ * actually has, exactly as `DEFAULT_BAR` always did.
+ */
+export const BAR_WEIGHTS = {
+  barbell: { kg: 20, lb: 45 },
+  ez_bar: { kg: 10, lb: 25 },
+};
+
+/**
+ * The bar for a weight mode, or `null` when that mode has no bar.
+ *
+ * `null` is the answer for dumbbells, stacks, bodyweight and implements, and
+ * callers must render nothing rather than falling back to a barbell.
+ *
+ * @param {string} mode - A `weight_mode` from the API.
+ * @param {"kg"|"lb"} unit
+ * @returns {number|null}
+ */
+export function barFor(mode, unit) {
+  const bar = BAR_WEIGHTS[mode];
+  return bar && bar[unit] !== undefined ? bar[unit] : null;
+}
+
+/**
  * Plates for **one side** of the bar.
  *
  * @param {number} target - Total weight, in `unit`.

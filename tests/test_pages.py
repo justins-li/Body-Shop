@@ -337,3 +337,68 @@ def test_how_to_use_credits_both_leads_and_offers_contact(client):
     assert "mailto:" in body
     # Portraits degrade to initials rather than a broken image.
     assert body.count("this.remove()") == 2
+
+
+# ---- Phase 6 / 6.5 shells --------------------------------------------------
+
+
+def test_summary_ships_the_trainer_setup_controls(client):
+    """The three controls that decide every target on the page below them."""
+    body = client.get("/summary").data.decode()
+    for marker in (
+        'id="experience-select"',
+        'id="sessions-input"',
+        'id="minutes-input"',
+        'id="setup-effect"',
+    ):
+        assert marker in body, marker
+
+
+def test_summary_offers_every_experience_level(client):
+    from app.training import EXPERIENCE_LEVELS
+
+    body = client.get("/summary").data.decode()
+    for level in EXPERIENCE_LEVELS:
+        assert f'value="{level.key}"' in body
+
+
+def test_session_inputs_carry_the_servers_own_bounds(client):
+    """The markup's min/max must not drift from what `resolve_profile` clamps
+    to, so they are rendered from the same constants."""
+    from app.training import MAX_MINUTES, MAX_SESSIONS, MIN_MINUTES, MIN_SESSIONS
+
+    body = client.get("/summary").data.decode()
+    assert f'min="{MIN_SESSIONS}"' in body and f'max="{MAX_SESSIONS}"' in body
+    assert f'min="{MIN_MINUTES}"' in body and f'max="{MAX_MINUTES}"' in body
+
+
+def test_log_ships_the_weight_mode_shell(client):
+    """`log.js` re-heads the weight column from the chosen movement's mode, so
+    the label needs an id and the toggle needs somewhere to live."""
+    body = client.get("/log").data.decode()
+    for marker in (
+        'id="set-grid-weight-label"',
+        'id="weight-mode-note"',
+        'id="added-weight-wrap"',
+        'id="added-weight"',
+        'id="repeat-set"',
+    ):
+        assert marker in body, marker
+
+
+def test_added_weight_toggle_starts_hidden(client):
+    """It is only meaningful for a body-only movement, and nothing is chosen
+    when the page is served."""
+    body = client.get("/log").data.decode()
+    wrap = body[body.index('id="added-weight-wrap"'):]
+    assert "hidden" in wrap[: wrap.index(">") + 1]
+
+
+def test_every_submitted_control_stays_inside_the_form(client):
+    """The added-weight toggle joins the date input under this rule: `onSubmit`
+    reads the entry off a FormData, so a control outside the form submits
+    nothing. This broke every submit once already."""
+    body = client.get("/log").data.decode()
+    form = body[body.index('id="entry-form"'): body.index("</form>")]
+    for marker in ('id="entry-date"', 'id="added-weight"', 'id="repeat-set"'):
+        assert marker in form, marker

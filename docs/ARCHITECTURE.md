@@ -28,13 +28,14 @@ Which backend is in use is decided entirely by `DATABASE_URL`, and nothing above
 `lastrowid` versus `RETURNING`, `AUTOINCREMENT` versus `IDENTITY`, and how a
 `DATE` is stored, so `models.py` expresses queries once.
 
-`app/views.py` renders five server-side shells; everything dynamic is fetched by
-the page's JavaScript module from the same `/api` the tests exercise. That means the
-HTML never diverges from the API, and the API is testable without a browser.
+`app/views.py` renders six server-side shells (`/`, `/how-to-use`, `/calendar`, `/log`,
+`/summary`, `/progress`); everything dynamic is fetched by the page's JavaScript module
+from the same `/api` the tests exercise. That means the HTML never diverges from the
+API, and the API is testable without a browser.
 
-`/` is the exception: a static landing page with no JS module and no API calls. It is
-the one page that will render identically for a visitor and a signed-in user, which is
-why it is worth having before auth exists.
+`/` and `/how-to-use` are the exceptions: static pages with no JS module and no API
+calls. `/` is the one page that will render identically for a visitor and a signed-in
+user, which is why it is worth having before auth exists.
 
 ## Layer responsibilities
 
@@ -42,13 +43,14 @@ why it is worth having before auth exists.
 | --- | --- | --- |
 | `app/data/exercises.json` | The catalog data itself — 873 vendored movements. | Be hand-edited; it is generated output. |
 | `tools/build_exercise_catalog.py` | Fetching the pinned source and mapping its vocabulary onto ours. | Run at import, in CI, or at request time. |
-| `app/exercises.py` | Loading and validating the catalog, the muscle groups, targets and volume weights. | Touch the database. |
+| `app/exercises.py` | Loading and validating the catalog, the muscle groups, **baseline** targets, volume weights, and the equipment → `weight_mode` rule. | Touch the database, or scale a target — that is `training.py`'s job. |
+| `app/training.py` | The trainer setup: experience levels, the session plan, and the one multiplier they resolve to. Pure functions over `exercises.py`'s baseline. | Touch the database, or know about HTTP. |
 | `app/tables.py` | The schema, as SQLAlchemy `MetaData`. Source of truth for both dialects. | Change any existing database — that needs a migration. |
 | `migrations/` | How a database reaches the schema `tables.py` describes. Revisions are append-only history. | Import app constants that a later commit could change. |
 | `app/db.py` | The engine, request-scoped connections, and the migration commands. | Contain queries. |
 | `app/models.py` | Every SQL statement, plus input validation. | Know about HTTP or Jinja, or know which dialect it is on. |
 | `app/services/weeks.py` | Week/month boundary maths. | Query the database. |
-| `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses. |
+| `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses, or decide what a target *is*. |
 | `app/services/graph.py` | The training graph's rules: what a window means, what makes a movement an orphan, and joining this week's coverage onto the nodes. | Query the database, or invent a strength benchmark (see below). |
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
 | `app/views.py` | Page shells and template context. | Contain business rules. |
@@ -68,14 +70,18 @@ written — there is no bundler. The compiled `styles.css` is committed, so runn
 app or CI never needs the toolchain; only editing `input.css` does.
 
 Configuration is CSS-first (Tailwind v4): no `tailwind.config.js`. `@theme` holds the
-tokens, a single `@plugin "daisyui/theme"` block defines the one `bodyshop` theme, and
-`@source` directives list the content globs.
+tokens, two `@plugin "daisyui/theme"` blocks define the `bodyshop` and `bodyshop-dark`
+themes, and `@source` directives list the content globs.
 
-That theme is **dark, and the only one**. Phase 4.5 retired the light half of the pair
-rather than re-deriving it: the volume ramp now climbs in luminance (dim → lit), which
-is how "more volume" reads on a near-black ground and exactly backwards on a light one.
-Maintaining both would have meant two ramps whose colours mean opposite things — the
-kind of disagreement this codebase's single-source-of-truth design exists to prevent.
+There are **two themes and a toggle** — cream (`bodyshop`, the markup default) and
+Phase 4.5's instrument palette (`bodyshop-dark`). All 35 stock daisyUI themes stay off.
+A theme here is never only a palette swap: **the volume ramp inverts with the ground**,
+because a scale has to climb in whichever direction reads as "more" where it is drawn —
+pale → deep on cream, dim → lit on near-black. Neither ramp was derived from the other.
+Each satisfies the same binding rule, that one set must never look like none, with its
+own numbers (3.02:1 on cream, 3.12:1 on dark), because the constraint that binds moves
+with the ground. The chosen theme is applied by a blocking inline script in `base.html`'s
+head, before the stylesheet: a module is deferred and would paint one theme then flip.
 
 The division of labour is the part worth internalising:
 
@@ -230,6 +236,80 @@ The only invented numbers are `REGION_NEGLECT_SHARE` (0.15) and
 responding at all), both named constants in `services/summary.py` rather than literals, so
 what is opinion stays visible.
 
+### Weight modes: the catalog decides how a set is logged
+
+`equipment` is not just a browse filter. It decides how a weight is *recorded*, through
+`weight_mode` — derived on read in `exercises.py`, never stored:
+
+| Mode | The number means | Has a bar |
+| --- | --- | --- |
+| `barbell` / `ez_bar` | The loaded total, bar included | Yes — 20 kg / 45 lb, and 10 kg / 25 lb |
+| `dumbbell` / `kettlebell` | Per implement, not the pair | No |
+| `stack` | The pin setting on a cable or machine | No |
+| `bodyweight` | Weight **added** to the lifter; usually nothing | No |
+| `implement` | Whatever the thing is marked as | No |
+
+Before Phase 6.5 the set grid assumed every movement was a loaded barbell: one column
+called "Weight", and a plate breakdown under whatever was typed. That is right for a
+squat and wrong for a cable pushdown, a dumbbell press and a pull-up in three different
+ways — the pulldown in particular reported a bar that is not in the room.
+
+Three decisions worth keeping:
+
+- **The rule is server-side, the wording is not.** `EQUIPMENT_WEIGHT_MODES` is one map
+  in `exercises.py` and reaches `/log` on the exercise payload; what a mode is *called*
+  lives in `WEIGHT_MODE_DISPLAY` in `ui.js`, beside the rest of the display vocabulary.
+  Bar weights live in `plates.js`, which already owned plate arithmetic.
+- **An unmapped equipment value is an import-time error.** `_check_weight_modes` raises
+  `CatalogError` rather than falling through to a default, because the fallback's failure
+  is exactly the one this feature exists to fix — a movement quietly logged as a barbell.
+- **A field the mode does not call for is removed from the DOM, not hidden.** `log.js`
+  reads the grid back through those nodes, and a hidden input still carries its value, so
+  a weight typed before "Added weight" was unticked would submit anyway.
+
+## The trainer setup
+
+Phase 6. Until then every user was graded against one set of targets. `app/training.py`
+keeps `MUSCLE_TARGETS` as the *baseline* and scales it by two things the user knows about
+themselves: how long they have been training (`EXPERIENCE_LEVELS`) and how much time they
+intend to spend (`SessionPlan`).
+
+**The two combine with `min`, not by multiplying**, and that is the whole model:
+
+> your target is the smaller of what your experience asks for and what your week can hold.
+
+Multiplying was the first attempt and it double-counts. Training three short sessions
+*is* how a beginner's lower volume shows up, so applying both factors charged them twice
+for one fact and drove every group onto the floor. Under `min` the session plan can only
+ever reduce a target — which is the honest direction, since more hours available is not a
+reason for the app to ask for more sets, but fewer hours is a reason it cannot ask for as
+many.
+
+One consequence is worth knowing before it reads as a bug: `REFERENCE_PLAN` is defined as
+the week the baseline targets already describe, so **switching to Advanced without
+lengthening the week changes nothing.** An advanced lifter asking for 1.3× the volume has
+to find 1.3× the time. `limited_by` in the payload names which input is binding, and the
+summary page says so in words, because the plan is the one the user can act on.
+
+What is sourced and what is convention:
+
+| | Status |
+| --- | --- |
+| `MIN_GROUP_TARGET = 4` | **Sourced** — the floor at which a muscle responds at all (Pelland et al. 2025) |
+| `volume_scale` per level (0.6 / 1.0 / 1.3) | Convention. Tune freely; do not defend as findings |
+| `SESSION_OVERHEAD_MINUTES = 10` | Judgement. Fixed per session, which is why 2 × 30 holds fewer working sets than 1 × 60 |
+| `REFERENCE_PLAN` (5 × 75) | Derived, and the arithmetic is in the docstring: 180 weighted units ÷ ~2.0 per set ≈ 90 sets ≈ 315 working minutes |
+
+**No ownership yet.** Phase 5 makes this a column on the user row; until then it is a
+`localStorage` preference sent with each request (`experience`/`sessions`/`minutes`), and
+`resolve_profile` treats every input as untrusted — falling back and clamping rather than
+raising, the same discipline `window` follows on the graph. The API shape does not change
+when Phase 5 lands.
+
+**The client never computes a target.** It sends the three values and renders
+`profile.targets` from the response. `/progress` sends them too, because node colour *is*
+the body map's grading and the two pages must not disagree about one week.
+
 ## The volume scale
 
 `app/services/summary.py::summarise_entries` produces, for each of the twelve groups
@@ -252,11 +332,13 @@ in `MUSCLE_GROUPS`:
 
 `intensity` restarts at the bottom of the new ramp when a group crosses its target,
 so the two scales are read independently — a group is never "dark green *and* faintly
-red". Targets come from `exercises.py::MUSCLE_TARGETS`: 20 sets a week for the large
+red". Targets come from the trainer setup (above), which scales
+`exercises.py::MUSCLE_TARGETS`: at the default setup, 20 sets a week for the large
 groups (chest, back, shoulders, quads, hamstrings, glutes) and 10 for the small ones
-(abs, biceps, triceps, forearms, traps, calves), which recover on less volume.
-Overshoot saturates at half the target, so one extra set is a visible step on either
-scale.
+(abs, biceps, triceps, forearms, traps, calves), which recover on less volume. **Nothing
+downstream may hard-code those two numbers** — `summarise_entries` takes a profile and
+every consumer reads `target` off the group. Overshoot saturates at half the target, so
+one extra set is a visible step on either scale.
 
 The front-end does no grading of its own: `summary.js` writes `intensity` to a
 `--level` custom property and toggles `.is-worked` / `.is-over` on every element with
@@ -495,6 +577,11 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
 ## Testing strategy
 
 - `tests/test_weeks.py` — boundary maths, no app needed.
+- `tests/test_training.py` — the trainer setup, also pure: that the two inputs
+  combine with `min` rather than by multiplying, that a plan beyond the level
+  stops raising targets, that the 2:1 shape of the week survives scaling, that
+  nothing falls below the four-set floor, and that `resolve_profile` clamps and
+  falls back on every kind of bad input rather than raising.
 - `tests/test_exercises.py` — the catalog's contract: known slugs, unique ids, two
   frames each, no muscle both primary and secondary, the volume weights, and the
   ranking's invariants (every staple id resolves, the tiers do not interleave, every
@@ -538,10 +625,13 @@ which is the difference between seconds and minutes against a hosted database.
   Supabase and Neon put a pooler in front, and a second pool inside a serverless
   function exhausts connection limits at trivial traffic. Under a long-lived
   process (gunicorn) this trades a little latency for that safety.
-- **Sets only.** No weight or reps — `workout_entry` stores a bare count, so 3 sets at
-  60kg and 3 sets at 140kg are the same row. This blocks 1RM estimates, PR detection,
-  progress graphs and plate calculators, and is scheduled as
-  [Phase 4](ROADMAP.md) rather than a to-do.
+- **Nothing strength-relative.** Weight, reps and RPE are recorded per set as of
+  Phase 4, but the app stores no bodyweight, computes no 1RM and detects no PR, so
+  every mark it draws is about *volume* rather than about how strong you are.
+  Pre-Phase-4 history also has `NULL` weights, which is why a strength benchmark
+  cannot be backfilled and is scheduled as [Phase 8](ROADMAP.md).
+- **No editing.** Entries and sets are append-only; a mistake is deleted and
+  re-logged. Also Phase 8.
 - **One `shoulders` group.** The catalog distinguishes front, side and rear raises in
   its facets, but the map shades a single deltoid region. Splitting into three is a
   data change plus SVG paths, not a re-model — see [ROADMAP.md](ROADMAP.md).

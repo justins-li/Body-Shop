@@ -8,6 +8,37 @@ All notable changes to Body Shop are documented here. This project follows
 
 ### Added
 
+- **Trainer setups, and weekly targets that fit the week you actually have** (Phase 6).
+  `/summary` gains three controls — experience level, sessions a week, minutes a session
+  — and they decide every muscle group's weekly target. Beginner asks for 0.6 of the
+  baseline, Experienced for the baseline, Advanced for 1.3 and unlocks RPE on every set.
+  The whole model is one line: **your target is the smaller of what your experience asks
+  for and what your week can hold.** The two inputs combine with `min`, not by
+  multiplying — training fewer hours *is* how a beginner's lower volume shows up, so
+  applying both charged the same lifter twice for one fact and pushed every group onto
+  the floor. A roomier week therefore never *raises* a target: having time available is
+  a ceiling, not a licence. `limited_by` in the payload names which input is binding,
+  because the week is the one the user can act on.
+
+  Two things are worth separating. `MIN_GROUP_TARGET = 4` is **sourced** — the floor at
+  which a muscle responds at all (Pelland et al. 2025) — and nothing can fall below it.
+  The three multipliers and the per-session overhead are **conventions**, named and
+  documented as such. `REFERENCE_PLAN` (5 × 75 min) is derived rather than picked: 180
+  weighted set units at roughly 2.0 per set is ~90 working sets, which is ~315 working
+  minutes. One consequence reads as a bug and is not — that reference is the *baseline's*
+  week, so switching to Advanced without lengthening the week changes nothing, and the
+  page says so.
+
+  No user row exists yet, so the setup lives in `localStorage` and rides on the query
+  string; Phase 5 moves it without changing the API's shape. **The client never computes
+  a target** — it renders the ones the server graded against. `/progress` sends the
+  setup too, because node colour *is* the body map's grading and the two pages must not
+  disagree about one week.
+
+- **A repeat-set button on `/log`.** Straight sets are most of what anyone logs, and were
+  five rounds of the same typing. It copies the row above outright, falling back to its
+  placeholders when the row is still blank so the first tap repeats last session.
+
 - **Credits and a contact block on `/how-to-use`.** Justin Li and Owen Zhang, both
   lead developers, with portraits; plus a "Have questions?" section. The address is a
   placeholder on the reserved `.example` TLD, so nothing sent to it can reach a stranger
@@ -21,6 +52,34 @@ All notable changes to Body Shop are documented here. This project follows
   same rule, that one set never looks like none, with its own numbers (3.02:1 and 3.12:1
   against untrained). The choice is remembered per browser, the system preference decides
   until you make one, and the theme is applied before first paint so neither flashes.
+
+### Fixed
+
+- **Logging no longer assumes every movement is a loaded barbell** (Phase 6.5). The set
+  grid had one column called "Weight" and printed a plate breakdown — "20kg bar + 25 / 5
+  per side" — under whatever was typed. That is right for a squat and wrong for a cable
+  pushdown, a dumbbell press and a pull-up, in three different ways. A `weight_mode` is
+  now derived from each movement's equipment and decides what the column is called, what
+  the number means, and whether a plate breakdown is offered **at all**:
+
+  - `barbell` and `ez_bar` are the only modes with a bar, and the EZ bar is 10 kg / 25 lb
+    rather than 20 / 45. Everything else gets no plate line, because telling someone
+    their 45 kg pulldown is a bar plus plates is arithmetic about equipment that is not
+    in the room.
+  - `dumbbell` says per bell rather than the pair's total; `stack` says the pin setting.
+  - `bodyweight` — pull-ups, dips, push-ups — asks for no weight at all. A checkbox
+    reveals a field for weight actually strapped on, and that reads back as `+20kg × 8`
+    so it can never be mistaken for the load itself.
+
+  An equipment value with no mode raises `CatalogError` at import rather than falling
+  through to a default, since the fallback's failure is exactly the bug being fixed. A
+  field the mode does not call for is removed from the DOM rather than hidden — a hidden
+  input still submits, so a weight typed before the checkbox was unticked would have been
+  logged anyway.
+
+- **Three stale claims in `docs/ARCHITECTURE.md`**: that there is one dark theme (there
+  are two themes and a toggle), that entries store a bare set count with no weight or
+  reps (Phase 4 ended that), and that `views.py` renders five pages (six).
 
 ### Changed
 

@@ -26,7 +26,7 @@ from uuid import uuid4
 import sqlalchemy as sa
 
 from .db import get_db
-from .exercises import get_exercise
+from .exercises import DEFAULT_WEIGHT_MODE, get_exercise
 from .tables import workout_entry, workout_set
 
 #: The four set types. Only ``warmup`` is excluded from weekly volume.
@@ -93,6 +93,18 @@ class WorkoutEntry:
         exercise = get_exercise(self.exercise_id)
         return exercise.muscles if exercise else ()
 
+    @property
+    def weight_mode(self) -> str:
+        """How this movement's weights should be read back — Phase 6.5.
+
+        Carried on the entry so a rendered set line does not need the catalog:
+        ``+20kg × 8`` for a weighted pull-up and ``20kg × 8`` for a curl are the
+        same stored number meaning different things, and every surface that
+        lists entries has to say which.
+        """
+        exercise = get_exercise(self.exercise_id)
+        return exercise.weight_mode if exercise else DEFAULT_WEIGHT_MODE
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -100,6 +112,7 @@ class WorkoutEntry:
             "exercise_id": self.exercise_id,
             "exercise_name": self.exercise_name,
             "muscles": list(self.muscles),
+            "weight_mode": self.weight_mode,
             # Named so no client reads it as len(sets): warm-ups are in `sets`
             # but not in this count.
             "set_count": self.sets,
