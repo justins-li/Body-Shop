@@ -9,11 +9,13 @@ doing most of the work: *anything that will be re-done later should be built lat
 Tailwind is first because every remaining phase adds UI, and UI built before the
 migration gets styled twice.
 
-Current state: **Phases 1, 2, 3 and 4 are done, and Phase 9 landed with Phase 2.**
+Current state: **Phases 1, 2, 3, 4 and 4.5 are done, and Phase 9 landed with Phase 2.**
 Flask + Jinja + vanilla ES modules, styled with Tailwind v4 + daisyUI (CSS build step,
 still no JS dependencies), two append-only tables on **SQLite or Postgres with Alembic
-migrations**, no auth, **873 exercises with images across 12 muscle groups**, and
-**per-set weight, reps and RPE**. See [ARCHITECTURE.md](ARCHITECTURE.md).
+migrations**, no auth, **873 exercises with images across 12 muscle groups**,
+**per-set weight, reps and RPE**, and a **dark, instrument-like interface across five
+pages** including the `/progress` training graph. See
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
@@ -92,8 +94,8 @@ Phase 1  Tailwind + DaisyUI ──┬──▶ Phase 2  Exercise taxonomy ──
    ✅ done                    │       ✅ done (absorbed 9)      ├──▶ Phase 9  Images ✅ shipped in 2
                               └──▶ (all later UI)               └──▶ Phase 10 Mobile + watch + stores
 
-Phase 3  Migrations + Postgres ──┬──▶ Phase 4  Set-level logging ──▶ Phase 7  Training essentials
-   ✅ done                       │                                        │
+Phase 3  Migrations + Postgres ──┬──▶ Phase 4  Set-level logging ──▶ Phase 4.5  UI revamp ──▶ Phase 7
+   ✅ done                       │        ✅ done                        ✅ done              │
                                  └──▶ Phase 5  Auth ──┬──▶ Phase 6  Vercel deploy ──▶ Phase 10
                                                       └──▶ Phase 8  AI custom exercises
 
