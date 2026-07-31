@@ -115,7 +115,7 @@ class TestingConfig(BaseConfig):
     # ever resolves a JWKS document over the network.
     SUPABASE_URL = "https://test.supabase.co"
     SUPABASE_ANON_KEY = "test-anon-key"
-    SUPABASE_JWT_SECRET = "test-jwt-secret"
+    SUPABASE_JWT_SECRET = "test-jwt-secret-not-a-real-one-0123456789"
     SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key"
 
 

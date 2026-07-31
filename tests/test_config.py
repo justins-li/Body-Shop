@@ -125,5 +125,5 @@ class TestTestingConfigPinsSupabase:
     def test_testing_pins_a_url_and_a_jwt_secret(self):
         app = create_app("testing", DATABASE_URL="sqlite:///x.db")
         assert app.config["SUPABASE_URL"] == "https://test.supabase.co"
-        assert app.config["SUPABASE_JWT_SECRET"] == "test-jwt-secret"
+        assert app.config["SUPABASE_JWT_SECRET"] == "test-jwt-secret-not-a-real-one-0123456789"
         assert app.config["SUPABASE_ANON_KEY"] == "test-anon-key"
