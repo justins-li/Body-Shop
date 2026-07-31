@@ -22,7 +22,27 @@ This is the next hard dependency. Everything user-owned depends on it.
 - Add in-app account deletion and a migration/backfill plan for existing rows.
 - Keep the CSRF and cookie-session question aligned with the auth choice.
 
-### 2. Phase 6 — Stack decision and deployment
+### 2. Phase 6 — Trainer setups and workout length tuning
+
+Add beginner, experienced, and advanced trainer presets before the rest of the parity
+work.
+
+- Beginner starts with a lower sets-per-week target per body part.
+- Experienced increases that weekly volume.
+- Advanced pushes it higher and unlocks RPE in log-a-workout.
+- Brainstorm and implement a way to scale the weekly set target to the workout length
+  the user intends to spend.
+
+### 2.5. Phase 6.5 — Minor logging workout corrections
+
+Fix logging edge cases that show the wrong equipment assumption in the workout log.
+
+- Cable exercises should not be reported as a 45 lb bar plus added weight.
+- Dumbbells and cables need their own logging/weight wording.
+- Add a button that duplicates the set you just entered to make repeat logging faster.
+- Keep this scoped to correction work, not a broader logging redesign.
+
+### 3. Phase 7 — Stack decision and deployment
 
 Deploy the current Flask app before adding more product surface.
 
@@ -32,7 +52,7 @@ Deploy the current Flask app before adding more product surface.
   and CSV export.
 - Keep production gated on the Postgres CI job.
 
-### 3. Phase 7 — Training essentials
+### 4. Phase 8 — Training essentials
 
 This is the parity phase. It should make the app feel complete next to mature trackers.
 
@@ -41,7 +61,7 @@ This is the parity phase. It should make the app feel complete next to mature tr
 - Add routines and templates; this is the expensive core of the phase.
 - Keep the volume-coverage model intact while adding the parity features.
 
-### 4. Phase 8 — AI-assisted custom exercises
+### 5. Phase 9 — AI-assisted custom exercises
 
 Only build this after the catalog has been in front of real users long enough to show
 what it misses.
@@ -51,7 +71,7 @@ what it misses.
 - Require user review before saving any AI suggestion.
 - Log corrections so the prompt can be tuned against real misses.
 
-### 5. Phase 10 — Mobile, watch, and store distribution
+### 6. Phase 10 — Mobile, watch, and store distribution
 
 This is last because it consumes the earlier phases.
 
@@ -84,14 +104,17 @@ The live chain is simple:
 
 ```mermaid
 graph TD
-  P5[Phase 5: Secure user login] --> P6[Phase 6: Deploy]
-  P6 --> P7[Phase 7: Training essentials]
-  P5 --> P8[Phase 8: AI custom exercises]
-  P6 --> P8
-  P7 --> P10[Phase 10: Mobile/watch/store]
+  P5[Phase 5: Secure user login] --> P6[Phase 6: Trainer setups]
+  P6 --> P65[Phase 6.5: Logging corrections]
+  P65 --> P7[Phase 7: Stack decision and deployment]
+  P7 --> P8[Phase 8: Training essentials]
+  P5 --> P9[Phase 9: AI custom exercises]
+  P7 --> P9
+  P8 --> P10[Phase 10: Mobile/watch/store]
   P5 --> P10
 ```
 
-Phase 5 gates ownership and account deletion. Phase 6 gates launch. Phase 7 is the
-competitive parity floor. Phase 8 depends on actual usage. Phase 10 depends on all of
-the above.
+Phase 5 gates ownership and account deletion. Phase 6 establishes the trainer presets
+and the weekly-volume sizing model. Phase 6.5 covers logging corrections around cable
+and dumbbell weight display. Phase 7 gates launch. Phase 8 is the competitive parity
+floor. Phase 9 depends on actual usage. Phase 10 depends on all of the above.
