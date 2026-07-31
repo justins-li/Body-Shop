@@ -2447,6 +2447,16 @@
   #calendar-grid:not(.is-month) {
     grid-template-columns: repeat(7, minmax(0, 1fr));
   }
+  /* Two readings under the grid — what the bars mean, and the double-click.
+     They wrap onto separate lines at phone width rather than stranding one
+     word of the second on a line of its own. */
+  .calendar-caption {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem 1.25rem;
+  }
 
   /* -- Routines (Phase 8.1) ----------------------------------------------- */
   .routine-list {

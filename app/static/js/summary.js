@@ -398,6 +398,23 @@ function shiftWeek(days) {
   goToDate(addDays(anchorIso, days));
 }
 
+/**
+ * Leave for `/log`, on the day that was double-clicked in the calendar strip.
+ *
+ * `?date=` rather than anything log-specific: it is the parameter every page
+ * already honours, so `/log` opens on that day by the same mechanism a shelf
+ * click would have used.
+ *
+ * The veil goes up by hand here. `base.html` raises it for `a[data-nav]`
+ * clicks, and this is a scripted navigation to a server-rendered page — the
+ * same round trip, so it should look like one rather than like a frozen page.
+ */
+function openLogFor(iso) {
+  const veil = document.getElementById("page-veil");
+  if (veil) veil.classList.add("is-visible");
+  window.location.assign(`/log?date=${encodeURIComponent(iso)}`);
+}
+
 /** The stored split, if it is still one the server offers. */
 function storedScheme() {
   try {
@@ -433,5 +450,5 @@ export async function initSummary(initialIso, buckets = {}) {
   await load();
   // After the week, not before: the strip is a supporting reading and the body
   // map is what the page is for, so it does not delay the thing being read.
-  await initWeekStrip(anchorIso, goToDate);
+  await initWeekStrip(anchorIso, goToDate, openLogFor);
 }

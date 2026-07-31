@@ -510,3 +510,15 @@ def test_routines_are_reachable_as_chapter_two(client):
     body = client.get("/log").data.decode()
     assert 'href="/routines' in body
     assert "Routines" in body
+
+
+def test_the_double_click_shortcut_is_advertised(client):
+    """A gesture nobody is told about is a gesture nobody uses.
+
+    Double-clicking a day in the calendar strip opens `/log` for it. It is an
+    accelerator rather than the only route — the Log workout shelf is still
+    there — but it is named in the caption under the grid, and `weekstrip.js`
+    also puts it on each cell's `aria-label` so it is not pointer-only lore.
+    """
+    body = client.get("/summary").data.decode()
+    assert "double-click a day to log it" in body

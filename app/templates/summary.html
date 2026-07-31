@@ -49,9 +49,15 @@
       </div>
       <div class="month-grid" id="calendar-grid" role="grid"
            aria-labelledby="calendar-heading"></div>
-      <p class="type-label text-secondary mt-3 flex items-center gap-2.5 m-0">
-        <span class="day-key" aria-hidden="true"><span class="day-key-bar"></span></span>
-        bar height is sets logged
+      {# The double-click is an accelerator, not the only route to `/log` — but
+         a gesture nobody is told about is a gesture nobody uses, so it is named
+         here as well as on each cell's own label. #}
+      <p class="calendar-caption type-label text-secondary mt-3 m-0">
+        <span class="flex items-center gap-2.5">
+          <span class="day-key" aria-hidden="true"><span class="day-key-bar"></span></span>
+          bar height is sets logged
+        </span>
+        <span>double-click a day to log it</span>
       </p>
     </div>
   </section>

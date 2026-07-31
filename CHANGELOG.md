@@ -142,6 +142,13 @@ All notable changes to Body Shop are documented here. This project follows
   remembering which you prefer. Both states are the same cell against the same fixed
   reference, so expanding changes how many are drawn and never what one means.
 
+  **Double-clicking a day opens `/log` for it** — reading the week and adding to it are
+  the two things anyone does on this page, and the second used to mean finding the day,
+  then the shelf, then the date field again. The single click still does the cheap,
+  reversible thing and the second commits. It is an accelerator rather than the only
+  route, and it is named in the caption and on every cell's label, because a gesture
+  nobody is told about is a gesture nobody uses.
+
   The shelf it vacated became **Routines, keeping chapter 02**, so Log, Weekly summary
   and Graph did not renumber around the change — a chapter mark you can navigate by is
   one that stays put. `/calendar` is a 301 rather than a 404, because `?date=` links to

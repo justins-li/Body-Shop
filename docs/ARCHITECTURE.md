@@ -66,7 +66,7 @@ user, which is why it is worth having before auth exists.
 | `app/static/js/onboarding.js` | The one-time first-run question, and the record that it was asked. | Open on `/` or `/how-to-use`, or ask twice. |
 | `app/static/js/setgrid.js` | **What a set is**: the rows, weight modes, added weight, the RPE gate, plate hints, repeat, and starting the rest timer. Mounted by `/log` and by a routine's quick-log. | Know which page it is on, or fetch anything. |
 | `app/static/js/routines.js` | The routines page: choosing a session, drawing its movements, and pointing the shared grid at one. | Reimplement any part of the grid. |
-| `app/static/js/weekstrip.js` | The calendar strip on `/summary`: seven boxes, expanding to the month. | Own the anchor date — it reports a click and the page decides. |
+| `app/static/js/weekstrip.js` | The calendar strip on `/summary`: seven boxes, expanding to the month; reports clicks and double-clicks on a day. | Own the anchor date, or navigate — it reports a gesture and the page decides. |
 | `app/static/css/input.css` | The design system: theme pair, tokens, and every hand-written rule. | — (`styles.css` beside it is generated; never edit it) |
 
 ## Styling
@@ -338,6 +338,19 @@ day would make the strip and the expanded month incomparable, and they are the s
 The whole month's totals are fetched even when a week is drawn — one request either way,
 and it makes expanding instant. Clicking a day goes through `goToDate` in `summary.js`,
 the one place the anchor moves, because `?date=` is shared state every page honours.
+
+**Double-clicking a day opens `/log` for it.** Reading the week and adding to it are the
+two things anyone does here, and the second used to mean finding the day, then the shelf,
+then the date field again. The single click still does the cheap, reversible thing and
+the second commits — and it deliberately does *not* debounce the first, which would cost
+every ordinary click a quarter-second wait to serve the rarer gesture. `dblclick` fires
+after both clicks, so the page has already re-anchored to that day, which is wanted
+anyway before leaving it.
+
+The strip reports both gestures through callbacks and navigates from neither: where a
+click goes is the page's business, which is what keeps the module mountable somewhere
+that answers differently. It is an accelerator, never the only route — the caption under
+the grid and every cell's `aria-label` both name it, so it is not pointer-only lore.
 
 The shelf became **Routines, keeping chapter 02**, so Log, Weekly summary and Graph did
 not renumber around the change: a chapter mark you can navigate by is one that stays put.

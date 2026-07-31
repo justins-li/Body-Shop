@@ -14,6 +14,14 @@
  * Clicking a day moves the whole page to that date, because `?date=` is shared
  * state every page honours: the week being summarised, the week the graph
  * colours against, and the day `/log` opens on are all one choice.
+ *
+ * **Double-clicking opens `/log` for that day.** Reading the week and adding to
+ * it are the two things anyone does here, and the second used to mean finding
+ * the day, then finding the shelf, then finding the date field again. The
+ * single click still does the cheap, reversible thing; the second click commits.
+ * It is an accelerator rather than the only route — the Log workout shelf is
+ * still there, and the caption under the grid says so, because a gesture nobody
+ * is told about is a gesture nobody uses.
  */
 
 import { fetchMonth } from "./api.js";
@@ -39,6 +47,7 @@ const EXPANDED_KEY = "bodyshop:calendar-expanded";
 let anchorIso;
 let expanded = false;
 let onPick = () => {};
+let onOpen = () => {};
 
 /** ISO date → total sets, for whatever range is currently drawn. */
 let totals = {};
@@ -105,11 +114,26 @@ function dayCell(iso, { outside = false } = {}) {
   number.textContent = String(fromIso(iso).getDate());
 
   cell.append(bar, number);
+  // The double-click is named here too, not only in the caption: it is the one
+  // affordance on the cell a screen reader could not otherwise discover.
   cell.setAttribute(
     "aria-label",
-    `${formatDate(iso)}${total ? `, ${total} sets logged` : ", nothing logged"}`,
+    `${formatDate(iso)}${total ? `, ${total} sets logged` : ", nothing logged"}`
+    + ". Double-click to log a workout for this day.",
   );
+  cell.title = `Double-click to log a workout on ${formatDate(iso, {
+    month: "short", day: "numeric",
+  })}`;
+
   cell.addEventListener("click", () => onPick(iso));
+  // `dblclick` fires *after* both clicks, so the single-click handler has
+  // already re-anchored the page to this day — which is what we want anyway
+  // before leaving it. Suppressing that with a timer would cost every ordinary
+  // click a quarter-second wait to serve the rarer gesture.
+  cell.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    onOpen(iso);
+  });
   return cell;
 }
 
@@ -155,12 +179,18 @@ async function load() {
 /**
  * Boot the calendar strip.
  *
+ * Neither callback navigates from in here: this module draws days and reports
+ * what was done to one. Where a click goes is the page's business, which is
+ * what keeps the strip mountable somewhere that answers differently.
+ *
  * @param {string} initialIso - The day the page is anchored to.
- * @param {(iso: string) => void} onSelect - Called when a day is clicked.
+ * @param {(iso: string) => void} onSelect - A day was clicked.
+ * @param {(iso: string) => void} onOpenDay - A day was double-clicked.
  */
-export async function initWeekStrip(initialIso, onSelect) {
+export async function initWeekStrip(initialIso, onSelect, onOpenDay = () => {}) {
   anchorIso = initialIso;
   onPick = onSelect;
+  onOpen = onOpenDay;
   expanded = storedExpanded();
 
   $("#calendar-toggle").addEventListener("click", () => {
