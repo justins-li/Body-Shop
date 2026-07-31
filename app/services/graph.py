@@ -90,6 +90,7 @@ def is_orphan(sessions: int, last_logged: date, today: date) -> bool:
 
 
 def training_graph(
+    user_id: str,
     window: str = DEFAULT_WINDOW,
     today: date | None = None,
     week_starts_on: int = 1,
@@ -106,7 +107,7 @@ def training_graph(
     start, end = window_bounds(resolved, today)
     # `all` still needs a lower bound for the query; the catalog predates no
     # plausible training history, so the epoch is safe and keeps one code path.
-    activity = exercise_activity(start or date(1970, 1, 1), end)
+    activity = exercise_activity(user_id, start or date(1970, 1, 1), end)
 
     nodes = []
     for exercise_id, sets, sessions, last_logged in activity:
@@ -132,13 +133,15 @@ def training_graph(
     known = {node["exercise_id"] for node in nodes}
     edges = [
         {"source": a, "target": b, "days": days}
-        for a, b, days in exercise_co_occurrence(start or date(1970, 1, 1), end)
+        for a, b, days in exercise_co_occurrence(
+            user_id, start or date(1970, 1, 1), end
+        )
         if a in known and b in known
     ]
 
     # Colour comes from the *current* week, not the window: the question the
     # graph answers is what this training is feeding now.
-    week = weekly_summary(today, week_starts_on)
+    week = weekly_summary(user_id, today, week_starts_on)
     coverage = {
         muscle: {"state": info["state"], "intensity": info["intensity"]}
         for muscle, info in week["muscles"].items()

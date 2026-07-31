@@ -134,3 +134,84 @@ class TestUserMirror:
             assert entry.sets == 2
             delete_user(SUB)
             assert get_user(SUB) is None
+
+
+OTHER_SUB = "22222222-2222-4222-8222-222222222222"
+
+
+class TestQueriesAreScopedToOneUser:
+    """The model layer is where the WHERE clause has to be right.
+
+    tests/test_ownership.py proves the same thing through the API. This proves
+    it one layer down, so a failure says which layer lost the clause.
+    """
+
+    @pytest.fixture
+    def two_users(self, app):
+        with app.app_context():
+            ensure_user(SUB, "one@example.com")
+            ensure_user(OTHER_SUB, "two@example.com")
+            add_entry(SUB, "2026-07-28", "Barbell_Squat", [{}, {}, {}])
+            add_entry(OTHER_SUB, "2026-07-28", "Barbell_Bench_Press_-_Medium_Grip", [{}, {}])
+            yield
+
+    def test_list_entries_sees_only_its_own(self, app, two_users):
+        from app.models import list_entries
+        with app.app_context():
+            mine = list_entries(SUB)
+            assert [e.exercise_id for e in mine] == ["Barbell_Squat"]
+
+    def test_get_entry_refuses_another_users_row(self, app, two_users):
+        from app.models import get_entry, list_entries
+        with app.app_context():
+            theirs = list_entries(OTHER_SUB)[0]
+            assert get_entry(OTHER_SUB, theirs.id) is not None
+            assert get_entry(SUB, theirs.id) is None
+
+    def test_delete_entry_refuses_another_users_row_and_leaves_it(self, app, two_users):
+        from app.models import delete_entry, get_entry, list_entries
+        with app.app_context():
+            theirs = list_entries(OTHER_SUB)[0]
+            assert delete_entry(SUB, theirs.id) is False
+            assert get_entry(OTHER_SUB, theirs.id) is not None
+
+    def test_sets_by_date_counts_only_its_own(self, app, two_users):
+        from datetime import date as _date
+
+        from app.models import sets_by_date
+        with app.app_context():
+            totals = sets_by_date(SUB, _date(2026, 7, 1), _date(2026, 7, 31))
+            assert totals == {"2026-07-28": 3}
+
+    def test_recent_usage_sees_only_its_own(self, app, two_users):
+        from app.models import recent_exercise_usage
+        with app.app_context():
+            assert recent_exercise_usage(SUB) == [("Barbell_Squat", 1)]
+
+    def test_last_sets_does_not_leak_through_the_set_table(self, app, two_users):
+        """The join back through workout_entry is what stops this being an IDOR."""
+        from app.models import last_sets_for_exercise
+        with app.app_context():
+            day, sets = last_sets_for_exercise(SUB, "Barbell_Bench_Press_-_Medium_Grip")
+            assert day is None
+            assert sets == []
+
+    def test_activity_and_co_occurrence_see_only_their_own(self, app, two_users):
+        from datetime import date as _date
+
+        from app.models import exercise_activity, exercise_co_occurrence
+        with app.app_context():
+            start, end = _date(2026, 7, 1), _date(2026, 7, 31)
+            assert [row[0] for row in exercise_activity(SUB, start, end)] == [
+                "Barbell_Squat"
+            ]
+            assert exercise_co_occurrence(SUB, start, end) == []
+
+    def test_the_weekly_summary_is_per_user(self, app, two_users):
+        from datetime import date as _date
+
+        from app.services.summary import weekly_summary
+        with app.app_context():
+            week = weekly_summary(SUB, _date(2026, 7, 28))
+            assert week["total_sets"] == 3
+            assert week["total_entries"] == 1
