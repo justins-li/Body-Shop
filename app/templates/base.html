@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0d1014">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#faf4eb">
   <title>{% block title %}Body Shop{% endblock %}</title>
   <meta name="description" content="Body Shop — log your workouts and see which muscle groups you hit each week.">
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
@@ -28,76 +28,91 @@
             focus:px-4 focus:py-2 focus:text-sm focus:no-underline"
      href="#main">Skip to content</a>
 
-  {# Nav destinations, shared by the desktop bar and the mobile tab bar. The
-     mobile bar omits Home: it is a landing page, not somewhere you go
-     mid-session, and the wordmark already links there. #}
-  {% set links = [
-    ('views.calendar_page', 'calendar', 'Calendar', true),
-    ('views.log_page',      'log',      'Log',      true),
-    ('views.summary_page',  'summary',  'Week',     true),
-    ('views.progress_page', 'progress', 'Graph',    true),
+  {#
+    The five sections of the product. There is no top header any more: these
+    *are* the navigation, as thin vertical shelves down the sides.
+
+    The rule, from the reference: the leftmost shelf is always Home, and the
+    right-hand shelves are every section except the one you are reading. So the
+    page you are on is the centre column and never appears as a shelf beside
+    itself.
+  #}
+  {% set sections = [
+    ('views.home_page',     'home',     'Home',           'Purpose and the map'),
+    ('views.calendar_page', 'calendar', 'Calendar',       'Every day you trained'),
+    ('views.log_page',      'log',      'Log workout',    'Sets, weight, reps, RPE'),
+    ('views.summary_page',  'summary',  'Weekly summary', 'Coverage, twelve groups'),
+    ('views.progress_page', 'progress', 'Graph',          'The week, drawn'),
   ] %}
+  {% set right_shelves = sections | rejectattr('1', 'equalto', page)
+                                  | rejectattr('1', 'equalto', 'home') | list %}
 
-  <header class="app-header">
-    <div class="wrap flex items-center justify-between gap-4 py-3">
-      <a class="wordmark-link"
+  <div class="shell">
+    {# ---- Left shelf: Home, unless you are already on it ------------------ #}
+    {% if page != 'home' %}
+      <a class="shelf shelf-home" data-nav
          href="{{ url_for('views.home_page', date=selected_date.isoformat()) }}">
-        <span aria-hidden="true" class="text-primary leading-none">◈</span>
-        <span class="wordmark text-lg">Body Shop</span>
+        <span class="shelf-top type-label" aria-hidden="true">◈</span>
+        <span class="shelf-name">Home</span>
+        <span class="shelf-foot type-data" aria-hidden="true">00<br>Chp.</span>
       </a>
+    {% endif %}
 
-      <nav class="hidden sm:flex items-center gap-6 type-label" aria-label="Primary">
-        <a href="{{ url_for('views.home_page', date=selected_date.isoformat()) }}"
-           class="nav-link"
-           {% if page == 'home' %}aria-current="page"{% endif %}>Home</a>
-        {% for endpoint, key, label, _mobile in links %}
-          <a href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
-             class="nav-link"
-             {% if page == key %}aria-current="page"{% endif %}>{{ label }}</a>
-        {% endfor %}
-      </nav>
+    <main id="main" class="shell-main">
+      {% block content %}{% endblock %}
+    </main>
 
-      {#
-        The rest countdown lives here, not on /log, so navigating away does not
-        kill it — `timer.js` persists the deadline and every page re-reads it.
-        Readout and toggle only: choosing a rest length is a setup decision, so
-        that select stays on /log beside the sets.
-      #}
-      <div class="rest-timer rest-strip" id="rest-timer">
-        <span class="type-label text-secondary" aria-hidden="true">Rest</span>
-        <span class="rest-timer-readout" data-timer-readout
-              role="timer" aria-live="off">2:00</span>
-        <button type="button" class="rest-toggle" data-timer-toggle
-                aria-label="Start or stop the rest timer">
-          <svg class="rest-icon-start" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
-            <path d="M4 2.5 13 8l-9 5.5z"></path>
-          </svg>
-          <svg class="rest-icon-stop" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
-            <rect x="3.5" y="3.5" width="9" height="9"></rect>
-          </svg>
-        </button>
-      </div>
-    </div>
-  </header>
+    {# ---- Right shelves: every other section ----------------------------- #}
+    <nav class="shelf-stack" aria-label="Sections">
+      {% for endpoint, key, label, blurb in right_shelves %}
+        <a class="shelf" data-nav
+           href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
+           title="{{ blurb }}">
+          <span class="shelf-top type-label" aria-hidden="true">
+            [{{ loop.index }}]
+          </span>
+          <span class="shelf-name">{{ label }}</span>
+          <span class="shelf-foot type-data" aria-hidden="true">
+            {{ '%02d' % loop.index }}<br>Chp.
+          </span>
+        </a>
+      {% endfor %}
+    </nav>
+  </div>
 
-  <main id="main" class="flex-1">
-    {% block content %}{% endblock %}
-  </main>
+  {#
+    The rest countdown. It used to live in the header; with the header gone it
+    docks bottom-left, but the contract is unchanged — it runs on every page,
+    `timer.js` persists a deadline rather than a count, and choosing a rest
+    length stays on /log beside the sets.
+  #}
+  <div class="rest-timer rest-dock" id="rest-timer">
+    <span class="type-label text-secondary" aria-hidden="true">Rest</span>
+    <span class="rest-timer-readout" data-timer-readout
+          role="timer" aria-live="off">2:00</span>
+    <button type="button" class="rest-toggle" data-timer-toggle
+            aria-label="Start or stop the rest timer">
+      <svg class="rest-icon-start" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+        <path d="M4 2.5 13 8l-9 5.5z"></path>
+      </svg>
+      <svg class="rest-icon-stop" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+        <rect x="3.5" y="3.5" width="9" height="9"></rect>
+      </svg>
+    </button>
+  </div>
 
-  <footer class="hidden sm:block border-t hairline mt-20">
-    <div class="wrap flex flex-wrap items-center justify-between gap-4 py-7 text-secondary">
-      <p class="type-label">Body Shop — logged locally</p>
-      <a class="type-label no-underline hover:text-base-content transition-colors"
-         href="/api/exercises">API</a>
-    </div>
-  </footer>
+  {# Shown while a shelf navigation is in flight. Pages are server-rendered, so
+     this covers the request, not a client-side route change. #}
+  <div class="page-veil" id="page-veil" aria-hidden="true">
+    <span class="page-veil-mark type-label">Body Shop</span>
+  </div>
 
-  {# Thumb-zone navigation. Hidden from `sm:` up, where the header nav takes over. #}
+  {# Thumb-zone navigation. Hidden from `sm:` up, where the shelves take over. #}
   <nav class="tab-bar sm:hidden" aria-label="Primary">
-    {% for endpoint, key, label, _mobile in links %}
+    {% for endpoint, key, label, blurb in sections if key != 'home' %}
       <a href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
          class="tab-link type-label {{ 'is-primary' if key == 'log' else '' }}"
-         {% if page == key %}aria-current="page"{% endif %}>{{ label }}</a>
+         {% if page == key %}aria-current="page"{% endif %}>{{ label.split(' ')[0] }}</a>
     {% endfor %}
   </nav>
 
@@ -107,6 +122,26 @@
   <script type="module">
     import { initRestTimer } from "{{ url_for('static', filename='js/timer.js') }}";
     initRestTimer(document.getElementById("rest-timer"));
+  </script>
+
+  {#
+    Reveal the veil while a shelf request is in flight. Deliberately tiny and
+    inline: it is three lines, it must run before any page module, and a page
+    with JS disabled simply navigates without it.
+  #}
+  <script>
+    (function () {
+      var veil = document.getElementById("page-veil");
+      document.querySelectorAll("a[data-nav]").forEach(function (link) {
+        link.addEventListener("click", function () {
+          veil.classList.add("is-visible");
+        });
+      });
+      // Coming back via the bfcache must not leave the veil down.
+      window.addEventListener("pageshow", function () {
+        veil.classList.remove("is-visible");
+      });
+    })();
   </script>
 
   {% block scripts %}{% endblock %}
