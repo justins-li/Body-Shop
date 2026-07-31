@@ -8,6 +8,29 @@ All notable changes to Body Shop are documented here. This project follows
 
 ### Added
 
+- **Navigation turns a page.** The app is arranged as a book — chapters down the sides,
+  numbered marks, a chapter that keeps its side — and moving between them was the one
+  place that did not say so. It raised a veil to cover the server round trip, and since
+  these pages render in a few milliseconds the veil was a flicker: a hint that something
+  loaded, not a sense of having moved.
+
+  The transition is now **timed rather than measured.** A leaf falls across the screen,
+  hinged on a vertical spine, and the navigation waits for it. **The app is slower by
+  exactly that long, on purpose** — "instant and imperceptible" and "you turned a page"
+  are different experiences, and this one is a book.
+
+  It follows the shelves: the stacks split around the open chapter, so an earlier chapter
+  is to your left and a later one to your right, and the leaf falls from whichever side
+  the thing you clicked was standing on. Landing on the new chapter is the other half of
+  the turn, and it is pure CSS, so it happens with no JavaScript at all. The leaf itself
+  stays on-system — a flat fill with a hairline at its spine that fades as it lands, not
+  a shadow and not a gradient wash, both of which the design rules ban. The rotation does
+  the work.
+
+  `prefers-reduced-motion` drops the rotation and shortens the hold: asking for less
+  movement is not asking to wait for it. And the fallback is that a shelf is still an
+  ordinary link — before the script loads, and with JavaScript off, it simply navigates.
+
 - **Routines: something to follow, instead of a blank log** (Phase 8.1). Five sessions,
   each built around one thing — push, pull, legs, a beginner full body, an athletic
   whole-body day. Each shows every movement's photographs and how to do it, and puts a

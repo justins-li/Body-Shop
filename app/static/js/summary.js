@@ -21,6 +21,7 @@ import {
   saveProfile, syncUrlDate, toast,
 } from "./ui.js";
 import { initWeekStrip, setWeekStripDate } from "./weekstrip.js";
+import { turnTo } from "./pageturn.js";
 
 let anchorIso; // Any date inside the week being displayed.
 
@@ -405,14 +406,13 @@ function shiftWeek(days) {
  * already honours, so `/log` opens on that day by the same mechanism a shelf
  * click would have used.
  *
- * The veil goes up by hand here. `base.html` raises it for `a[data-nav]`
- * clicks, and this is a scripted navigation to a server-rendered page — the
- * same round trip, so it should look like one rather than like a frozen page.
+ * And it turns the page like one, through the same helper the shelves use —
+ * `"back"` because Log workout is chapter 03 and this is 04, so it is behind
+ * us. A departure that only raised the veil and left would tear the animation
+ * down a few milliseconds in.
  */
 function openLogFor(iso) {
-  const veil = document.getElementById("page-veil");
-  if (veil) veil.classList.add("is-visible");
-  window.location.assign(`/log?date=${encodeURIComponent(iso)}`);
+  turnTo(`/log?date=${encodeURIComponent(iso)}`, "back");
 }
 
 /** The stored split, if it is still one the server offers. */

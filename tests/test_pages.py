@@ -522,3 +522,34 @@ def test_the_double_click_shortcut_is_advertised(client):
     """
     body = client.get("/summary").data.decode()
     assert "double-click a day to log it" in body
+
+
+# ---- Turning a page --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "path", ["/", "/how-to-use", "/routines", "/log", "/summary", "/progress"]
+)
+def test_every_page_boots_the_page_turn(client, path):
+    """It is a transition *between* chapters, so it has to be on both ends."""
+    body = client.get(path).data.decode()
+    assert "js/pageturn.js" in body
+    assert 'initPageTurn(document.getElementById("page-veil"))' in body
+
+
+def test_the_old_inline_veil_script_is_gone(client):
+    """It moved into `pageturn.js` when the transition became timed rather than
+    measured. Left in place it would bind the click twice, and the second
+    handler would navigate immediately — tearing the animation down."""
+    body = client.get("/log").data.decode()
+    assert 'veil.classList.add("is-visible")' not in body
+
+
+def test_every_shelf_is_a_real_link(client):
+    """The turn holds the navigation, so the fallback matters: before the module
+    loads — and with no JavaScript at all — a shelf has to be an ordinary link
+    that simply navigates."""
+    body = client.get("/summary").data.decode()
+    shelves = re.findall(r'<a class="shelf[^"]*" data-nav\s+href="([^"]+)"', body)
+    assert shelves, "no shelves found"
+    assert all(href.startswith("/") for href in shelves)

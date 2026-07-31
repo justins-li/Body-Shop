@@ -64,6 +64,7 @@ user, which is why it is worth having before auth exists.
 | `app/static/js/layout.js` | The force-directed layout — a pure, deterministic function of the graph. | Touch the canvas, the DOM, or `Math.random`. |
 | `app/static/js/progress.js` | The canvas, the gestures, the size-by control and the detail panel on `/progress`. | Contain layout maths, or re-simulate on a render. |
 | `app/static/js/onboarding.js` | The one-time first-run question, and the record that it was asked. | Open on `/` or `/how-to-use`, or ask twice. |
+| `app/static/js/pageturn.js` | The transition between chapters: holding a navigation while the leaf falls, and which side it falls from. | Let a departure skip it — an unheld navigation tears the animation down. |
 | `app/static/js/setgrid.js` | **What a set is**: the rows, weight modes, added weight, the RPE gate, plate hints, repeat, and starting the rest timer. Mounted by `/log` and by a routine's quick-log. | Know which page it is on, or fetch anything. |
 | `app/static/js/routines.js` | The routines page: choosing a session, drawing its movements, and pointing the shared grid at one. | Reimplement any part of the grid. |
 | `app/static/js/weekstrip.js` | The calendar strip on `/summary`: seven boxes, expanding to the month; reports clicks and double-clicks on a day. | Own the anchor date, or navigate — it reports a gesture and the page decides. |
@@ -321,6 +322,49 @@ The component **builds its own markup**, including the header. That reverses a s
 reason: the header used to be server-rendered so the column names survived with no
 script. The rows never did, so it bought a header over nothing — and it cannot be true of
 a grid mounted into a dialog. `/log` now ships `<div id="set-grid-mount">`.
+
+## Turning a page
+
+The app is arranged as a book — chapters down the sides, numbered marks, a chapter that
+keeps its side. Navigation between them was the one place that did not say so. It raised
+a veil to cover the server round trip, and since these pages render in a few
+milliseconds the veil was a flicker: a hint that something loaded, rather than a sense
+of having moved.
+
+The transition is now **timed rather than measured.** `pageturn.js` intercepts the click,
+raises the veil, and holds the navigation for `TURN_MS` while a leaf falls across the
+screen. That is a real cost, taken on purpose: the app is slower by the length of the
+animation, because "instant and imperceptible" and "you turned a page" are different
+experiences and this one is a book.
+
+Four things keep it from being a wipe with extra steps:
+
+- **It hinges.** The leaf is `.page-veil::before` rotating about a vertical spine from
+  edge-on to flat, under a `perspective` on the veil — without which the rotation is a
+  horizontal squash rather than a page.
+- **It follows the shelves.** The stacks split around the open chapter, so an earlier
+  chapter is to your left and a later one to your right. `data-turn` picks the side:
+  `forward` falls from the right, `back` from the left, read off which stack was clicked.
+  The gesture agrees with where the thing you clicked was standing.
+- **The arrival is the other half.** `.shell-main` animates in on load — transform-only,
+  so it cannot change layout height, which `/` being pinned to exactly one screen
+  requires. It is pure CSS, so it happens with no JavaScript at all.
+- **The leaf stays on-system.** A flat fill with a hairline at its spine that fades as it
+  lands, not a shadow and not a gradient wash — both of which the design rules ban. The
+  rotation is the only thing here depicting a physical object, and it does the work.
+
+Three constraints worth knowing before touching it:
+
+- **`TURN_MS` and `--page-turn-ms` must agree.** The script waits for the animation; if
+  they drift, either the leaf is torn down mid-fall or the app sits still after it lands.
+- **Every departure goes through `turnTo`.** A navigation that only raises the veil and
+  leaves replaces the document a few milliseconds in, and the turn is a flicker again —
+  which is why `/summary`'s double-click-to-log calls it rather than assigning directly.
+- **Shelves must stay real `<a href>`s.** The whole fallback — before the module loads,
+  and with JavaScript off — is that a shelf is an ordinary link that simply navigates.
+
+`prefers-reduced-motion` drops the rotation and shortens the hold to 140ms. Someone who
+has asked for less movement has not asked to be kept waiting for it.
 
 ## The calendar, folded in
 
