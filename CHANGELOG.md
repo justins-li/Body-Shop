@@ -6,6 +6,47 @@ All notable changes to Body Shop are documented here. This project follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The whole front end is rebuilt against a reference design** (glukhovsky.com), and it
+  is a deliberate reversal of Phase 4.5 rather than a restyle:
+  - **The theme is light.** Warm cream `#faf4eb`, dark brown ink `#2a1c0e`, the same
+    oxidised brick accent. Phase 4.5 had retired the light theme; this brings it back and
+    removes the dark one, so there is still exactly one.
+  - **The volume ramp was re-derived, not flipped.** A ramp has to climb in whichever
+    direction reads as "more" on its own ground: dim → lit on near-black, pale → deep on
+    cream. The binding constraint moves too — on cream a pale green sits too close to the
+    untrained fill, so `--color-train-min` is now a mid-tone (`#4f9068`, 3.02:1 against
+    `--color-rest`), which is what keeps "one set" distinguishable from "no sets".
+  - **The top header is gone.** Navigation is thin vertical shelves down the sides, with
+    the section name set sideways. The leftmost is always Home; the right stack is every
+    section except the one being read, so a page never appears as a shelf beside itself.
+  - **`/` is exactly one screen**, and enforced as one: `height: 100vh; overflow: hidden`,
+    with the specimen as the only element that flexes, so the wordmark, the two actions
+    and the follow row are always in view without scrolling.
+  - **`/how-to-use` is a new chapter** holding the explainer that used to sit below the
+    landing page — the sequence, the colour scale and the closing prompt. It became a
+    shelf rather than a scroll nobody reached.
+  - **The shelves split around the open chapter**: everything numbered before it stacks on
+    the left, everything after on the right, each still in chapter order. Open chapter 03
+    and Home, How to use and Calendar sit to the left, Weekly summary and Graph to the
+    right — where they were before you opened anything.
+  - **Every shelf carries a drawn mark**, and the chapter index sits directly above its
+    sideways name. The stack is sticky at full window height, so the names track the middle
+    of the screen while a long page scrolls past them.
+  - **Chapter numbers are fixed to the section**, not to a shelf's position in the stack:
+    Calendar is `02` whether it is the first shelf on screen or the third. A mark that
+    renumbers itself by where you happen to be reading from is not one you can navigate by.
+  - **Noto Serif 300 carries the identity** — wordmark, shelf names, headings — at the
+    reference's measurements (`7.15vw`, `-0.21vw` tracking, `106%` leading). A fourth
+    face, display use only.
+  - The rotating subheading is a clipped strip with the lines translating up through it,
+    matching the reference's motion rather than cross-fading.
+  - A `.page-veil` covers the round trip when a shelf is clicked; pages are still
+    server-rendered, so it covers a real request rather than decorating a fake one.
+  - The rest timer moved from the header to a bottom-left dock. Same contract: every
+    page, a persisted deadline rather than a count.
+
 ### Added
 
 - **A dark, instrument-like interface (Phase 4.5).** The cream palette is gone and the

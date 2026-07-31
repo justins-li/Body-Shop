@@ -1,3 +1,144 @@
+  /* -- Centre column ----------------------------------------------------
+     The whole landing page has to fit one screen: kicker, wordmark, tagline,
+     specimen, the two actions and the follow row, with no scroll. So the
+     column is a flex stack at exactly viewport height and the *specimen* is
+     the only thing that flexes — it is the one element that can lose height
+     without losing meaning, since the figures scale. Everything else keeps
+     its size, because a wordmark that shrinks with the window looks broken. */
+  .home-centre {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: center;
+  }
+  @media (width >= 64rem) {
+    .home-centre {
+      height: 100vh;
+      /* Tight to the top — the kicker sits just under the window edge. */
+      padding: 1.6vw 2vw 1.4vw;
+    }
+  }
+
+  /* Rotating subheading. Their `.block-subheading` is a short strip with
+     `overflow:hidden` and a column inside that translates, so lines arrive
+     from below rather than cross-fading — that vertical travel is most of
+     what the motion reads as. */
+  .home-kicker {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    flex: none;
+    width: 100%;
+    height: 1.9em;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+    color: var(--color-secondary);
+  }
+  .home-rotator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: home-rotate 20s infinite;
+  }
+  .home-rotator > span {
+    height: 1.9em;
+    line-height: 1.9em;
+    flex: none;
+  }
+
+  /* Five lines, so each step is -100% of one line height and holds. */
+  @keyframes home-rotate {
+    0%, 16%   { transform: translateY(0); }
+    20%, 36%  { transform: translateY(-1.9em); }
+    40%, 56%  { transform: translateY(-3.8em); }
+    60%, 76%  { transform: translateY(-5.7em); }
+    80%, 96%  { transform: translateY(-7.6em); }
+    100%      { transform: translateY(-9.5em); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .home-rotator { animation: none; }
+  }
+
+  /* The signature: a light serif at 7.15vw with negative tracking. */
+  .home-title {
+    flex: none;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(2.5rem, 7.15vw, 8.5rem);
+    letter-spacing: -0.21vw;
+    line-height: 106%;
+    margin: 0;
+    text-transform: none;
+  }
+  .home-tagline {
+    flex: none;
+    max-width: 52ch;
+    margin: 0.5rem auto 0;
+    color: var(--color-secondary);
+    font-size: clamp(0.85rem, 0.95vw, 1rem);
+    line-height: 1.55;
+  }
+
+  /* The one element that gives up height when the window is short. */
+  .home-specimen {
+    width: min(100%, 26rem);
+    margin: 1.25rem auto 0;
+    text-align: left;
+  }
+  @media (width >= 64rem) {
+    .home-specimen {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      margin: 1.2vw auto 0;
+    }
+    /* The figures share whatever height is left, and scale into it. */
+    .home-specimen > div {
+      flex: 1 1 auto;
+      min-height: 0;
+      padding-block: 1vw;
+    }
+    .home-specimen .body-svg {
+      height: 100%;
+      width: auto;
+      max-height: 100%;
+    }
+  }
+
+  .home-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    flex: none;
+    margin-top: 1.1vw;
+  }
+
+  /* Their `.follow-text-block` sits at the foot of the hero, centred, with a
+     label and a row of marks. Empty until the accounts exist. */
+  .home-follow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    flex: none;
+    width: 100%;
+    margin-top: 1.1vw;
+    padding-top: 1.1vw;
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+  }
+  .home-follow-slot {
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+    background-color: transparent;
+    cursor: default;
+  }
+
 /* ==========================================================================
    Body Shop — stylesheet source.
 
@@ -27,64 +168,68 @@
 }
 
 /* 2) The theme ------------------------------------------------------------
-   Dark, dense and instrument-like: a near-black desaturated blue-black ground
-   that surfaces can layer on, warm bone for every data mark, cold slate for
-   structure, and an oxidised brick red as the only accent.
+   Warm cream ground, dark brown ink, one oxidised brick accent.
 
-   **There is one theme.** Phase 4.5 retired the light `bodyshop` pair. The
-   volume ramp below now climbs in *luminance* (dim → lit), which is the honest
-   metaphor on a dark ground and inverts on a light one; maintaining both would
-   mean two ramps whose colours mean opposite things, which is exactly the
-   disagree-with-itself bug this codebase's single-source-of-truth design exists
-   to avoid.
+   **There is one theme, and it is light.** Phase 4.5 made it dark; the frontend
+   revamp reverses that deliberately, to match the reference the product is now
+   modelled on. That reversal is not just a palette swap — it inverts the volume
+   ramp, because the ramp has to climb in the direction that reads as "more" on
+   its own ground:
 
-   Two rules the palette has to keep, both from docs/redesign-brief.md:
+     dark ground  (Phase 4.5): dim -> lit    (more volume = more light)
+     cream ground (now):       pale -> deep  (more volume = more ink)
 
-   1. *The ramp wins the eye.* Brick is matte and low-chroma, bone and slate are
+   The ramp values below were re-derived rather than flipped, because the
+   binding constraint moves. On cream, a pale tint sits too close to the
+   untrained fill: the invariant that "barely trained" must never look like
+   "not trained at all" forces `--color-train-min` to be a mid-tone. At
+   `#4f9068` against `--color-rest: #ece4d8` that gap is 3.02:1, just over the
+   3:1 floor for a graphic that carries meaning.
+
+   Two rules the palette still keeps, unchanged from the brief:
+
+   1. *The ramp wins the eye.* Brick is matte and low-chroma, the browns are
       effectively neutral, and nothing outside the body map, the muscle bars and
-      the graph nodes is filled with a saturated colour. The ramp is the only
-      chroma of any area on screen.
+      the graph nodes is filled with a saturated colour.
    2. *The accent and "over target" must never be confusable*, though both are
-      red. They are separated on three axes: luminance (brick sits well below
-      the over ramp), chroma (matte vs. hot) and — the load-bearing one — form.
-      **The accent never fills an area.** Primary actions are hairline-outlined
-      with brick borders and `--color-brick-lit` text, so red *area* means
-      volume past target and red *outline or text* means an action.
+      red. Separated on luminance, chroma and — the load-bearing one — form:
+      **the accent never fills an area.** Red *area* means volume past target;
+      red *outline or text* means an action.
+
+   The two ramps still end at similar luminance (1.28:1 apart), so crossing the
+   target reads as a hue flip rather than a fade — which is exactly why the
+   heavy outline on over-target regions and graph nodes stays load-bearing for
+   anyone with red-green colour blindness.
 
    depth/noise stay 0 and nothing casts a shadow: separation is a hairline. */
 @plugin "../../../tools/daisyui/theme" {
   name: "bodyshop";
   default: true;
-  color-scheme: dark;
+  color-scheme: light;
 
-  --color-base-100: #141922; /* the one raised step: inputs, sheets, the field */
-  --color-base-200: #0d1014; /* ground */
-  --color-base-300: #242b36; /* hairlines, untrained fills */
-  --color-base-content: #ede6db; /* bone — text and every data mark */
+  --color-base-100: #f4ece0; /* the one raised step: panels, inputs, the field */
+  --color-base-200: #faf4eb; /* ground - warm cream */
+  --color-base-300: #e4d9c9; /* hairlines, untrained fills */
+  --color-base-content: #2a1c0e; /* dark warm brown - text and every data mark */
 
-  /* Brick is a border-and-mark colour. At 3.24:1 on the ground it clears AA for
-     large text and UI components but *not* for body copy, which is what
-     `--color-accent` (the lifted brick, 6.25:1) is for. */
   --color-primary: #a34a38;
-  --color-primary-content: #ede6db;
-  --color-secondary: #7e8ca0; /* cold slate — secondary text and structure */
-  --color-secondary-content: #0d1014;
-  --color-accent: #d97a63; /* lifted brick, for accent text at body size */
-  --color-accent-content: #0d1014;
-  --color-neutral: #242b36;
-  --color-neutral-content: #ede6db;
+  --color-primary-content: #faf4eb;
+  --color-secondary: #7d6d5b; /* warm grey - secondary text and structure */
+  --color-secondary-content: #faf4eb;
+  --color-accent: #8f3a29; /* deepened brick, for accent text at body size */
+  --color-accent-content: #faf4eb;
+  --color-neutral: #e4d9c9;
+  --color-neutral-content: #2a1c0e;
 
-  --color-info: #7e8ca0;
-  --color-info-content: #0d1014;
-  --color-success: #5fd98a;
-  --color-success-content: #0d1014;
-  --color-warning: #f2a03f;
-  --color-warning-content: #0d1014;
-  --color-error: #f2745f;
-  --color-error-content: #0d1014;
+  --color-info: #7d6d5b;
+  --color-info-content: #faf4eb;
+  --color-success: #1f6a42;
+  --color-success-content: #faf4eb;
+  --color-warning: #9a6212;
+  --color-warning-content: #faf4eb;
+  --color-error: #8f2010;
+  --color-error-content: #faf4eb;
 
-  /* Instrument, not app store: panels are square and only controls round off.
-     A uniform large radius on every surface is explicitly out. */
   --radius-selector: 0.25rem;
   --radius-field: 0.25rem;
   --radius-box: 0;
@@ -118,7 +263,7 @@
      flip rather than a fade — which is what keeps one set past target a visible
      step. Renamed from `--color-train-light/dark`, because after the
      re-derivation "dark" would have named the bright end. */
-  --color-rest: #242b36;
+  --color-rest: #ece4d8;
   /* `train-min` is lifted off the darkest green it could be. At #2c5a42 a group
      with one set sat 1.80:1 against untrained, so "barely trained" and "not
      trained at all" looked the same — which defeats the one thing this map is
@@ -126,13 +271,13 @@
      the 3:1 floor for a graphic that carries meaning. It costs some of the
      green ramp's internal range, and spotting a gap is worth more than
      resolving the difference between four sets and six. */
-  --color-train-min: #428262;
-  --color-train-max: #5fd98a;
-  --color-over-min: #f2743f;
-  --color-over-max: #f5391f;
+  --color-train-min: #4f9068;
+  --color-train-max: #14432a;
+  --color-over-min: #e08a63;
+  --color-over-max: #8f2010;
   /* Readable-on-ground versions of the two ramps, for text. */
-  --color-train-accent: #5fd98a;
-  --color-over-accent: #f2905f;
+  --color-train-accent: #1f6a42;
+  --color-over-accent: #8f2010;
 
   --spacing-wrap: 76rem;
 }
@@ -578,6 +723,377 @@
   }
   .spec-cell + .spec-cell {
     border-left: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+  }
+
+  /* -- The shell: thin vertical shelves ---------------------------------
+     There is no top header. Navigation is narrow vertical shelves down both
+     sides, taken from the reference: hairline-separated columns with an icon at
+     the head, the chapter mark directly above a sideways name, and "01 Chp." at
+     the foot.
+
+     **A chapter keeps its side.** The stack splits around whichever chapter is
+     open — everything numbered before it on the left, everything after on the
+     right, each still in chapter order — so the shelves do not reshuffle
+     themselves around the page you turned to. Below `lg` they are hidden and
+     the bottom tab bar takes over. */
+  .shell {
+    display: flex;
+    min-height: 100vh;
+    align-items: flex-start;
+  }
+  .shell-main {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .shelf-stack { display: none; }
+  .shelf { display: none; }
+
+  @media (width >= 64rem) {
+    .shelf-stack {
+      display: flex;
+      flex: none;
+      /* The stack is as tall as the window and stays there while the centre
+         column scrolls, which is what keeps the names on the middle of the
+         *screen* rather than the middle of a long page. */
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+    .shelf {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      flex: none;
+      width: 4.2vw;
+      min-width: 3.5rem;
+      height: 100%;
+      padding: 1.4vw 0 1.6vw;
+      border-left: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+      text-decoration: none;
+      color: inherit;
+      background-color: transparent;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+    .shelf-stack-left .shelf:first-child {
+      border-left: 0;
+    }
+    .shelf-stack-left .shelf {
+      border-left: 0;
+      border-right: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    }
+    .shelf:hover,
+    .shelf:focus-visible {
+      background-color: color-mix(in srgb, var(--color-base-content) 5%, transparent);
+    }
+  }
+
+  /* Head mark. A glyph is what makes the stack scannable before you read any
+     of the sideways names. */
+  .shelf-mark {
+    display: block;
+    color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
+  }
+  .shelf-mark svg {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+  .shelf:hover .shelf-mark {
+    color: var(--color-base-content);
+  }
+
+  /* The chapter mark sits directly above its name, and the pair is centred in
+     the window — this group is what the eye tracks down the page. */
+  .shelf-mid {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .shelf-index {
+    font-size: 0.6rem;
+    color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+
+  /* The name, set sideways and reading bottom-to-top — the reference's
+     defining move, and what lets a 4vw column carry a real label. */
+  .shelf-name {
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(0.95rem, 1.15vw, 1.35rem);
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+  }
+  .shelf-foot {
+    font-size: 0.62rem;
+    line-height: 1.35;
+    text-align: center;
+    color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+
+  /* The rest timer used to sit in the header. With the header gone it docks in
+     the bottom-left corner, clear of the shelves and the tab bar. */
+  .rest-dock {
+    position: fixed;
+    left: 1rem;
+    bottom: 1rem;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    background-color: var(--color-base-100);
+  }
+  @media (width < 64rem) {
+    .rest-dock { bottom: 4.75rem; }
+  }
+
+  /* Shown while a shelf request is in flight. Pages are server-rendered, so
+     this covers a real round trip rather than decorating a client-side one. */
+  .page-veil {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: grid;
+    place-items: center;
+    background-color: var(--color-base-200);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+  }
+  .page-veil.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .page-veil-mark {
+    animation: veil-pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes veil-pulse {
+    0%, 100% { opacity: 0.35; }
+    50%      { opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .page-veil-mark { animation: none; }
+  }
+
+  /* -- Chapter pages -----------------------------------------------------
+     A chapter that is prose rather than an instrument: /how-to-use. Narrow
+     measure, serif headings, the same hairline bands as everywhere else. */
+  .chapter-page {
+    max-width: 62rem;
+    margin-inline: auto;
+    padding: 3rem 1.5rem 5rem;
+  }
+  @media (width >= 64rem) {
+    .chapter-page { padding: 4vw 3vw 6vw; }
+  }
+  .chapter-head {
+    padding-bottom: 2rem;
+    margin-bottom: 2.5rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+  }
+  .chapter-title {
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(2.25rem, 5vw, 4rem);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    margin: 0.5rem 0 1rem;
+  }
+  .chapter-subtitle {
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 400;
+    font-size: 1.4rem;
+    line-height: 1.15;
+    margin: 0 0 0.6rem;
+  }
+  .chapter-lede {
+    max-width: 56ch;
+    margin: 0;
+    color: var(--color-secondary);
+    line-height: 1.6;
+  }
+
+  /* -- Home masthead ------------------------------------------------------
+     Modelled closely on glukhovsky.com: one full-height screen, a centre
+     column a little under two-thirds of the viewport, and everything sized in
+     `vw` so the composition scales rather than reflows. Their measurements,
+     kept: hero column 63.59vw, wordmark 7.15vw / weight 300 / -0.21vw
+     tracking / 106% leading, subheading strip 1.53vw tall and clipped.
+
+     What is deliberately *not* copied is the palette. That site is black on
+     warm cream; Phase 4.5 retired this app's light theme on purpose, and the
+     volume ramp only reads correctly climbing in luminance on a dark ground.
+     So: their structure, scale, type and motion, on our ground. */
+  .home-masthead {
+    display: grid;
+    gap: 2.5rem;
+    padding: 2rem 1.25rem 3.5rem;
+  }
+  @media (width >= 64rem) {
+    .home-masthead {
+      grid-template-columns: minmax(0, 21rem) minmax(0, 1fr);
+      gap: 0;
+      align-items: stretch;
+      height: 100vh;
+      overflow: hidden;
+      padding: 0;
+    }
+    .home-specimen figcaption { display: none; }
+  }
+
+  .home-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 2.25rem;
+  }
+  @media (width >= 64rem) {
+    .home-rail-left {
+      padding: 2.75vw 2.5vw 2.5vw 2.5vw;
+      border-right: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+      overflow-y: auto;
+      max-height: 100vh;
+    }
+  }
+  .home-rail-head {
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+  }
+  .home-centre { order: -1; }
+  @media (width >= 64rem) {
+    .home-centre { order: 0; }
+  }
+
+  /* Placeholders where the news cards go. Given real room — at the previous
+     width the headline broke onto four lines and read as damage. */
+  .home-stub {
+    padding-bottom: 1.75rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+  }
+  .home-stub-frame {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 16 / 10;
+    margin-bottom: 1rem;
+    border: 1px dashed color-mix(in srgb, var(--color-base-content) 18%, transparent);
+    color: color-mix(in srgb, var(--color-base-content) 35%, transparent);
+  }
+  .home-stub-line {
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: 1.45rem;
+    line-height: 1.25;
+    margin: 0 0 0.6rem;
+    color: var(--color-base-content);
+  }
+
+  /* -- Centre column ----------------------------------------------------
+     `text-align:center`, column flex, full height — their `.hero-wrapper`. */
+  .home-centre {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: center;
+  }
+  @media (width >= 64rem) {
+    .home-centre { padding-top: 6vw; }
+  }
+
+  /* Rotating subheading. Their `.block-subheading` is a short strip with
+     `overflow:hidden` and a column inside that translates, so lines arrive
+     from below rather than cross-fading — that vertical travel is most of
+     what the motion reads as. */
+  .home-kicker {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    width: 100%;
+    height: 1.9em;
+    overflow: hidden;
+    margin-bottom: clamp(0.75rem, 1.2vw, 1.5rem);
+    color: var(--color-secondary);
+  }
+  .home-rotator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: home-rotate 20s infinite;
+  }
+  .home-rotator > span {
+    height: 1.9em;
+    line-height: 1.9em;
+    flex: none;
+  }
+
+  /* Five lines, so each step is -100% of one line height and holds. */
+  @keyframes home-rotate {
+    0%, 16%   { transform: translateY(0); }
+    20%, 36%  { transform: translateY(-1.9em); }
+    40%, 56%  { transform: translateY(-3.8em); }
+    60%, 76%  { transform: translateY(-5.7em); }
+    80%, 96%  { transform: translateY(-7.6em); }
+    100%      { transform: translateY(-9.5em); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .home-rotator { animation: none; }
+  }
+
+  /* The signature: a light serif at 7.15vw with negative tracking. */
+  .home-title {
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(2.75rem, 7.15vw, 9rem);
+    letter-spacing: -0.21vw;
+    line-height: 106%;
+    margin: 0;
+    text-transform: none;
+  }
+  .home-tagline {
+    max-width: 46ch;
+    margin: clamp(1rem, 1.6vw, 2rem) auto 0;
+    color: var(--color-secondary);
+    font-size: clamp(0.9rem, 1.05vw, 1.05rem);
+    line-height: 1.6;
+  }
+  .home-specimen {
+    width: min(100%, 30vw);
+    min-width: 18rem;
+    margin: clamp(1.5rem, 2.5vw, 3rem) auto 0;
+    text-align: left;
+  }
+
+  .home-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: clamp(1.5rem, 2vw, 2.5rem);
+  }
+
+  /* Their `.follow-text-block` sits at the foot of the hero, centred, with a
+     label and a row of marks. Empty until the accounts exist. */
+  .home-follow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    width: 100%;
+    margin-top: auto;
+    padding-top: clamp(2rem, 4.4vw, 4rem);
+  }
+  .home-follow-slot {
+    width: 2.4rem;
+    height: 2.4rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+    background-color: transparent;
+    cursor: default;
   }
 
   /* -- Home: the three steps -------------------------------------------

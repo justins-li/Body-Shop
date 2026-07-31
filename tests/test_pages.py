@@ -10,11 +10,14 @@ from app.exercises import DEFAULT_MUSCLE_SCHEME, MUSCLE_GROUPS, MUSCLE_SCHEMES
 @pytest.mark.parametrize(
     ("path", "marker"),
     [
-        ("/", b"Every set."),
+        # The masthead's own class: the landing page's headline is its wordmark,
+        # which appears in every page's header, so structure is the stable marker.
+        ("/", b"home-masthead"),
         ("/calendar", b"What you trained"),
         ("/log", b"New entry"),
         ("/summary", b"Sets by split"),
         ("/progress", b"Where your training lives"),
+        ("/how-to-use", b"How to use"),
     ],
 )
 def test_pages_render(client, path, marker):
@@ -222,3 +225,72 @@ def test_only_log_ships_the_rest_duration_select(client):
     assert client.get("/log").data.decode().count("data-timer-duration") == 1
     for path in ("/", "/calendar", "/summary"):
         assert "data-timer-duration" not in client.get(path).data.decode()
+
+
+# ---- The shelf navigation --------------------------------------------------
+
+
+def test_the_current_page_is_never_a_shelf_beside_itself(client):
+    """Leftmost is Home; the right stack is every section except this one."""
+    for path, key in [("/", "home"), ("/how-to-use", "how"), ("/calendar", "calendar"),
+                      ("/log", "log"), ("/summary", "summary"), ("/progress", "progress")]:
+        body = client.get(path).data.decode()
+        shelves = re.findall(r'class="shelf(?: shelf-home)?" data-nav\s+href="([^"?]+)', body)
+        assert path not in shelves, path
+        # Home leads on every page but its own.
+        assert ("/" in shelves) == (key != "home"), path
+        # Five sections, minus the one being read.
+        assert len(shelves) == 5, (path, shelves)
+
+
+def test_chapter_numbers_are_fixed_to_the_section(client):
+    """A chapter that renumbers by position is not a chapter you can navigate by."""
+    expected = {"/how-to-use": "01", "/calendar": "02", "/log": "03",
+                "/summary": "04", "/progress": "05"}
+    for path in ("/", "/log", "/progress"):
+        body = client.get(path).data.decode()
+        marks = dict(re.findall(
+            r'class="shelf" data-nav\s+href="([^"?]+)[^>]*>\s*<span class="shelf-top[^>]*>\[(\d\d)\]',
+            body))
+        for href, chapter in marks.items():
+            assert expected[href] == chapter, (path, href, chapter)
+
+
+def test_there_is_no_top_header(client):
+    body = client.get("/").data.decode()
+    assert "app-header" not in body
+    assert 'class="shelf' in body
+
+
+def _shelf_names(body, side):
+    """Section names on one side, in the order they are rendered."""
+    if side == "left":
+        chunk = body.split("shelf-stack-left")[1].split("</nav>")[0]
+    else:
+        chunk = body.split('aria-label="Later sections"')[1].split("</nav>")[0]
+    return re.findall(r'shelf-name">([^<]+)<', chunk)
+
+
+def test_chapters_split_around_the_open_one_and_keep_their_side(client):
+    """Earlier chapters stack left, later ones right — never reshuffled."""
+    order = ["Home", "How to use", "Calendar", "Log workout", "Weekly summary", "Graph"]
+    for path, name in [("/", "Home"), ("/how-to-use", "How to use"),
+                       ("/calendar", "Calendar"), ("/log", "Log workout"),
+                       ("/summary", "Weekly summary"), ("/progress", "Graph")]:
+        body = client.get(path).data.decode()
+        cut = order.index(name)
+        assert _shelf_names(body, "left") == order[:cut], path
+        assert _shelf_names(body, "right") == order[cut + 1:], path
+
+
+def test_every_shelf_carries_a_symbol(client):
+    body = client.get("/log").data.decode()
+    # Five shelves on /log, each with one drawn mark above its name.
+    assert body.count('class="shelf-mark"') == 5
+    assert body.count("<path d=") >= 5
+
+
+def test_the_chapter_mark_sits_directly_above_its_name(client):
+    body = client.get("/log").data.decode()
+    first = body.split('class="shelf-mid"')[1]
+    assert first.index("shelf-index") < first.index("shelf-name")

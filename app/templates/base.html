@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0d1014">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#faf4eb">
   <title>{% block title %}Body Shop{% endblock %}</title>
   <meta name="description" content="Body Shop — log your workouts and see which muscle groups you hit each week.">
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap">
+        href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&family=Noto+Serif:wght@300;400&display=swap">
 
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
@@ -28,76 +28,137 @@
             focus:px-4 focus:py-2 focus:text-sm focus:no-underline"
      href="#main">Skip to content</a>
 
-  {# Nav destinations, shared by the desktop bar and the mobile tab bar. The
-     mobile bar omits Home: it is a landing page, not somewhere you go
-     mid-session, and the wordmark already links there. #}
-  {% set links = [
-    ('views.calendar_page', 'calendar', 'Calendar', true),
-    ('views.log_page',      'log',      'Log',      true),
-    ('views.summary_page',  'summary',  'Week',     true),
-    ('views.progress_page', 'progress', 'Graph',    true),
+  {#
+    The five sections of the product. There is no top header any more: these
+    *are* the navigation, as thin vertical shelves down the sides.
+
+    The rule, from the reference: the leftmost shelf is always Home, and the
+    right-hand shelves are every section except the one you are reading. So the
+    page you are on is the centre column and never appears as a shelf beside
+    itself.
+  #}
+  {#
+    Chapter numbers are **fixed to the section, not to its position in the
+    stack**. Calendar is 02 whether it is the first shelf on screen or the
+    third: a chapter that renumbers itself depending on where you are reading
+    from is not a chapter, and the whole point of the mark is that it is stable
+    enough to navigate by.
+  #}
+  {% set sections = [
+    ('views.home_page',     'home',     'Home',           '00', 'Purpose and the map'),
+    ('views.how_page',      'how',      'How to use',     '01', 'The idea, and the colours'),
+    ('views.calendar_page', 'calendar', 'Calendar',       '02', 'Every day you trained'),
+    ('views.log_page',      'log',      'Log workout',    '03', 'Sets, weight, reps, RPE'),
+    ('views.summary_page',  'summary',  'Weekly summary', '04', 'Coverage, twelve groups'),
+    ('views.progress_page', 'progress', 'Graph',          '05', 'The week, drawn'),
   ] %}
 
-  <header class="app-header">
-    <div class="wrap flex items-center justify-between gap-4 py-3">
-      <a class="wordmark-link"
-         href="{{ url_for('views.home_page', date=selected_date.isoformat()) }}">
-        <span aria-hidden="true" class="text-primary leading-none">◈</span>
-        <span class="wordmark text-lg">Body Shop</span>
-      </a>
+  {#
+    **A chapter keeps its side.** The shelves split around whichever chapter is
+    open: everything numbered before it stacks on the left, everything after on
+    the right, each still in chapter order. Open chapter 03 and Home, How to use
+    and Calendar are to your left, Weekly summary and Graph to your right —
+    which is where they were before you opened anything. The book does not
+    reshuffle itself around the page you turned to.
+  #}
+  {% set current = sections | selectattr('1', 'equalto', page) | list | first %}
+  {% set here = current[3] if current else '00' %}
+  {% set left_shelves  = sections | rejectattr('1', 'equalto', page)
+                                  | selectattr('3', 'lt', here) | list %}
+  {% set right_shelves = sections | rejectattr('1', 'equalto', page)
+                                  | selectattr('3', 'gt', here) | list %}
 
-      <nav class="hidden sm:flex items-center gap-6 type-label" aria-label="Primary">
-        <a href="{{ url_for('views.home_page', date=selected_date.isoformat()) }}"
-           class="nav-link"
-           {% if page == 'home' %}aria-current="page"{% endif %}>Home</a>
-        {% for endpoint, key, label, _mobile in links %}
-          <a href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
-             class="nav-link"
-             {% if page == key %}aria-current="page"{% endif %}>{{ label }}</a>
-        {% endfor %}
-      </nav>
+  {#
+    One mark per chapter, drawn rather than lettered: at 4vw wide a shelf has
+    room for a glyph, and a glyph is what makes the stack scannable before you
+    read any of the sideways names.
+  #}
+  {% set marks = {
+    'home':     'M2 7.6 8 2.8l6 4.8V13a.9.9 0 0 1-.9.9h-3.2v-4H7.1v4H3.9A.9.9 0 0 1 3 13z',
+    'how':      'M8 4.6S6.6 3.1 3.1 3.1v9c3.5 0 4.9 1.5 4.9 1.5s1.4-1.5 4.9-1.5v-9C9.4 3.1 8 4.6 8 4.6zm0 0v9',
+    'calendar': 'M2.6 4.4h10.8v9.2H2.6zm0 2.7h10.8M5.6 2.6v3M10.4 2.6v3',
+    'log':      'M8 3.2v9.6M3.2 8h9.6',
+    'summary':  'M3.2 13.2V7.4M6.4 13.2V3.4M9.6 13.2V9.2M12.8 13.2V5.4',
+    'progress': 'M4 11.6 7 6.8l3 2.6 2.4-4.6M4 11.6h.01M7 6.8h.01M10 9.4h.01M12.4 4.8h.01',
+  } %}
 
-      {#
-        The rest countdown lives here, not on /log, so navigating away does not
-        kill it — `timer.js` persists the deadline and every page re-reads it.
-        Readout and toggle only: choosing a rest length is a setup decision, so
-        that select stays on /log beside the sets.
-      #}
-      <div class="rest-timer rest-strip" id="rest-timer">
-        <span class="type-label text-secondary" aria-hidden="true">Rest</span>
-        <span class="rest-timer-readout" data-timer-readout
-              role="timer" aria-live="off">2:00</span>
-        <button type="button" class="rest-toggle" data-timer-toggle
-                aria-label="Start or stop the rest timer">
-          <svg class="rest-icon-start" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
-            <path d="M4 2.5 13 8l-9 5.5z"></path>
-          </svg>
-          <svg class="rest-icon-stop" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
-            <rect x="3.5" y="3.5" width="9" height="9"></rect>
-          </svg>
-        </button>
-      </div>
-    </div>
-  </header>
+  {#
+    One shelf. Icon at the head, then the chapter mark sitting *directly above*
+    its sideways name, then "N Chp." at the foot — the reference's own order.
+    The middle group is what the eye tracks, so it is the part that stays
+    centred in the window while a long page scrolls past it.
+  #}
+  {% macro shelf(endpoint, key, label, chapter, blurb, home=false) %}
+    <a class="shelf{{ ' shelf-home' if home else '' }}" data-nav
+       href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
+       title="{{ blurb }}">
+      <span class="shelf-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
+             stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
+          <path d="{{ marks[key] }}"></path>
+        </svg>
+      </span>
+      <span class="shelf-mid">
+        <span class="shelf-index type-label" aria-hidden="true">[{{ chapter }}]</span>
+        <span class="shelf-name">{{ label }}</span>
+      </span>
+      <span class="shelf-foot type-data" aria-hidden="true">{{ chapter }}<br>Chp.</span>
+    </a>
+  {% endmacro %}
 
-  <main id="main" class="flex-1">
-    {% block content %}{% endblock %}
-  </main>
+  <div class="shell">
+    {# ---- Left: the chapters before this one, in order -------------------- #}
+    <nav class="shelf-stack shelf-stack-left" aria-label="Earlier sections">
+      {% for endpoint, key, label, chapter, blurb in left_shelves %}
+        {{ shelf(endpoint, key, label, chapter, blurb, home=(key == 'home')) }}
+      {% endfor %}
+    </nav>
 
-  <footer class="hidden sm:block border-t hairline mt-20">
-    <div class="wrap flex flex-wrap items-center justify-between gap-4 py-7 text-secondary">
-      <p class="type-label">Body Shop — logged locally</p>
-      <a class="type-label no-underline hover:text-base-content transition-colors"
-         href="/api/exercises">API</a>
-    </div>
-  </footer>
+    <main id="main" class="shell-main">
+      {% block content %}{% endblock %}
+    </main>
 
-  {# Thumb-zone navigation. Hidden from `sm:` up, where the header nav takes over. #}
+    {# ---- Right: the chapters after it ------------------------------------ #}
+    <nav class="shelf-stack" aria-label="Later sections">
+      {% for endpoint, key, label, chapter, blurb in right_shelves %}
+        {{ shelf(endpoint, key, label, chapter, blurb) }}
+      {% endfor %}
+    </nav>
+  </div>
+
+  {#
+    The rest countdown. It used to live in the header; with the header gone it
+    docks bottom-left, but the contract is unchanged — it runs on every page,
+    `timer.js` persists a deadline rather than a count, and choosing a rest
+    length stays on /log beside the sets.
+  #}
+  <div class="rest-timer rest-dock" id="rest-timer">
+    <span class="type-label text-secondary" aria-hidden="true">Rest</span>
+    <span class="rest-timer-readout" data-timer-readout
+          role="timer" aria-live="off">2:00</span>
+    <button type="button" class="rest-toggle" data-timer-toggle
+            aria-label="Start or stop the rest timer">
+      <svg class="rest-icon-start" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+        <path d="M4 2.5 13 8l-9 5.5z"></path>
+      </svg>
+      <svg class="rest-icon-stop" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+        <rect x="3.5" y="3.5" width="9" height="9"></rect>
+      </svg>
+    </button>
+  </div>
+
+  {# Shown while a shelf navigation is in flight. Pages are server-rendered, so
+     this covers the request, not a client-side route change. #}
+  <div class="page-veil" id="page-veil" aria-hidden="true">
+    <span class="page-veil-mark type-label">Body Shop</span>
+  </div>
+
+  {# Thumb-zone navigation. Hidden from `sm:` up, where the shelves take over. #}
   <nav class="tab-bar sm:hidden" aria-label="Primary">
-    {% for endpoint, key, label, _mobile in links %}
+    {% for endpoint, key, label, chapter, blurb in sections if key not in ('home', 'how') %}
       <a href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
          class="tab-link type-label {{ 'is-primary' if key == 'log' else '' }}"
-         {% if page == key %}aria-current="page"{% endif %}>{{ label }}</a>
+         {% if page == key %}aria-current="page"{% endif %}>{{ label.split(' ')[0] }}</a>
     {% endfor %}
   </nav>
 
@@ -107,6 +168,26 @@
   <script type="module">
     import { initRestTimer } from "{{ url_for('static', filename='js/timer.js') }}";
     initRestTimer(document.getElementById("rest-timer"));
+  </script>
+
+  {#
+    Reveal the veil while a shelf request is in flight. Deliberately tiny and
+    inline: it is three lines, it must run before any page module, and a page
+    with JS disabled simply navigates without it.
+  #}
+  <script>
+    (function () {
+      var veil = document.getElementById("page-veil");
+      document.querySelectorAll("a[data-nav]").forEach(function (link) {
+        link.addEventListener("click", function () {
+          veil.classList.add("is-visible");
+        });
+      });
+      // Coming back via the bfcache must not leave the veil down.
+      window.addEventListener("pageshow", function () {
+        veil.classList.remove("is-visible");
+      });
+    })();
   </script>
 
   {% block scripts %}{% endblock %}
