@@ -32,6 +32,67 @@
     <dl class="readout" id="week-meta"></dl>
   </section>
 
+  {#
+    Phase 6 — the trainer setup. It sits on this page because this is the page
+    where a target is read: every number below is measured against one, and the
+    two controls that decide it belong next to what they change rather than
+    behind a settings chapter nobody opens twice.
+
+    The server owns the arithmetic. These controls send three values with the
+    week's request and the page renders the targets that come back — see
+    `profile` in the payload. Nothing here computes a target.
+  #}
+  <section class="band" aria-labelledby="setup-heading">
+    <div class="band-head">
+      <h2 id="setup-heading" class="type-label text-base-content">Trainer setup</h2>
+      <span class="type-label text-secondary" id="setup-summary"></span>
+    </div>
+
+    <div class="setup-grid">
+      <div>
+        <label class="type-label text-secondary block mb-1.5" for="experience-select">
+          Experience
+        </label>
+        <select id="experience-select" class="field w-full">
+          {% for level in experience_levels %}
+            <option value="{{ level.key }}" data-blurb="{{ level.blurb }}"
+                    {{ 'selected' if level.key == default_profile.experience else '' }}>
+              {{ level.label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="type-label text-secondary block mb-1.5" for="sessions-input">
+          Sessions a week
+        </label>
+        <input type="number" id="sessions-input" class="field w-full type-data"
+               inputmode="numeric"
+               min="{{ session_bounds.min_sessions }}"
+               max="{{ session_bounds.max_sessions }}"
+               value="{{ default_profile.sessions_per_week }}">
+      </div>
+
+      <div>
+        <label class="type-label text-secondary block mb-1.5" for="minutes-input">
+          Minutes a session
+        </label>
+        <input type="number" id="minutes-input" class="field w-full type-data"
+               inputmode="numeric" step="5"
+               min="{{ session_bounds.min_minutes }}"
+               max="{{ session_bounds.max_minutes }}"
+               value="{{ default_profile.minutes_per_session }}">
+      </div>
+    </div>
+
+    <p class="type-label text-secondary mt-4 mb-0" id="experience-blurb">&nbsp;</p>
+    {# Filled by summary.js: the two resolved targets, and which input is
+       holding them down. One number per size of group — never a range. #}
+    <p class="text-sm text-secondary border-t hairline mt-5 pt-5 m-0 leading-relaxed"
+       id="setup-effect"></p>
+  </section>
+
   <div class="grid items-start gap-x-10 lg:grid-cols-2">
     {# ---- Body map ---------------------------------------------------- #}
     <section class="band" aria-labelledby="body-heading">

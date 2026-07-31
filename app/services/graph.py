@@ -29,6 +29,7 @@ from datetime import date, timedelta
 
 from ..exercises import get_exercise
 from ..models import exercise_activity, exercise_co_occurrence
+from ..training import TrainerProfile
 from .summary import weekly_summary
 
 #: Windows the graph can be drawn over, as a span in days. ``all`` is unbounded.
@@ -93,6 +94,7 @@ def training_graph(
     window: str = DEFAULT_WINDOW,
     today: date | None = None,
     week_starts_on: int = 1,
+    profile: TrainerProfile | None = None,
 ) -> dict:
     """Build the graph payload for ``window``.
 
@@ -100,6 +102,11 @@ def training_graph(
     edges join movements performed on the same day, weighted by how many days
     that happened on. ``coverage`` is this week's per-muscle grade, which is
     what colours the nodes.
+
+    ``profile`` reaches this only to be handed to :func:`weekly_summary`, and it
+    has to: the node colours *are* the body map's grading, so a graph drawn
+    against a different set of targets than the summary page would make the two
+    pages disagree about the same week.
     """
     today = today or date.today()
     resolved = window if window in WINDOWS else DEFAULT_WINDOW
@@ -138,7 +145,7 @@ def training_graph(
 
     # Colour comes from the *current* week, not the window: the question the
     # graph answers is what this training is feeding now.
-    week = weekly_summary(today, week_starts_on)
+    week = weekly_summary(today, week_starts_on, profile)
     coverage = {
         muscle: {"state": info["state"], "intensity": info["intensity"]}
         for muscle, info in week["muscles"].items()

@@ -24,6 +24,7 @@ from .models import (
 from .services.graph import DEFAULT_WINDOW, training_graph
 from .services.summary import weekly_summary
 from .services.weeks import month_bounds, week_bounds
+from .training import TrainerProfile, resolve_profile
 
 bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -46,6 +47,22 @@ def _query_date(name: str, default: date | None = None) -> date:
 
 def _image_base() -> str:
     return str(current_app.config.get("EXERCISE_IMAGE_BASE", ""))
+
+
+def _query_profile() -> TrainerProfile:
+    """Read the trainer setup off the query string.
+
+    Phase 5 moves this onto the user row; until there is a user, the choice is a
+    client preference and arrives with the request. Bad values fall back to the
+    default rather than 400-ing — same reasoning as ``window`` on the graph
+    endpoint. A stale ``localStorage`` key should show the usual targets, not
+    blank the summary page.
+    """
+    return resolve_profile(
+        request.args.get("experience"),
+        request.args.get("sessions"),
+        request.args.get("minutes"),
+    )
 
 
 @bp.get("/exercises")
@@ -170,9 +187,14 @@ def get_calendar():
 
 @bp.get("/summary/week")
 def get_weekly_summary():
-    """Weekly muscle-coverage summary for the week containing ``date``."""
+    """Weekly muscle-coverage summary for the week containing ``date``.
+
+    ``experience``, ``sessions`` and ``minutes`` carry the Phase 6 trainer setup
+    and decide what each group's target is. The resolved profile comes back in
+    the payload, so the page renders the targets it was graded against.
+    """
     day = _query_date("date")
-    return jsonify(weekly_summary(day, _week_start()))
+    return jsonify(weekly_summary(day, _week_start(), _query_profile()))
 
 
 @bp.get("/progress/graph")
@@ -189,6 +211,7 @@ def get_progress_graph():
             request.args.get("window", DEFAULT_WINDOW),
             _query_date("date"),
             _week_start(),
+            _query_profile(),
         )
     )
 

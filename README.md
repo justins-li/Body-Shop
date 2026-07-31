@@ -7,9 +7,13 @@ finished — with weight, reps and RPE if you want them — and the weekly summa
 body outline: each muscle group **brightens toward green** as it works toward its weekly
 set target, then turns **red** for every set past it.
 
-Targets are 20 sets a week for the large groups (chest, back, shoulders, quads,
+Targets start at 20 sets a week for the large groups (chest, back, shoulders, quads,
 hamstrings, glutes) and 10 for the small ones (abs, biceps, triceps, forearms,
-traps, calves).
+traps, calves), and the **trainer setup** on `/summary` scales them: tell it whether you
+are a beginner, experienced or advanced, and how many sessions of how many minutes you
+intend to train, and every target moves together. Your target is the smaller of what
+your experience asks for and what your week can hold — nothing ever drops below four
+sets, the point at which a muscle stops responding at all.
 
 **873 movements**, each with two photographs that alternate to show the movement,
 are catalogued from [free-exercise-db](https://github.com/yuhonas/free-exercise-db).
@@ -36,7 +40,7 @@ on both, so the two outlines tell you different things.
 | --- | --- | --- |
 | **Home** | `/` | What the app does, and the way in. Static — no API calls. |
 | **Calendar** | `/calendar` | Month grid of your training. Each day carries a bar as tall as the sets you logged; tap one to see what you did. |
-| **Log workout** | `/log` | Pick date → exercise → sets, with weight, reps, RPE and set type per row, prefilled from last time. The picker has three ways in: recent, browse by muscle, and search (`incl db` finds "Dumbbell Incline Bench Press"). Shows and deletes the entries for that day. |
+| **Log workout** | `/log` | Pick date → exercise → sets, with weight, reps and set type per row (RPE too, on the advanced trainer setup), prefilled from last time. The weight column follows the equipment: a barbell gets a plate breakdown, a dumbbell asks per bell, a cable asks for the pin setting, and a pull-up asks for nothing unless you tick "Added weight". A repeat button copies the set you just entered. The picker has three ways in: recent, browse by muscle, and search (`incl db` finds "Dumbbell Incline Bench Press"). Shows and deletes the entries for that day. |
 | **Weekly summary** | `/summary` | Front/back body map shaded by weekly volume, each group's sets against its target, and where inside six of them the work landed. |
 | **Training graph** | `/progress` | Every movement you have logged, joined to the ones you do on the same day. The movements that have fallen out ring the outside — and are named underneath. |
 
@@ -162,10 +166,11 @@ Body-Shop/
 │   ├── config.py             # environment-driven settings
 │   ├── db.py                 # engine, request-scoped connection, migration CLI
 │   ├── tables.py             # the schema, as SQLAlchemy metadata
-│   ├── exercises.py          # catalog loader, muscle groups, targets, volume weights
+│   ├── exercises.py          # catalog loader, muscle groups, baseline targets, weight modes
+│   ├── training.py           # trainer setups: how experience and time scale the targets
 │   ├── data/exercises.json   # 873 vendored movements — generated, never hand-edited
 │   ├── models.py             # all SQL lives here: validation + queries
-│   ├── views.py              # the four HTML page routes
+│   ├── views.py              # the six HTML page routes
 │   ├── api.py                # /api JSON endpoints
 │   ├── services/
 │   │   ├── weeks.py          # week/month boundary maths

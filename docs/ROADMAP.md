@@ -6,10 +6,17 @@ multi-user product.
 This file now tracks only the current, prioritized path forward. The implementation
 history and retired tradeoffs live in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Current state: **Phases 1, 2, 3, 4, and 4.5 are done**, and **Phase 9 was absorbed into
-Phase 2**. The app already has Tailwind v4 + daisyUI, 873 exercises with images across
-12 muscle groups, Alembic migrations on SQLite/Postgres, per-set weight/reps/RPE, and
-the dark instrument-style UI with `/progress`.
+Current state: **Phases 1, 2, 3, 4, 4.5, 6 and 6.5 are done**, and **Phase 9 was
+absorbed into Phase 2**. The app already has Tailwind v4 + daisyUI, 873 exercises with
+images across 12 muscle groups, Alembic migrations on SQLite/Postgres, per-set
+weight/reps/RPE, the dark instrument-style UI with `/progress`, trainer presets that
+scale the weekly targets, and equipment-aware logging.
+
+Phase 6 shipped **ahead of** Phase 5, which the dependency graph put first. The trainer
+setup needs somewhere per-user to live and there is no user yet, so it lives in
+`localStorage` and rides along with the request; Phase 5 moves it onto the user row
+without changing the API's shape. That is the only part of the ordering that was
+inverted, and it is reversible.
 
 ## Prioritized roadmap
 
@@ -21,26 +28,19 @@ This is the next hard dependency. Everything user-owned depends on it.
 - Decide auth with a strong default toward Supabase Auth + bearer tokens.
 - Add in-app account deletion and a migration/backfill plan for existing rows.
 - Keep the CSRF and cookie-session question aligned with the auth choice.
+- Move the Phase 6 trainer setup off `localStorage` and onto the user row. The API
+  already resolves it per request (`experience`/`sessions`/`minutes`), so this is a
+  column plus a default, not a reshape.
 
-### 2. Phase 6 — Trainer setups and workout length tuning
+### 2. Phase 6.7 — Altering graph
 
-Add beginner, experienced, and advanced trainer presets before the rest of the parity
-work.
+Rethink the graph so it keeps becoming more useful as training history accumulates.
 
-- Beginner starts with a lower sets-per-week target per body part.
-- Experienced increases that weekly volume.
-- Advanced pushes it higher and unlocks RPE in log-a-workout.
-- Brainstorm and implement a way to scale the weekly set target to the workout length
-  the user intends to spend.
-
-### 2.5. Phase 6.5 — Minor logging workout corrections
-
-Fix logging edge cases that show the wrong equipment assumption in the workout log.
-
-- Cable exercises should not be reported as a 45 lb bar plus added weight.
-- Dumbbells and cables need their own logging/weight wording.
-- Add a button that duplicates the set you just entered to make repeat logging faster.
-- Keep this scoped to correction work, not a broader logging redesign.
+- Lift the restriction that the graph only appears after 15 unique workouts.
+- Explore a personal-best view that grows denser over time, such as a heat map or
+  node-based graph where larger nodes indicate heavier lifts.
+- Prefer a visual that gets more detailed and more filled in as the user logs more
+  workouts, instead of a static thresholded chart.
 
 ### 3. Phase 7 — Stack decision and deployment
 
@@ -89,6 +89,18 @@ This is last because it consumes the earlier phases.
 - Phase 4: set-level logging, derived volume, previous values, rest timer, plate
   calculator.
 - Phase 4.5: dark redesign and the `/progress` training graph.
+- Phase 6: trainer setups (beginner / experienced / advanced) and workout-length
+  sizing, in [app/training.py](../app/training.py). The two inputs combine with
+  `min` rather than by multiplying — **your target is the smaller of what your
+  experience asks for and what your week can hold** — because training fewer hours
+  *is* how a beginner's lower volume shows up, and charging for both double-counts
+  it. RPE is the advanced setup's field. Nothing falls below four sets a week, the
+  literature's floor for a muscle responding at all.
+- Phase 6.5: equipment-aware logging. `weight_mode` is derived from a movement's
+  equipment in [app/exercises.py](../app/exercises.py), and it decides what the
+  weight column is called, whether a plate breakdown is offered at all, and whether
+  the field is asked for. Body-only movements get an "Added weight" toggle instead of
+  a weight box, and there is a repeat-set button.
 
 ## Later, if the product earns it
 
@@ -104,9 +116,9 @@ The live chain is simple:
 
 ```mermaid
 graph TD
-  P5[Phase 5: Secure user login] --> P6[Phase 6: Trainer setups]
-  P6 --> P65[Phase 6.5: Logging corrections]
-  P65 --> P7[Phase 7: Stack decision and deployment]
+  P6[Phase 6: Trainer setups ✓] -.moves onto the user row.-> P5[Phase 5: Secure user login]
+  P5 --> P67[Phase 6.7: Altering graph]
+  P67 --> P7[Phase 7: Stack decision and deployment]
   P7 --> P8[Phase 8: Training essentials]
   P5 --> P9[Phase 9: AI custom exercises]
   P7 --> P9
@@ -114,7 +126,8 @@ graph TD
   P5 --> P10
 ```
 
-Phase 5 gates ownership and account deletion. Phase 6 establishes the trainer presets
-and the weekly-volume sizing model. Phase 6.5 covers logging corrections around cable
-and dumbbell weight display. Phase 7 gates launch. Phase 8 is the competitive parity
-floor. Phase 9 depends on actual usage. Phase 10 depends on all of the above.
+Phase 5 gates ownership and account deletion, and picks up the one loose end Phase 6
+left: the trainer setup is a `localStorage` preference sent with each request, and it
+becomes a column on the user row. Phase 6.7 rethinks the graph so it fills out as the
+log grows. Phase 7 gates launch. Phase 8 is the competitive parity floor. Phase 9
+depends on actual usage. Phase 10 depends on all of the above.

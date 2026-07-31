@@ -1,7 +1,8 @@
 # Volume science: what the targets are based on
 
 This is the evidence behind `MUSCLE_TARGETS`, `SECONDARY_WEIGHT` and `MUSCLE_REGIONS` in
-[app/exercises.py](../app/exercises.py), and the rules that follow from it. Read it before
+[app/exercises.py](../app/exercises.py) and the scaling in
+[app/training.py](../app/training.py), and the rules that follow from it. Read it before
 changing a target, adding a muscle group, or subdividing one — several plausible-sounding
 changes are ruled out below, with reasons.
 
@@ -51,6 +52,37 @@ So `MUSCLE_TARGETS` (20 large / 10 small) is a **defensible convention, not a fi
 Practitioner frameworks such as [RP's volume landmarks](https://rpstrength.com/blogs/articles/training-volume-landmarks-muscle-growth)
 do differentiate per muscle, and are expert opinion rather than dose-response data. Treat
 the numbers as calibration you may tune, not as results you must preserve.
+
+### Does one target fit every lifter?
+
+No, and Phase 6 says so — but the honest version of "no" is smaller than it looks.
+
+The dose-response curve in Pelland rises for **everyone**. What differs between a
+beginner and an advanced lifter is not the shape of the curve but how much volume they
+can recover from and hold to week after week, and there is no dose-response study that
+resolves that into per-level numbers. So `app/training.py` scales the *whole* baseline by
+one multiplier per level (0.6 / 1.0 / 1.3) and preserves the 2:1 large-to-small split
+untouched, because that split is the part §1 actually supports.
+
+**Those three multipliers are convention.** Tune them; do not defend them as findings.
+The same goes for `SESSION_OVERHEAD_MINUTES`, which is a claim about gyms, not muscles.
+
+Two things in that module are *not* convention:
+
+- **`MIN_GROUP_TARGET = 4`** is §1's floor — roughly the volume below which a muscle does
+  not reliably respond at all. It is the reason no combination of a short week and a
+  beginner setting can produce a target of 2.
+- **The `min` rule.** Experience and available time are not independent inputs. Training
+  three short sessions *is* how a lower training age shows up in the log, so multiplying
+  the two factors charges the same lifter twice for one fact — the first implementation
+  did exactly that and pushed every group onto the floor. The target is the smaller of
+  what the level asks for and what the week can hold, which also means **a roomier week
+  never raises a target**. Having time available is not evidence that more volume is
+  wanted; it is only ever a ceiling.
+
+The old constraint still binds: the frequency finding in §1 is why the session plan enters
+as *total weekly minutes* and not as a per-session prescription. Body Shop still does not
+care how many sessions the sets came from, only that they fit.
 
 ---
 
@@ -116,7 +148,22 @@ Two deliberate asymmetries:
 - **pressing does not count toward triceps regions** — the long-head evidence is about
   isolation patterns and elbow position, so only direct triceps work is attributed.
 
-### 3.4 The neglect threshold is a judgement, and is named as one
+### 3.4 The trainer setup scales, it never prescribes
+
+The setup on `/summary` resolves to **one integer per group**, exactly as the fixed
+targets did. It may not become a range, a per-session plan, or a recommendation about
+which experience level to pick. Three specific things it must not do:
+
+- **Never print a range.** "Beginners: 8–14 sets" is the §4 violation this feature is
+  most exposed to, because it now has a plausible-looking reason to show two numbers.
+- **Never tell someone what level they are.** The control asks; it does not assess.
+  Nothing in the app has the information to place a lifter, and the levels are
+  calibration rather than a diagnosis.
+- **Say which input is binding, not what to do about it.** `limited_by` exists so the
+  page can report that the week — rather than the level — is what is holding the targets
+  down. That is a statement about arithmetic the user can check. "Train more" is not.
+
+### 3.5 The neglect threshold is a judgement, and is named as one
 
 `REGION_NEGLECT_SHARE` (0.15) and `REGION_NEGLECT_MIN_PARENT_SETS` (4.0, the literature's
 approximate floor for a muscle responding at all) are the only invented numbers in the
@@ -150,7 +197,10 @@ Body Shop is not a hypertrophy calculator and must not read like one.
 Worth doing, roughly in order of value:
 
 1. **Recalibrate `MUSCLE_TARGETS`** against the dose-response curve rather than the
-   20/10 convention — it is the least evidenced number in the app.
+   20/10 convention — it is the least evidenced number in the app. Note this now moves
+   every trainer level at once, since they are multipliers on it.
+1b. **Revisit the level multipliers** (0.6 / 1.0 / 1.3) if evidence on training-age and
+   recoverable volume appears. Same status as the targets: calibration, not results.
 2. **Extend `EXERCISE_REGIONS`** past the curated set. free-exercise-db carries no
    sub-muscular data at all, so this is hand work or a job for the AI classification in
    Phase 8 — which must emit into the vocabulary in `MUSCLE_REGIONS`, not invent its own.

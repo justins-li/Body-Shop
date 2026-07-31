@@ -2214,6 +2214,87 @@
     display: none;
   }
 
+  /* -- Columns the movement or the setup does not call for (Phase 6/6.5) --
+     `no-weight` is a body-only movement with nothing strapped on; `no-rpe` is
+     any trainer setup below advanced. Both are toggled from log.js onto the
+     header *and* every row together, so the two can never disagree about how
+     many columns there are — which is why the class names are hand-written
+     here rather than assembled as utilities Tailwind would purge.
+
+     The field is removed from the DOM as well as from the grid (see
+     `setRow` in log.js); this is only the geometry that follows. */
+  .set-grid-head.no-weight,
+  .set-row.no-weight {
+    grid-template-columns: 1.5rem minmax(0, 1fr) 2.75rem;
+  }
+  .set-grid-head.no-weight > span:nth-child(2) {
+    display: none;
+  }
+
+  .set-row.no-rpe {
+    grid-template-areas:
+      "idx weight reps remove"
+      "idx type   type type"
+      "idx hint   hint hint";
+  }
+  .set-row.no-weight {
+    grid-template-areas:
+      "idx reps remove"
+      "idx rpe  type"
+      "idx hint hint";
+  }
+  .set-row.no-weight.no-rpe {
+    grid-template-areas:
+      "idx reps remove"
+      "idx type type"
+      "idx hint hint";
+  }
+
+  /* -- "Added weight", for body-only movements --------------------------
+     Shown only where a weight would be *added* to the lifter. A full-width
+     hit area rather than a bare checkbox: this is on the hot path, and the
+     44pt rule applies to a tick box as much as to a button. */
+  .added-weight-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-height: 2.75rem;
+    margin-bottom: 0.5rem;
+    padding: 0 0.4rem;
+    cursor: pointer;
+  }
+  .added-weight-toggle[hidden] {
+    display: none;
+  }
+  .added-weight-box {
+    flex: none;
+    width: 1.1rem;
+    height: 1.1rem;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+  }
+
+  /* -- Trainer setup (Phase 6) -------------------------------------------
+     Three controls on /summary, beside the targets they decide. Two columns
+     at phone width would strand the minutes field, so the experience select
+     spans the row until there is space for all three. */
+  .setup-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .setup-grid > *:first-child {
+    grid-column: 1 / -1;
+  }
+  @media (width >= 40rem) {
+    .setup-grid {
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .setup-grid > *:first-child {
+      grid-column: auto;
+    }
+  }
+
   /* ---- Rest timer ------------------------------------------------------
      The countdown lives in the shared header so it survives navigation — rest
      does not stop because you looked at the calendar. `timer.js` persists the

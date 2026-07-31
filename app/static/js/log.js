@@ -29,10 +29,10 @@ import {
   fetchExercises, fetchLastSets, fetchRecentExercises,
 } from "./api.js";
 import {
-  $, formatDate, formatWeight, loadUnit, renderEntries, retargetLinks,
-  saveUnit, syncUrlDate, toKg, toast,
+  $, formatDate, formatWeight, loadProfile, loadUnit, renderEntries,
+  retargetLinks, saveUnit, syncUrlDate, toKg, toast, weightModeDisplay,
 } from "./ui.js";
-import { DEFAULT_BAR, describePlates } from "./plates.js";
+import { barFor, describePlates } from "./plates.js";
 import { startRestTimer } from "./timer.js";
 
 let selectedIso;
@@ -45,6 +45,40 @@ let unit = loadUnit();
 
 /** Last session's sets for the chosen movement — placeholders, never values. */
 let previousSets = [];
+
+/**
+ * How the chosen movement records weight — Phase 6.5.
+ *
+ * The grid used to assume every movement was a loaded barbell: it labelled one
+ * column "Weight" and printed "20kg bar + 25 / 5 per side" under whatever was
+ * typed. That is right for a squat and wrong for a cable pushdown, a dumbbell
+ * press and a pull-up, in three different ways. The server derives the mode
+ * from the movement's equipment (`weight_mode` on the exercise payload) and the
+ * grid reads it here.
+ *
+ * `"implement"` until something is chosen — the neutral mode, no plate hint.
+ */
+let weightMode = "implement";
+
+/**
+ * Whether a bodyweight movement is being logged with weight strapped on.
+ *
+ * Only meaningful when `weightMode` is `bodyweight`. Off by default, because
+ * the overwhelmingly common case is the movement itself: hiding the field until
+ * it is asked for is what makes a set of pull-ups two inputs rather than three.
+ */
+let addedWeight = false;
+
+/**
+ * Whether the set grid offers an RPE field — Phase 6's advanced setup.
+ *
+ * Two ways to be true, and the second matters: the trainer setup says so, *or*
+ * the previous session of this movement already recorded an RPE. A field that
+ * disappears under history you have been keeping would quietly stop you
+ * recording something you were recording last week, which is a worse outcome
+ * than showing one field more than the setup asked for.
+ */
+let showRpe = loadProfile().experience === "advanced";
 
 const SET_TYPES = ["normal", "warmup", "drop", "failure"];
 const SET_TYPE_LABELS = {
@@ -308,6 +342,14 @@ async function selectExercise(id) {
   $("#exercise-id").value = id;
   showError("");
 
+  // The mode comes off the light catalog payload, which is already in memory —
+  // so the grid re-heads itself on the click rather than after a round trip.
+  weightMode = byId.get(id)?.weight_mode || "implement";
+  // A fresh movement starts as itself. Someone who logged weighted dips last
+  // week is offered the field again by `loadPreviousSets`, which sees the
+  // weights on the previous sets.
+  addedWeight = false;
+
   document.querySelectorAll(".picker-result").forEach((row) => {
     row.setAttribute("aria-pressed", String(row.dataset.id === id));
   });
@@ -348,6 +390,16 @@ async function loadPreviousSets(id) {
     previousSets = [];
     note.hidden = true;
   }
+
+  // History decides two things the setup alone would get wrong. If you logged
+  // this movement with weight on a belt, the field opens ticked; if you have
+  // been recording RPE, it stays available whatever the trainer setup says.
+  // Both are the same rule: never take away a column you were already filling.
+  const recorded = (field) =>
+    previousSets.some((set) => set[field] !== null && set[field] !== undefined);
+  if (weightMode === "bodyweight" && recorded("weight")) addedWeight = true;
+  showRpe = loadProfile().experience === "advanced" || recorded("rpe");
+
   renderSetGrid();
 }
 
@@ -390,6 +442,11 @@ function subField(areaClass, label, control) {
   return wrap;
 }
 
+/** Whether the weight column is shown at all for the current movement. */
+function weightVisible() {
+  return weightMode !== "bodyweight" || addedWeight;
+}
+
 /**
  * Build one row of the grid.
  *
@@ -397,23 +454,31 @@ function subField(areaClass, label, control) {
  * rendered as a **placeholder, not a value** — visible enough to aim at, absent
  * enough that an untouched row saves as NULL rather than silently re-logging
  * weights nobody lifted today.
+ *
+ * `values` is the opposite: real values to fill in, used only by the repeat
+ * button. The two never both apply, and the distinction is the whole reason
+ * repeating a set is a separate control rather than a stronger placeholder.
  */
-function setRow(index, previous) {
+function setRow(index, previous, values = null) {
   const row = document.createElement("div");
   row.className = "set-row";
   row.dataset.index = String(index);
+  row.classList.toggle("no-weight", !weightVisible());
+  row.classList.toggle("no-rpe", !showRpe);
 
   const number = document.createElement("span");
   number.className = "set-row-index";
   number.textContent = String(index);
 
-  const weight = numberField("set-weight", `Set ${index} weight in ${unit}`, {
-    step: "any", min: "0", inputmode: "decimal",
-  });
+  const display = weightModeDisplay(weightMode);
+  const weight = numberField(
+    "set-weight",
+    `Set ${index} ${display.label.toLowerCase()} in ${unit}`,
+    { step: "any", min: "0", inputmode: "decimal" },
+  );
   if (previous && previous.weight !== null && previous.weight !== undefined) {
     weight.placeholder = formatWeight(previous.weight, unit);
   }
-
   const reps = numberField("set-reps", `Set ${index} reps`, {
     min: "1", max: "1000", inputmode: "numeric",
   });
@@ -448,12 +513,19 @@ function setRow(index, previous) {
   // What to load to make the number just typed. Pure arithmetic on the value
   // in the box — it spans the row beneath the inputs, and stays empty (and so
   // `display: none`) until there is something to say.
+  //
+  // **Only when there is a bar.** `barFor` returns null for dumbbells, stacks,
+  // bodyweight and implements, and the hint is then never written: telling
+  // someone their 45kg pulldown is "a 20kg bar plus 12.5 per side" is
+  // arithmetic about equipment that is not in the room, which is the exact
+  // complaint Phase 6.5 exists to fix.
+  const bar = barFor(weightMode, unit);
   const hint = document.createElement("span");
   hint.className = "plate-hint";
   const updateHint = () => {
-    hint.textContent = weight.value.trim() === ""
+    hint.textContent = bar === null || weight.value.trim() === ""
       ? ""
-      : describePlates(Number(weight.value), DEFAULT_BAR[unit], unit);
+      : describePlates(Number(weight.value), bar, unit);
   };
   weight.addEventListener("input", updateHint);
 
@@ -466,13 +538,70 @@ function setRow(index, previous) {
     if (rowHasData(row)) startRestTimer();
   });
 
-  row.append(
-    number, weight, reps, remove,
-    subField("set-sub-rpe", "RPE", rpe),
-    subField("set-sub-type", "Type", type),
-    hint,
-  );
+  // Fields the movement or the setup does not call for are **left out of the
+  // DOM**, not hidden. `setGridValues` reads the grid back through these nodes
+  // and a hidden input still carries its value, so a weight typed before
+  // "Added weight" was unticked would submit anyway — a pull-up must save NULL.
+  row.append(number);
+  if (weightVisible()) row.append(weight);
+  row.append(reps, remove);
+  if (showRpe) row.append(subField("set-sub-rpe", "RPE", rpe));
+  row.append(subField("set-sub-type", "Type", type), hint);
+
+  if (values) applyRowValues(row, values);
   return row;
+}
+
+/**
+ * Fill a row with real values — what the repeat button hands back.
+ *
+ * Weights arrive in the display unit already, because the source is another
+ * row's box rather than the API. `input` is dispatched so the plate hint
+ * recomputes, which is the one piece of row state not derived on render.
+ */
+function applyRowValues(row, values) {
+  const set = (selector, value) => {
+    const field = row.querySelector(selector);
+    if (!field || value === undefined || value === null) return;
+    field.value = value;
+    if (selector === ".set-weight") field.dispatchEvent(new Event("input"));
+  };
+  set(".set-weight", values.weight);
+  set(".set-reps", values.reps);
+  set(".set-rpe", values.rpe);
+  if (values.set_type) {
+    const type = row.querySelector(".set-type");
+    if (type) {
+      type.value = values.set_type;
+      type.dispatchEvent(new Event("change"));
+    }
+  }
+}
+
+/**
+ * What a row currently holds, in display units.
+ *
+ * `fallback` decides what an empty box is worth, and the two callers want
+ * opposite answers. **Repeating** a set falls back to the placeholder, so the
+ * first tap on a freshly-opened movement copies last session instead of adding
+ * a blank row. **Rebuilding** the grid does not: a placeholder is a suggestion,
+ * and promoting it to a value because a checkbox moved would log weights nobody
+ * lifted — the exact thing the placeholder/value split exists to prevent.
+ */
+function rowValues(row, { fallback = true } = {}) {
+  const read = (selector) => {
+    const field = row.querySelector(selector);
+    if (!field) return null;
+    const typed = field.value.trim();
+    if (typed !== "") return typed;
+    return fallback ? field.placeholder || null : null;
+  };
+  return {
+    weight: read(".set-weight"),
+    reps: read(".set-reps"),
+    rpe: read(".set-rpe"),
+    set_type: row.querySelector(".set-type")?.value || "normal",
+  };
 }
 
 /** Keep the visible numbering contiguous after a removal. */
@@ -489,8 +618,13 @@ function renumberRows() {
   if (!rows.length) addSetRow();
 }
 
-/** Append a row, seeded from last session's set at that position. */
-function addSetRow() {
+/**
+ * Append a row, seeded from last session's set at that position.
+ *
+ * @param {object|null} [values] - Real values to fill in rather than suggest.
+ *   Only the repeat button passes this.
+ */
+function addSetRow(values = null) {
   const grid = $("#set-grid");
   const index = grid.children.length + 1;
   if (index > MAX_SETS) {
@@ -501,24 +635,90 @@ function addSetRow() {
   // other end of the same signal as the row's own `focusout`.
   const last = grid.lastElementChild;
   if (last && rowHasData(last)) startRestTimer();
-  grid.append(setRow(index, previousSets[index - 1]));
+  grid.append(setRow(index, previousSets[index - 1], values));
 }
 
-/** Whether a row records anything yet — a blank row is not a finished set. */
+/**
+ * Repeat the set just entered — Phase 6.5.
+ *
+ * Straight sets are most of what anyone logs: five rows of the same weight and
+ * reps used to be five rounds of typing, or four rounds plus trusting a
+ * placeholder. This copies the last row outright, falling back to its
+ * placeholders when it is still blank so the first tap on a freshly-opened
+ * movement repeats last session rather than adding an empty row.
+ */
+function repeatLastSet() {
+  const last = $("#set-grid").lastElementChild;
+  addSetRow(last ? rowValues(last) : null);
+}
+
+/**
+ * Whether a row records anything yet — a blank row is not a finished set.
+ *
+ * The optional chaining is load-bearing: weight and RPE are absent from the DOM
+ * for a bodyweight movement and a non-advanced setup respectively.
+ */
 function rowHasData(row) {
   return ["set-weight", "set-reps", "set-rpe"].some(
-    (field) => row.querySelector(`.${field}`).value.trim() !== "",
+    (field) => (row.querySelector(`.${field}`)?.value ?? "").trim() !== "",
   );
 }
 
-/** Rebuild the grid from scratch, one row per remembered set (min 1). */
-function renderSetGrid() {
+/**
+ * Rebuild the grid from scratch, one row per remembered set (min 1).
+ *
+ * @param {{rows?: number, keep?: Array<object>}} [options] - `rows` overrides
+ *   the row count, and `keep` restores typed values into the new rows. Both are
+ *   for rebuilds that are not a change of movement — switching unit, or
+ *   toggling added weight — where throwing away what is on screen would be a
+ *   bug rather than a reset.
+ */
+function renderSetGrid({ rows = null, keep = null } = {}) {
   const grid = $("#set-grid");
   grid.textContent = "";
-  const count = Math.max(1, Math.min(previousSets.length, MAX_SETS));
+  const count = Math.max(1, Math.min(rows ?? previousSets.length, MAX_SETS));
   for (let index = 1; index <= count; index += 1) {
-    grid.append(setRow(index, previousSets[index - 1]));
+    const row = setRow(index, previousSets[index - 1]);
+    if (keep && keep[index - 1]) applyRowValues(row, keep[index - 1]);
+    grid.append(row);
   }
+  renderGridHead();
+}
+
+/** Rebuild in place, preserving the rows and the values actually typed. */
+function rebuildSetGrid() {
+  const rows = [...document.querySelectorAll("#set-grid .set-row")];
+  renderSetGrid({
+    rows: rows.length,
+    keep: rows.map((row) => rowValues(row, { fallback: false })),
+  });
+}
+
+/**
+ * Head the grid for the movement in hand: what the weight column is called,
+ * what the number means, and whether either column is there at all.
+ *
+ * The header is server-rendered so the column names survive with no script
+ * (see log.html); this rewrites it once a movement is chosen, which is the
+ * first moment there is a mode to name.
+ */
+function renderGridHead() {
+  const display = weightModeDisplay(weightMode);
+  const head = $("#set-grid-head");
+  head.classList.toggle("no-weight", !weightVisible());
+  head.classList.toggle("no-rpe", !showRpe);
+  $("#set-grid-weight-label").textContent = display.label;
+
+  const note = $("#weight-mode-note");
+  // Nothing is chosen yet, so there is no equipment to describe.
+  note.hidden = !selectedId;
+  note.textContent = selectedId ? display.note : "";
+
+  // The toggle is only meaningful where a weight would be *added* to the
+  // lifter; every other mode weighs the thing being lifted.
+  const toggleWrap = $("#added-weight-wrap");
+  toggleWrap.hidden = !(selectedId && weightMode === "bodyweight");
+  $("#added-weight").checked = addedWeight;
 }
 
 /**
@@ -527,12 +727,19 @@ function renderSetGrid() {
  * A blank field becomes `null`, not `0` — "not recorded" and "zero" are
  * different facts, and the schema keeps them apart. Weight is converted to
  * kilograms here, which is the only unit the API accepts.
+ *
+ * A field the row does not carry reads as `null` for the same reason a blank
+ * one does: a bodyweight set records no weight, and a setup without RPE records
+ * no RPE. Both are "not recorded", which is what the column already means.
  */
 function setGridValues() {
+  const raw = (row, selector) =>
+    (row.querySelector(selector)?.value ?? "").trim();
+
   return [...document.querySelectorAll("#set-grid .set-row")].map((row) => {
-    const rawWeight = row.querySelector(".set-weight").value.trim();
-    const rawReps = row.querySelector(".set-reps").value.trim();
-    const rawRpe = row.querySelector(".set-rpe").value.trim();
+    const rawWeight = raw(row, ".set-weight");
+    const rawReps = raw(row, ".set-reps");
+    const rawRpe = raw(row, ".set-rpe");
     return {
       weight: rawWeight === "" ? null : toKg(Number(rawWeight), unit),
       reps: rawReps === "" ? null : Number(rawReps),
@@ -740,12 +947,24 @@ export async function initLog(initialIso) {
   unitSelect.addEventListener("change", () => {
     unit = unitSelect.value;
     saveUnit(unit);
-    // Rebuild so placeholders and aria-labels re-read in the new unit. Typed
-    // values are deliberately left alone: they are what the user just entered,
-    // and silently converting them under the cursor is worse than a mixed grid.
-    renderSetGrid();
+    // Rebuild so placeholders, aria-labels and the plate hint's bar re-read in
+    // the new unit. Typed values are deliberately left alone: they are what the
+    // user just entered, and silently converting them under the cursor is worse
+    // than a mixed grid. `rebuildSetGrid` keeps the rows and those values.
+    rebuildSetGrid();
   });
-  $("#add-set").addEventListener("click", addSetRow);
+  $("#add-set").addEventListener("click", () => addSetRow());
+  $("#repeat-set").addEventListener("click", repeatLastSet);
+
+  // Ticking this adds a column to every row, so the grid is rebuilt rather than
+  // patched — the rows are cheap, and one render path is easier to keep honest
+  // than two. Untick it and the weights go with the column: the field is gone
+  // from the DOM, so nothing can submit a value the form no longer shows.
+  $("#added-weight").addEventListener("change", (event) => {
+    addedWeight = event.target.checked;
+    rebuildSetGrid();
+  });
+
   // The timer is booted from base.html — it runs on every page now, so binding
   // it again here would double up its listeners.
   renderSetGrid();

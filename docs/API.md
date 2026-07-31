@@ -35,6 +35,8 @@ it once and filters client-side, and including them quadruples the payload. Use
       "force": "push",
       "mechanic": "compound",
       "counts_toward_volume": true,
+      "weight_mode": "barbell",
+      "is_bodyweight": false,
       "rank": 0
     }
   ]
@@ -52,6 +54,8 @@ it once and filters client-side, and including them quadruples the payload. Use
 | `force` | `push`, `pull`, `static` or `null`. |
 | `mechanic` | `compound`, `isolation` or `null`. |
 | `counts_toward_volume` | `false` for stretching, cardio and plyometrics — still loggable, but graded as zero sets. |
+| `weight_mode` | How a weight recorded against this movement should be read. Derived from `equipment`, never stored — see the table below. |
+| `is_bodyweight` | `true` when a recorded weight means weight **added to the lifter** (a belt or a vest) rather than the load itself. Equivalent to `weight_mode == "bodyweight"`. |
 | `rank` | How prominently to offer the movement, **lower first**. Not a field of the source data: it is Body Shop's "common lifts first" ordering (`STAPLE_EXERCISE_IDS` in `app/exercises.py`). `0`–~130 are the curated staples in order; `1000+` is everything else, ordered by `mechanic`, `level` and `equipment`, with zero-volume categories last. Sort on it; do not read meaning into the number. |
 
 The twelve muscle group slugs are `chest`, `abs`, `shoulders`, `biceps`, `forearms`,
@@ -59,6 +63,36 @@ The twelve muscle group slugs are `chest`, `abs`, `shoulders`, `biceps`, `forear
 
 Ids come from [free-exercise-db](https://github.com/yuhonas/free-exercise-db) and are
 case-sensitive (`Barbell_Squat`, `Sit-Up`, `3_4_Sit-Up`).
+
+### Weight modes
+
+`weight` on a set is always a number of kilograms, but **what that number is a weight
+*of*** depends on the equipment. A client that renders every movement the same way gets
+it wrong for most of the catalog — which is what Phase 6.5 fixed.
+
+| `weight_mode` | Equipment | The number means | Plate breakdown |
+| --- | --- | --- | --- |
+| `barbell` | `barbell` | Total on the bar, bar included | Yes, 20 kg / 45 lb bar |
+| `ez_bar` | `e-z curl bar` | Total on the EZ bar, bar included | Yes, 10 kg / 25 lb bar |
+| `dumbbell` | `dumbbell` | Per dumbbell, **not** the pair's total | No |
+| `kettlebell` | `kettlebells` | Per bell | No |
+| `stack` | `cable`, `machine` | The stack setting as marked | No |
+| `bodyweight` | `body only`, `none` | Weight **added** to the lifter; usually `null` | No |
+| `implement` | `bands`, `medicine ball`, `exercise ball`, `foam roll`, `other` | Whatever the implement is marked as | No |
+
+Two consequences for a client:
+
+- **Never draw a bar where there is no bar.** Only the two barbell modes have one.
+  Printing "20 kg bar + 12.5 per side" under a cable pulldown is arithmetic about
+  equipment that is not in the room.
+- **A `bodyweight` weight is additive and must be marked as such.** `20` on a pull-up
+  and `20` on a curl are the same stored number meaning different things, so a set line
+  reads `+20kg × 8` for the first and `20kg × 8` for the second.
+
+The mapping is derived at read time from `equipment` and lives in
+`EQUIPMENT_WEIGHT_MODES` in [app/exercises.py](../app/exercises.py). Every equipment
+value in the catalog must appear there — an unmapped one raises `CatalogError` at
+import rather than silently falling through to a default.
 
 ---
 
@@ -183,6 +217,7 @@ With no parameters, returns every entry.
       "exercise_id": "Barbell_Bench_Press_-_Medium_Grip",
       "exercise_name": "Barbell Bench Press - Medium Grip",
       "muscles": ["chest", "shoulders", "triceps"],
+      "weight_mode": "barbell",
       "set_count": 2,
       "sets": [
         {
@@ -210,6 +245,11 @@ With no parameters, returns every entry.
 `muscles` is `primary + secondary` and does not say which is which — fetch the
 exercise if you need the split.
 
+`weight_mode` rides on the entry so a rendered set line does not need a second request
+for the catalog: it is the same value the exercise payload carries, and it is what tells
+a client to print `+20kg × 8` rather than `20kg × 8` for a weighted pull-up. See
+[Weight modes](#weight-modes).
+
 `set_count` is the number of sets counting toward weekly volume — **warm-up sets are
 stored but excluded from it**, same as everywhere else volume is counted. `sets` is
 every set the entry has, in logged order, including warm-ups.
@@ -218,7 +258,7 @@ every set the entry has, in logged order, including warm-ups.
 | --- | --- |
 | `id` | A UUID, unique per set. |
 | `set_index` | 1-based position within the entry, assigned by submission order. |
-| `weight` | Kilograms. `null` when not recorded. |
+| `weight` | Kilograms. `null` when not recorded. Read it through the entry's `weight_mode` — under `bodyweight` it is weight *added* to the lifter, not the load. |
 | `reps` | `null` when not recorded. |
 | `rpe` | `null` when not recorded. |
 | `set_type` | One of `normal`, `warmup`, `drop`, `failure`. |
@@ -312,6 +352,19 @@ day of only warm-ups is indistinguishable from a day with nothing logged.
 The weekly muscle-coverage summary for the week containing `date` (defaults to
 today). This is the endpoint that drives the body map.
 
+| Query param | Default | Notes |
+| --- | --- | --- |
+| `date` | Today | Any day inside the week wanted. |
+| `experience` | `experienced` | `beginner`, `experienced` or `advanced`. |
+| `sessions` | `5` | Sessions a week, clamped to 1–14. |
+| `minutes` | `75` | Minutes a session, clamped to 15–240. |
+
+The last three are the **trainer setup** (Phase 6) and they decide every group's
+`target`. See [Trainer setup](#trainer-setup) below. **None of them 400 on a bad
+value** — they arrive from a view control, so an unknown level falls back to the
+default and out-of-range numbers are clamped, the same rule `window` follows on the
+graph endpoint.
+
 Example below: 12 sets of barbell bench press (primary chest; secondary shoulders and
 triceps). Groups omitted for brevity all look like `abs`.
 
@@ -322,6 +375,16 @@ Warm-up sets are excluded from every count on this page — `total_sets`, each g
 {
   "week_start": "2026-07-27",
   "week_end": "2026-08-02",
+  "profile": {
+    "experience": "experienced",
+    "label": "Experienced",
+    "shows_rpe": false,
+    "volume_scale": 1.0,
+    "limited_by": "experience",
+    "sessions_per_week": 5,
+    "minutes_per_session": 75,
+    "targets": { "chest": 20, "abs": 10, "...": 0 }
+  },
   "total_sets": 12,
   "total_entries": 1,
   "muscles": {
@@ -374,11 +437,40 @@ mark a group `worked`.
 `worked` is `true` when the week gave the group any volume at all — including a
 single set at half weight.
 
+### Trainer setup
+
+`profile` is the resolved trainer setup, echoed back beside the grading it produced.
+**Clients must render `profile.targets` rather than re-deriving them** — the scaling
+rule lives in [app/training.py](../app/training.py) and a second implementation on the
+client is a disagreement waiting to happen.
+
+| Field | Meaning |
+| --- | --- |
+| `experience` / `label` | The chosen level and its display name. |
+| `shows_rpe` | Whether `/log` should offer an RPE field. `true` for `advanced` only. |
+| `volume_scale` | The single multiplier applied to every baseline target. |
+| `limited_by` | `experience` or `plan` — which of the two inputs is holding the targets down. Say so on screen: the plan is the one the user can change. |
+| `sessions_per_week` / `minutes_per_session` | The session plan, after clamping. |
+| `targets` | Every group's resolved weekly target. Always integers. |
+
+The two inputs combine with **`min`, never by multiplying**: your target is the smaller
+of what your experience asks for and what your week can hold. Training fewer hours *is*
+how a lower experience level shows up, so applying both charges for the same fact twice.
+A plan roomier than the baseline therefore changes nothing — having the time to train
+more is not a reason for the app to ask for more sets.
+
+No target ever falls below **4 sets a week**, the literature's approximate floor for a
+muscle responding at all. That is the one sourced number in the module; the level
+multipliers and the per-session overhead are named conventions. All of it is argued in
+[docs/VOLUME_SCIENCE.md](VOLUME_SCIENCE.md).
+
 ### Volume grading
 
-Each group also reports how its volume compares to a weekly `target` — 20 sets for
-the large groups (chest, back, shoulders, quads, hamstrings, glutes), 10 for the small
-ones (abs, biceps, triceps, forearms, traps, calves).
+Each group also reports how its volume compares to a weekly `target`. At the default
+setup that is 20 sets for the large groups (chest, back, shoulders, quads, hamstrings,
+glutes) and 10 for the small ones (abs, biceps, triceps, forearms, traps, calves); the
+trainer setup scales both together, so **do not hard-code either number** — read
+`target` off the group, or `profile.targets`.
 
 | Field | Meaning |
 | --- | --- |
@@ -435,6 +527,7 @@ added.
 | --- | --- | --- |
 | `window` | `8w` | `8w`, `6m`, `all` |
 | `date` | Today | Anchors both ends of the window *and* the colouring week |
+| `experience`, `sessions`, `minutes` | See above | The trainer setup, which decides the targets `coverage` is graded against |
 
 ```json
 {
@@ -481,6 +574,10 @@ were logged together, not the sets.
 nodes, so the graph and the body map cannot say different things about the same week.
 Note it is the week containing `date`, *not* the whole window: the question the page
 answers is what this training is feeding now.
+
+That is also why the trainer setup has to be sent here too. Node colour *is* the body
+map's grading, so a graph fetched without the profile the summary page is using would
+be graded against different targets and the two pages would disagree about one week.
 
 `orphan` marks a movement that has fallen out of the training — logged fewer than
 three times, or nothing in eight weeks. Both thresholds are **judgement, not

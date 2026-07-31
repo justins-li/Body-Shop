@@ -17,7 +17,8 @@
 
 import { fetchWeeklySummary } from "./api.js";
 import {
-  $, addDays, formatDate, formatSets, renderEntries, retargetLinks, syncUrlDate, toast,
+  $, addDays, formatDate, formatSets, loadProfile, renderEntries, retargetLinks,
+  saveProfile, syncUrlDate, toast,
 } from "./ui.js";
 
 let anchorIso; // Any date inside the week being displayed.
@@ -285,10 +286,83 @@ function renderHeader(summary) {
   );
 }
 
+// ---- Trainer setup (Phase 6) ----------------------------------------------
+
+/**
+ * Read the three controls into the shape `ui.js` stores and `api.js` sends.
+ *
+ * Deliberately unvalidated beyond `Number`: `resolve_profile` on the server
+ * clamps to the same bounds the inputs carry, and duplicating that here would
+ * be a second implementation of one rule.
+ */
+function readSetup() {
+  return {
+    experience: $("#experience-select").value,
+    sessions_per_week: Number($("#sessions-input").value),
+    minutes_per_session: Number($("#minutes-input").value),
+  };
+}
+
+/** Put a stored setup back into the controls on first paint. */
+function fillSetup(profile) {
+  $("#experience-select").value = profile.experience;
+  $("#sessions-input").value = profile.sessions_per_week;
+  $("#minutes-input").value = profile.minutes_per_session;
+  renderBlurb();
+}
+
+function renderBlurb() {
+  const option = $("#experience-select").selectedOptions[0];
+  $("#experience-blurb").textContent = (option && option.dataset.blurb) || " ";
+}
+
+/**
+ * Say what the setup resolved to, in words.
+ *
+ * **One number per size of group, never a range** — printing "aim for 10–20"
+ * would invite reading the top of it as the goal, which is the product-voice
+ * rule in docs/VOLUME_SCIENCE.md §4. And the two figures come from the server's
+ * own `targets`, not from re-applying the multiplier here, so the sentence
+ * cannot disagree with the bars underneath it.
+ */
+function renderSetupEffect(profile) {
+  const large = profile.targets.chest;
+  const small = profile.targets.abs;
+
+  $("#setup-summary").textContent =
+    `${profile.sessions_per_week} × ${profile.minutes_per_session} min`;
+
+  const reason = profile.limited_by === "plan"
+    ? "Your week is what is setting these — more time, or another session, "
+      + "raises them until they reach what your experience asks for."
+    : "Your experience level is what is setting these; the time you have "
+      + "covers them.";
+
+  $("#setup-effect").textContent =
+    `Large groups are covered at ${large} sets a week, small ones at ${small}. `
+    + reason;
+}
+
+async function onSetupChange() {
+  saveProfile(readSetup());
+  renderBlurb();
+  // Targets are graded server-side, so a new setup is a new request rather than
+  // a re-render: the states, the ramp positions and the readouts all move with
+  // it, and recomputing any of them here would be a second grader.
+  await load();
+}
+
 async function load() {
   try {
     const summary = await fetchWeeklySummary(anchorIso);
     lastMuscles = summary.muscles;
+    // Echoed back by the server, so the controls settle on what was actually
+    // used — a value clamped out of range corrects itself on screen instead of
+    // sitting there disagreeing with the bars it produced.
+    if (summary.profile) {
+      fillSetup(summary.profile);
+      renderSetupEffect(summary.profile);
+    }
     renderHeader(summary);
     paintBody(summary.muscles);
     renderBreakdown(summary.muscles);
@@ -331,6 +405,15 @@ export async function initSummary(initialIso, buckets = {}) {
   $("#prev-week").addEventListener("click", () => shiftWeek(-7));
   $("#next-week").addEventListener("click", () => shiftWeek(7));
   $("#scheme-select").addEventListener("change", onSchemeChange);
+
+  // Fill the setup controls *before* the first fetch, so the request carries
+  // the stored profile rather than the markup's defaults and the page never
+  // paints one set of targets and then replaces it with another.
+  fillSetup(loadProfile());
+  ["#experience-select", "#sessions-input", "#minutes-input"].forEach((selector) => {
+    $(selector).addEventListener("change", onSetupChange);
+  });
+
   applyScheme(storedScheme() || $("#scheme-select").value);
   await load();
 }
