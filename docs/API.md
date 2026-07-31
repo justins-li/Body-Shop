@@ -542,7 +542,25 @@ added.
       "sets": 24,
       "sessions": 6,
       "last_logged": "2026-07-28",
-      "orphan": false
+      "orphan": false,
+      "weight_mode": "barbell",
+      "best": {
+        "one_rep_max": 116.7,
+        "weight": 100.0,
+        "reps": 5,
+        "achieved_on": "2026-07-24"
+      }
+    },
+    {
+      "exercise_id": "Pullups",
+      "name": "Pullups",
+      "primary_muscle": "back",
+      "sets": 12,
+      "sessions": 4,
+      "last_logged": "2026-07-27",
+      "orphan": false,
+      "weight_mode": "bodyweight",
+      "best": null
     }
   ],
   "edges": [
@@ -551,8 +569,9 @@ added.
   "coverage": {
     "quads": { "state": "trained", "intensity": 0.6 }
   },
-  "graph_ready": true,
-  "min_nodes": 15
+  "measured": 1,
+  "sparse": false,
+  "sparse_below": 15
 }
 ```
 
@@ -584,15 +603,48 @@ three times, or nothing in eight weeks. Both thresholds are **judgement, not
 evidence**, and live as named constants in `app/services/graph.py` for the same reason
 `REGION_NEGLECT_SHARE` does.
 
-`graph_ready` is false below `min_nodes` movements, where a force-directed graph is a
-list with extra steps. `/progress` shows the neglected-movement list alone and says
-what unlocks the drawing.
+### Personal bests
 
-**Not here, and deliberately:** nothing strength-relative. Node size is set count, not
-volume-load or estimated 1RM, because the app stores no bodyweight, computes no 1RM,
-and pre-Phase-4 history has `NULL` weights — any such mark would be a guess. That is a
-Phase 7 addition, and when it lands a lift with no benchmark must render as a hollow
-ring rather than a fabricated number.
+`best` is the heaviest single the movement's sets in this window support, estimated
+with Epley (`weight × (1 + reps / 30)`) in `app/services/strength.py`. It is **your own
+best, from your own log** — not a strength standard. Nothing in this API compares a user
+to a population; the app stores no bodyweight and has no business ranking anyone.
+
+| Field | Meaning |
+| --- | --- |
+| `one_rep_max` | The estimate, in kilograms. A logged single passes through untouched — it is the lift, not an estimate. |
+| `weight` / `reps` | The actual set it came from, so a client can show its working. |
+| `achieved_on` | When that set was performed. Ties go to the **earlier** date: a best is when you first reached it. |
+
+**`best` is `null` whenever no set can support an estimate** — bodyweight movements,
+rows logged as a bare count, and everything from before Phase 4 added the weight column.
+Clients **must draw a hollow ring rather than a small node**: an unmeasured lift is not
+a light lift, and sizing it at zero states something false. `weight_mode` rides alongside
+so a client can say *why* there is no number.
+
+Sets longer than 12 reps are ignored for the estimate rather than extrapolated — every
+rep-max formula drifts badly past ten, and Epley on a 20-rep set reports a single 67%
+above the bar. Warm-ups are excluded, as everywhere else: on movements where the warm-up
+is the heaviest thing logged it would routinely beat the real work.
+
+Bests are scoped to the **window**, not to all time. A lifetime figure would keep a
+movement large long after it was dropped, which is the opposite of what `orphan` is for.
+
+`measured` counts the nodes carrying a `best`, so a client can say "6 of 14 movements
+sized by load" rather than leaving a canvas of rings looking broken.
+
+### There is no longer a minimum
+
+`sparse` is **a note, not a gate**. Before Phase 6.7 the response carried `graph_ready`
+and `/progress` refused to draw below fifteen movements — which meant a new user met an
+explanation of a picture they could not see, and the picture then arrived all at once
+instead of growing. The graph now draws from the first logged movement; `sparse` (with
+`sparse_below`) only says whether it is dense enough to read as a *shape* yet. The one
+case with nothing to draw is an empty window.
+
+**Still not here, and deliberately:** a strength *standard*. Colouring or sizing against
+what someone of a given bodyweight "should" lift needs a bodyweight the app does not
+store and a population comparison it does not make.
 
 ---
 

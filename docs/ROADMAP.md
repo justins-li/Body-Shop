@@ -6,11 +6,12 @@ multi-user product.
 This file now tracks only the current, prioritized path forward. The implementation
 history and retired tradeoffs live in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Current state: **Phases 1, 2, 3, 4, 4.5, 6 and 6.5 are done**, and **Phase 9 was
+Current state: **Phases 1, 2, 3, 4, 4.5, 6, 6.5 and 6.7 are done**, and **Phase 9 was
 absorbed into Phase 2**. The app already has Tailwind v4 + daisyUI, 873 exercises with
 images across 12 muscle groups, Alembic migrations on SQLite/Postgres, per-set
-weight/reps/RPE, the dark instrument-style UI with `/progress`, trainer presets that
-scale the weekly targets, and equipment-aware logging.
+weight/reps/RPE, the `/progress` training graph, trainer presets that scale the weekly
+targets, equipment-aware logging, and personal bests estimated from the user's own
+sets.
 
 Phase 6 shipped **ahead of** Phase 5, which the dependency graph put first. The trainer
 setup needs somewhere per-user to live and there is no user yet, so it lives in
@@ -32,17 +33,7 @@ This is the next hard dependency. Everything user-owned depends on it.
   already resolves it per request (`experience`/`sessions`/`minutes`), so this is a
   column plus a default, not a reshape.
 
-### 2. Phase 6.7 — Altering graph
-
-Rethink the graph so it keeps becoming more useful as training history accumulates.
-
-- Lift the restriction that the graph only appears after 15 unique workouts.
-- Explore a personal-best view that grows denser over time, such as a heat map or
-  node-based graph where larger nodes indicate heavier lifts.
-- Prefer a visual that gets more detailed and more filled in as the user logs more
-  workouts, instead of a static thresholded chart.
-
-### 3. Phase 7 — Stack decision and deployment
+### 2. Phase 7 — Stack decision and deployment
 
 Deploy the current Flask app before adding more product surface.
 
@@ -52,16 +43,19 @@ Deploy the current Flask app before adding more product surface.
   and CSV export.
 - Keep production gated on the Postgres CI job.
 
-### 4. Phase 8 — Training essentials
+### 3. Phase 8 — Training essentials
 
 This is the parity phase. It should make the app feel complete next to mature trackers.
 
-- Add 1RM estimates, PR detection, per-exercise progress graphs, and body metrics.
+- Add PR *detection* — Phase 6.7 estimates a best per window, but nothing records or
+  announces one when it happens.
+- Add per-exercise progress graphs and body metrics. Bodyweight is the missing column
+  that a strength standard would need, if the product ever wants one.
 - Add entry and set editing.
 - Add routines and templates; this is the expensive core of the phase.
 - Keep the volume-coverage model intact while adding the parity features.
 
-### 5. Phase 9 — AI-assisted custom exercises
+### 4. Phase 9 — AI-assisted custom exercises
 
 Only build this after the catalog has been in front of real users long enough to show
 what it misses.
@@ -71,7 +65,7 @@ what it misses.
 - Require user review before saving any AI suggestion.
 - Log corrections so the prompt can be tuned against real misses.
 
-### 6. Phase 10 — Mobile, watch, and store distribution
+### 5. Phase 10 — Mobile, watch, and store distribution
 
 This is last because it consumes the earlier phases.
 
@@ -101,6 +95,15 @@ This is last because it consumes the earlier phases.
   weight column is called, whether a plate breakdown is offered at all, and whether
   the field is asked for. Body-only movements get an "Added weight" toggle instead of
   a weight box, and there is a repeat-set button.
+- Phase 6.7: the graph draws from the first logged movement instead of switching on at
+  fifteen, and node size answers either "how much work" or "how heavy" — the latter
+  estimated from the user's own sets in
+  [app/services/strength.py](../app/services/strength.py). **A movement with no
+  recorded load draws as a hollow ring rather than a small node**, which is the rule
+  `graph.py` wrote down before the data to break it existed. A strength *standard* is
+  still out: no bodyweight is stored and no one is compared to anyone.
+- First run: one question, once (`app/static/js/onboarding.js`), so the trainer setup
+  is the user's rather than a guess about a stranger. Never on `/` or `/how-to-use`.
 
 ## Later, if the product earns it
 
@@ -117,8 +120,8 @@ The live chain is simple:
 ```mermaid
 graph TD
   P6[Phase 6: Trainer setups ✓] -.moves onto the user row.-> P5[Phase 5: Secure user login]
-  P5 --> P67[Phase 6.7: Altering graph]
-  P67 --> P7[Phase 7: Stack decision and deployment]
+  P67[Phase 6.7: Graph ✓] -.PR detection.-> P8
+  P5 --> P7[Phase 7: Stack decision and deployment]
   P7 --> P8[Phase 8: Training essentials]
   P5 --> P9[Phase 9: AI custom exercises]
   P7 --> P9
@@ -128,6 +131,5 @@ graph TD
 
 Phase 5 gates ownership and account deletion, and picks up the one loose end Phase 6
 left: the trainer setup is a `localStorage` preference sent with each request, and it
-becomes a column on the user row. Phase 6.7 rethinks the graph so it fills out as the
-log grows. Phase 7 gates launch. Phase 8 is the competitive parity floor. Phase 9
+becomes a column on the user row. Phase 7 gates launch. Phase 8 is the competitive parity floor. Phase 9
 depends on actual usage. Phase 10 depends on all of the above.

@@ -484,6 +484,51 @@ def exercise_co_occurrence(start: date, end: date) -> list[tuple[str, str, int]]
     return [(row[0], row[1], int(row.days)) for row in rows]
 
 
+def loaded_sets(start: date, end: date) -> list[tuple[str, float, int, date]]:
+    """Return ``(exercise_id, weight, reps, entry_date)`` for every scored set.
+
+    Backs the personal bests on ``/progress``. Only rows carrying **both** a
+    weight and a rep count come back, since a set missing either cannot support
+    a one-rep-max estimate — that filter is here because it is a statement about
+    the columns being NULL, not a training judgement. Which of the surviving
+    sets is worth an estimate is :mod:`app.services.strength`'s call.
+
+    Warm-ups are excluded, the same rule as everywhere else: a warm-up single is
+    not a personal best, and it would routinely outrank real work on movements
+    where the warm-up is the heaviest thing logged.
+
+    Ordered so the reduction downstream is deterministic on either dialect.
+    """
+    rows = (
+        get_db()
+        .execute(
+            sa.select(
+                workout_entry.c.exercise_id,
+                workout_set.c.weight,
+                workout_set.c.reps,
+                workout_entry.c.entry_date,
+            )
+            .select_from(
+                workout_entry.join(
+                    workout_set, workout_set.c.entry_id == workout_entry.c.id
+                )
+            )
+            .where(
+                workout_entry.c.entry_date.between(start, end),
+                workout_set.c.set_type != "warmup",
+                workout_set.c.weight.is_not(None),
+                workout_set.c.reps.is_not(None),
+            )
+            .order_by(workout_entry.c.entry_date, workout_entry.c.id)
+        )
+        .all()
+    )
+    return [
+        (row.exercise_id, float(row.weight), int(row.reps), row.entry_date)
+        for row in rows
+    ]
+
+
 def sets_by_date(start: date, end: date) -> dict[str, int]:
     """Return ``{iso_date: total_sets}`` for the inclusive range (calendar dots).
 

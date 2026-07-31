@@ -56,6 +56,10 @@ def inject_globals() -> dict:
     return {
         "muscle_groups": MUSCLE_GROUPS,
         "muscle_labels": MUSCLE_LABELS,
+        # The trainer setup's vocabulary, needed by *every* page rather than
+        # only /summary: the first-run dialog lives in base.html, and it has to
+        # offer the same three levels the settings control does.
+        **_trainer_setup_context(),
         # The *baseline* targets, which is all a server-rendered shell can know:
         # the trainer setup lives in the browser until Phase 5 gives it a user
         # row to sit on, so `summary.js` overwrites these once it has fetched
@@ -188,5 +192,4 @@ def summary_page():
         muscle_schemes=MUSCLE_SCHEMES,
         default_scheme=DEFAULT_MUSCLE_SCHEME,
         scheme_buckets=scheme_map(),
-        **_trainer_setup_context(),
     )

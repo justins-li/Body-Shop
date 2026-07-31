@@ -163,7 +163,29 @@ which experience level to pick. Three specific things it must not do:
   page can report that the week — rather than the level — is what is holding the targets
   down. That is a statement about arithmetic the user can check. "Train more" is not.
 
-### 3.5 The neglect threshold is a judgement, and is named as one
+### 3.5 A personal best is your own, and always shows its working
+
+Phase 6.7 put an estimated one-rep max on `/progress`. It is the app's first
+strength-relative mark, and it stays inside the same discipline as everything above.
+
+- **It is your log, not a population.** Epley on a set the user typed in is arithmetic
+  on their own data. A strength *standard* — what someone of a given bodyweight
+  "should" lift — needs a bodyweight the app does not store and a comparison it does
+  not make. That remains out, and it is a product decision rather than a missing
+  feature.
+- **An estimate is labelled as one and names its source.** The panel reads
+  `Est. 1RM 117kg — from 100kg × 5 on Jul 24`, never a bare number. A logged single is
+  not dressed up as an estimate, because it is the lift.
+- **Refusing is the default.** No weight, no reps, or a set past `MAX_ESTIMATE_REPS`
+  (12) means no estimate — every rep-max formula drifts badly past ten, and Epley on a
+  20-rep set reports a single 67% above the bar. The movement then draws as a **hollow
+  ring, never a small node**: sizing an unmeasured lift at zero states that it is light,
+  which is false rather than merely unknown.
+- **Nothing here is prescriptive.** The graph reports what was lifted. It does not say
+  what should be lifted next, and Phase 8's auto-progression is where that argument
+  belongs.
+
+### 3.6 The neglect threshold is a judgement, and is named as one
 
 `REGION_NEGLECT_SHARE` (0.15) and `REGION_NEGLECT_MIN_PARENT_SETS` (4.0, the literature's
 approximate floor for a muscle responding at all) are the only invented numbers in the

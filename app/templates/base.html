@@ -200,14 +200,77 @@
     {% endfor %}
   </nav>
 
+  {#
+    First run. The trainer setup decides every weekly target in the app, and its
+    default is a guess about a stranger — so it is worth one question before the
+    first summary is read. `onboarding.js` opens this once and never again;
+    skipping counts as an answer, so it cannot become a nag.
+
+    The shell ships on every page but the module refuses to open it on `/` and
+    `/how-to-use`: both are static, render identically for any visitor, and `/`
+    is pinned to exactly one screen.
+  #}
+  <dialog class="first-run" id="first-run" aria-labelledby="first-run-heading">
+    <form method="dialog" class="first-run-body">
+      <p class="type-label text-secondary m-0">Before you start</p>
+      <h2 id="first-run-heading" class="first-run-title">
+        How long have you been training?
+      </h2>
+      <p class="type-lede text-sm">
+        It sets how many sets a week each muscle group is aiming for. Nothing is
+        locked in — you can change it whenever you like on Weekly summary.
+      </p>
+
+      <div class="first-run-levels">
+        {% for level in experience_levels %}
+          <button type="button" class="first-run-level" data-level="{{ level.key }}"
+                  aria-pressed="false">
+            <span class="first-run-level-name type-label">{{ level.label }}</span>
+            <span class="first-run-level-blurb">{{ level.blurb }}</span>
+            {% if level.rpe %}
+              <span class="first-run-level-note type-label">Unlocks RPE</span>
+            {% endif %}
+          </button>
+        {% endfor %}
+      </div>
+
+      {# The other half of the setup. Asking now beats asking twice, and these
+         are the numbers that decide whether the targets above can fit at all. #}
+      <p class="first-run-plan">
+        <label for="first-run-sessions">I train</label>
+        <input type="number" id="first-run-sessions" class="field field-sm type-data"
+               inputmode="numeric"
+               min="{{ session_bounds.min_sessions }}"
+               max="{{ session_bounds.max_sessions }}"
+               value="{{ default_profile.sessions_per_week }}">
+        <label for="first-run-minutes">times a week, for</label>
+        <input type="number" id="first-run-minutes" class="field field-sm type-data"
+               inputmode="numeric" step="5"
+               min="{{ session_bounds.min_minutes }}"
+               max="{{ session_bounds.max_minutes }}"
+               value="{{ default_profile.minutes_per_session }}">
+        <label for="first-run-minutes">minutes.</label>
+      </p>
+
+      <div class="first-run-actions">
+        <button type="button" class="step-key" id="first-run-skip">Skip</button>
+        <button type="button" class="btn-brick" id="first-run-start">Start logging</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast-bar" role="status" aria-live="polite"></div>
 
-  {# Both of these are on every page, so they boot from here rather than per-page. #}
+  {# All three of these are on every page, so they boot from here rather than
+     per-page. `initOnboarding` takes the page key and declines to open on the
+     two static chapters. #}
   <script type="module">
     import { initRestTimer } from "{{ url_for('static', filename='js/timer.js') }}";
     import { initThemeToggle } from "{{ url_for('static', filename='js/theme.js') }}";
+    import { initOnboarding } from "{{ url_for('static', filename='js/onboarding.js') }}";
     initRestTimer(document.getElementById("rest-timer"));
     initThemeToggle(document.getElementById("theme-toggle"));
+    initOnboarding(document.getElementById("first-run"), {{ page | tojson }});
   </script>
 
   {#

@@ -51,14 +51,16 @@ user, which is why it is worth having before auth exists.
 | `app/models.py` | Every SQL statement, plus input validation. | Know about HTTP or Jinja, or know which dialect it is on. |
 | `app/services/weeks.py` | Week/month boundary maths. | Query the database. |
 | `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses, or decide what a target *is*. |
-| `app/services/graph.py` | The training graph's rules: what a window means, what makes a movement an orphan, and joining this week's coverage onto the nodes. | Query the database, or invent a strength benchmark (see below). |
+| `app/services/graph.py` | The training graph's rules: what a window means, what makes a movement an orphan, and joining this week's coverage and personal bests onto the nodes. | Query the database, or invent a strength *standard* (see below). |
+| `app/services/strength.py` | Estimating a one-rep max from the user's own sets, and reducing a window to one best per movement. | Query the database, or compare a user to anyone but themselves. |
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
 | `app/views.py` | Page shells and template context. | Contain business rules. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
 | `app/static/js/timer.js` | The rest countdown, booted from `base.html` on every page. Pure client state, persisted as a *deadline* so it survives navigation and tab throttling. | Touch the API, or persist anything but its duration and that deadline. |
 | `app/static/js/plates.js` | Plate arithmetic — a pure function of weight and bar. | Store anything, or fetch. |
 | `app/static/js/layout.js` | The force-directed layout — a pure, deterministic function of the graph. | Touch the canvas, the DOM, or `Math.random`. |
-| `app/static/js/progress.js` | The canvas, the gestures and the detail panel on `/progress`. | Contain layout maths, or re-simulate on a render. |
+| `app/static/js/progress.js` | The canvas, the gestures, the size-by control and the detail panel on `/progress`. | Contain layout maths, or re-simulate on a render. |
+| `app/static/js/onboarding.js` | The one-time first-run question, and the record that it was asked. | Open on `/` or `/how-to-use`, or ask twice. |
 | `app/static/css/input.css` | The design system: theme pair, tokens, and every hand-written rule. | — (`styles.css` beside it is generated; never edit it) |
 
 ## Styling
@@ -310,6 +312,27 @@ when Phase 5 lands.
 `profile.targets` from the response. `/progress` sends them too, because node colour *is*
 the body map's grading and the two pages must not disagree about one week.
 
+### Asking once, on first run
+
+The setup's default is a guess about a stranger, so `onboarding.js` puts the question
+once, in a `<dialog>` booted from `base.html` beside the timer and the theme toggle.
+Three rules keep it from becoming a nag:
+
+- **It runs on the app pages only.** `data-page` gates it: `/` and `/how-to-use` are
+  static, make no API calls, and must render identically for any visitor — and `/` is
+  pinned to exactly one screen. A dialog over either would break the one property that
+  makes them worth having before auth exists.
+- **Skipping is an answer.** `bodyshop:onboarded` is written by both exits, and by
+  `Escape`. It is deliberately a *separate* key from the stored profile: were they the
+  same, someone who skipped would be asked on every visit, and someone who cleared only
+  their preferences would never be asked again — both backwards.
+- **A browser with storage blocked is treated as already asked**, since a question whose
+  answer cannot be recorded would reappear on every page load.
+
+Answering reloads the page. Everything on screen was fetched and graded before the
+answer existed, and one request on a page that has just opened is cheaper than a
+partial re-render that could leave two targets on screen at once.
+
 ## The volume scale
 
 `app/services/summary.py::summarise_entries` produces, for each of the twelve groups
@@ -429,23 +452,49 @@ before there was anything to overlay.
 movements performed on the same day. Added in Phase 4.5 as the redesign's signature
 element, and scoped hard to data that already exists.
 
-**The encodings are the app's own thesis, not a borrowed one.** Node size is
-cumulative non-warmup sets. Node colour is the *current* weekly coverage state of the
-movement's primary muscle — the same `state`/`intensity` pair the body map uses, so
-the two pages cannot disagree about a week. Edge opacity is how many days two
-movements were logged together. Nothing here is strength-relative: the app stores no
-bodyweight, computes no 1RM, and pre-Phase-4 history has `NULL` weights, so a
-strength-standard colouring would be a fabricated number wearing the same clothes as
-the sourced ones. That is [Phase 7](ROADMAP.md) work, and when it lands a lift with no
-benchmark must render as a hollow ring rather than a guess.
+**The encodings are the app's own thesis, not a borrowed one.** Node colour is the
+*current* weekly coverage state of the movement's primary muscle — the same
+`state`/`intensity` pair the body map uses, so the two pages cannot disagree about a
+week. Edge opacity is how many days two movements were logged together.
+
+**Node size answers one of two questions, and the reader picks which** (Phase 6.7):
+cumulative non-warmup sets, or the best single the movement's sets support. The second
+is *your own best from your own log*, estimated with Epley — arithmetic on data the
+user typed in, not a benchmark imported from elsewhere. A strength **standard** — what
+someone of your bodyweight "should" press — remains out, and always was: the app stores
+no bodyweight and has no business ranking anyone against a population.
+
+The honesty rule this module wrote down *before* the data to break it existed is now
+enforced rather than aspirational: **a movement with no recorded load has no estimate and
+draws as a hollow ring.** Sizing it at zero would claim it is light, which is a different
+and false statement from "not measured". Bodyweight work and every pre-Phase-4 row land
+there, so the payload also reports `measured` — how much of the drawing can be sized at
+all — because a canvas of rings should explain itself rather than look broken.
+
+**There is no minimum node count.** Until Phase 6.7 the page refused to draw below
+fifteen movements and showed a ranked list with a note about what would unlock the
+picture. That was backwards for the one visual the app has: a new user met an
+explanation of something they could not see, and the drawing then arrived all at once
+rather than growing. `SPARSE_GRAPH_NODES` survives only as a note under the canvas, so a
+two-node picture says it is early instead of pretending to be a map.
+
+Switching the size question is a **re-draw, never a refetch and never a re-simulation** —
+both numbers are already in the payload, and the layout fingerprint ignores size for
+exactly the reason it ignores colour.
 
 **Orphans are the point.** Movements logged fewer than `ORPHAN_MIN_SESSIONS` times, or
 not inside `ORPHAN_STALE_WEEKS`, are pushed to a ring outside the core and drawn as
 hollow rings. Both thresholds are opinion, so they are named constants with docstrings
 — the same discipline `REGION_NEGLECT_SHARE` follows. They are also listed in words
 below the canvas, because a force-directed graph that is only a hairball is
-decoration; the written list is the finding, and it is the whole page below
-`MIN_GRAPH_NODES` movements, where the drawing would be a list with extra steps.
+decoration; the written list is the finding, and it stands whether or not the drawing
+above it is dense enough to read.
+
+Note the graph now carries **two** kinds of hollow ring, and they mean different
+things. Bone means *fallen out of the training*; the muscle's own coverage colour means
+*no load recorded*, so it still says what the movement feeds while saying it cannot be
+sized. The legend only shows the second under the strength view, where it is the only
+place it can occur.
 
 Three implementation decisions worth keeping:
 
@@ -595,8 +644,13 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
 - `tests/test_api.py` — every endpoint, including the validation failure modes.
 - `tests/test_graph.py` — the training graph's rules: the warm-up exclusion reaching
   both nodes and edges, that no edge survives pointing at a movement that is not a
-  node, the co-occurrence count, and the orphan thresholds asserted directly so
-  changing one is a deliberate edit.
+  node, the co-occurrence count, the orphan thresholds asserted directly so changing
+  one is a deliberate edit, and — since Phase 6.7 — that a single movement still draws,
+  that bests are window-scoped, and that a movement with no load carries `best: null`.
+- `tests/test_strength.py` — the one-rep-max estimate, pure. Weighted toward the cases
+  where it must **refuse**: no weight, no reps, a set too long to extrapolate from. An
+  unmeasurable movement drawing as a small node instead of a ring is the failure the
+  whole module is arranged to prevent.
 - `tests/test_pages.py` — the five pages render and contain every muscle region, and
   `/log` ships a picker shell rather than the catalog. Page markers are chosen to be
   unique to their page, since the nav links appear on all four.
@@ -625,11 +679,13 @@ which is the difference between seconds and minutes against a hosted database.
   Supabase and Neon put a pooler in front, and a second pool inside a serverless
   function exhausts connection limits at trivial traffic. Under a long-lived
   process (gunicorn) this trades a little latency for that safety.
-- **Nothing strength-relative.** Weight, reps and RPE are recorded per set as of
-  Phase 4, but the app stores no bodyweight, computes no 1RM and detects no PR, so
-  every mark it draws is about *volume* rather than about how strong you are.
-  Pre-Phase-4 history also has `NULL` weights, which is why a strength benchmark
-  cannot be backfilled and is scheduled as [Phase 8](ROADMAP.md).
+- **No strength standard, and no bodyweight.** Phase 6.7 added an estimated one-rep
+  max from your own sets, but the app still stores no bodyweight and compares you to
+  no one — so it can say "you have pressed the equivalent of 98 kg" and cannot say
+  "that is intermediate". Whether it ever should is a product question, not a missing
+  feature.
+- **No PR detection.** The best is recomputed per window rather than recorded when it
+  happens, so nothing notices or announces a new one. That is [Phase 8](ROADMAP.md).
 - **No editing.** Entries and sets are append-only; a mistake is deleted and
   re-logged. Also Phase 8.
 - **One `shoulders` group.** The catalog distinguishes front, side and rear raises in

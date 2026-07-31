@@ -402,3 +402,56 @@ def test_every_submitted_control_stays_inside_the_form(client):
     form = body[body.index('id="entry-form"'): body.index("</form>")]
     for marker in ('id="entry-date"', 'id="added-weight"', 'id="repeat-set"'):
         assert marker in form, marker
+
+
+# ---- First run, and the graph's new controls (Phase 6.7) -------------------
+
+
+@pytest.mark.parametrize("path", ["/calendar", "/log", "/summary", "/progress"])
+def test_app_pages_ship_the_first_run_dialog(client, path):
+    """The shell rides on base.html; `onboarding.js` decides whether to open it."""
+    body = client.get(path).data.decode()
+    assert 'id="first-run"' in body
+    assert 'id="first-run-start"' in body
+    assert 'id="first-run-skip"' in body
+
+
+@pytest.mark.parametrize("path", ["/", "/how-to-use"])
+def test_static_pages_never_open_the_first_run_dialog(client, path):
+    """`/` and `/how-to-use` are static and must render identically for any
+    visitor — `/` is also pinned to exactly one screen. The module refuses to
+    open on them, and the page key it reads is what enforces it."""
+    body = client.get(path).data.decode()
+    page = "home" if path == "/" else "how"
+    assert f'initOnboarding(document.getElementById("first-run"), "{page}")' in body
+
+
+def test_first_run_offers_every_experience_level(client):
+    from app.training import EXPERIENCE_LEVELS
+
+    body = client.get("/log").data.decode()
+    for level in EXPERIENCE_LEVELS:
+        assert f'data-level="{level.key}"' in body
+
+
+def test_first_run_dialog_starts_closed(client):
+    """A `<dialog>` without `open` is display:none, so a browser with JS off —
+    or a returning user — never sees it at all."""
+    body = client.get("/log").data.decode()
+    dialog = body[body.index('<dialog class="first-run"'):]
+    assert " open" not in dialog[: dialog.index(">")]
+
+
+def test_progress_ships_the_size_control(client):
+    body = client.get("/progress").data.decode()
+    assert 'id="size-select"' in body
+    assert 'value="strength"' in body
+    assert 'id="graph-key-load"' in body
+
+
+def test_progress_no_longer_promises_a_graph_at_fifteen(client):
+    """Phase 6.7 replaced the threshold with a count that climbs. The page must
+    not still tell a new user the drawing is locked."""
+    body = client.get("/progress").data.decode().lower()
+    assert "graph_ready" not in body
+    assert "starts at one dot" in body
