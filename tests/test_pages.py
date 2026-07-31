@@ -14,6 +14,7 @@ from app.exercises import DEFAULT_MUSCLE_SCHEME, MUSCLE_GROUPS, MUSCLE_SCHEMES
         ("/calendar", b"What you trained"),
         ("/log", b"New entry"),
         ("/summary", b"Sets by split"),
+        ("/progress", b"Where your training lives"),
     ],
 )
 def test_pages_render(client, path, marker):
@@ -188,7 +189,18 @@ def test_bad_date_falls_back_to_today(client):
     assert client.get("/summary?date=nonsense").status_code == 200
 
 
-@pytest.mark.parametrize("path", ["/", "/calendar", "/log", "/summary"])
+def test_progress_page_ships_a_canvas_and_a_written_fallback(client):
+    """The graph is drawn to a canvas, so the finding it exists to show is also
+    written out — that list is the whole page before there is enough history."""
+    body = client.get("/progress").data.decode()
+    for marker in ('id="graph-canvas"', 'id="orphan-list"', 'id="window-select"'):
+        assert marker in body
+
+    # Nothing about the graph is server-rendered; progress.js owns all of it.
+    assert "Barbell Squat" not in body
+
+
+@pytest.mark.parametrize("path", ["/", "/calendar", "/log", "/summary", "/progress"])
 def test_every_page_ships_the_rest_timer_strip(client, path):
     """The countdown moved into `base.html` in Phase 4.5.
 

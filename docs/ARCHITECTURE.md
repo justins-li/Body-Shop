@@ -28,7 +28,7 @@ Which backend is in use is decided entirely by `DATABASE_URL`, and nothing above
 `lastrowid` versus `RETURNING`, `AUTOINCREMENT` versus `IDENTITY`, and how a
 `DATE` is stored, so `models.py` expresses queries once.
 
-`app/views.py` renders four server-side shells; everything dynamic is fetched by
+`app/views.py` renders five server-side shells; everything dynamic is fetched by
 the page's JavaScript module from the same `/api` the tests exercise. That means the
 HTML never diverges from the API, and the API is testable without a browser.
 
@@ -49,11 +49,14 @@ why it is worth having before auth exists.
 | `app/models.py` | Every SQL statement, plus input validation. | Know about HTTP or Jinja, or know which dialect it is on. |
 | `app/services/weeks.py` | Week/month boundary maths. | Query the database. |
 | `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses. |
+| `app/services/graph.py` | The training graph's rules: what a window means, what makes a movement an orphan, and joining this week's coverage onto the nodes. | Query the database, or invent a strength benchmark (see below). |
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
 | `app/views.py` | Page shells and template context. | Contain business rules. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
 | `app/static/js/timer.js` | The rest countdown, booted from `base.html` on every page. Pure client state, persisted as a *deadline* so it survives navigation and tab throttling. | Touch the API, or persist anything but its duration and that deadline. |
 | `app/static/js/plates.js` | Plate arithmetic — a pure function of weight and bar. | Store anything, or fetch. |
+| `app/static/js/layout.js` | The force-directed layout — a pure, deterministic function of the graph. | Touch the canvas, the DOM, or `Math.random`. |
+| `app/static/js/progress.js` | The canvas, the gestures and the detail panel on `/progress`. | Contain layout maths, or re-simulate on a render. |
 | `app/static/css/input.css` | The design system: theme pair, tokens, and every hand-written rule. | — (`styles.css` beside it is generated; never edit it) |
 
 ## Styling
@@ -338,6 +341,53 @@ appropriate view; no JavaScript changes are needed. `shoulders` was the exceptio
 the torso met the upper arms at a bare corner, so `.body-base` needed deltoid caps
 before there was anything to overlay.
 
+## The training graph
+
+`/progress` draws every movement logged in a window as a node, joined to the
+movements performed on the same day. Added in Phase 4.5 as the redesign's signature
+element, and scoped hard to data that already exists.
+
+**The encodings are the app's own thesis, not a borrowed one.** Node size is
+cumulative non-warmup sets. Node colour is the *current* weekly coverage state of the
+movement's primary muscle — the same `state`/`intensity` pair the body map uses, so
+the two pages cannot disagree about a week. Edge opacity is how many days two
+movements were logged together. Nothing here is strength-relative: the app stores no
+bodyweight, computes no 1RM, and pre-Phase-4 history has `NULL` weights, so a
+strength-standard colouring would be a fabricated number wearing the same clothes as
+the sourced ones. That is [Phase 7](ROADMAP.md) work, and when it lands a lift with no
+benchmark must render as a hollow ring rather than a guess.
+
+**Orphans are the point.** Movements logged fewer than `ORPHAN_MIN_SESSIONS` times, or
+not inside `ORPHAN_STALE_WEEKS`, are pushed to a ring outside the core and drawn as
+hollow rings. Both thresholds are opinion, so they are named constants with docstrings
+— the same discipline `REGION_NEGLECT_SHARE` follows. They are also listed in words
+below the canvas, because a force-directed graph that is only a hairball is
+decoration; the written list is the finding, and it is the whole page below
+`MIN_GRAPH_NODES` movements, where the drawing would be a list with extra steps.
+
+Three implementation decisions worth keeping:
+
+- **Nodes and edges are filtered by one shared subquery** (`_counted_sessions` in
+  `models.py`). Warm-ups are excluded from both in the same place, so a warm-up-only
+  entry cannot become an edge pointing at a node that does not exist. Filtering them
+  separately is the obvious way to write it and the bug is invisible until you look at
+  the drawing.
+- **The layout is pure and deterministic.** `layout.js` seeds positions from a hash of
+  each exercise id rather than `Math.random`, so the same training draws the same
+  picture every time — a graph that rearranges itself on each visit cannot become a
+  mental map, which is the only reason to draw one. It runs to completion once and is
+  cached against a fingerprint of the nodes and edges; panning and zooming are
+  transforms over the result, never a re-simulation. The fingerprint deliberately
+  ignores colour, so logging a workout does not rearrange the drawing.
+- **The radial force is one force with two targets.** Core nodes target radius 0,
+  orphans target `ORPHAN_RADIUS`; both are restoring forces and therefore bounded. The
+  first implementation pushed orphans outward with a negative centering constant,
+  which is unbounded — each step scaled the displacement that produced it, positions
+  reached 1e19 within the loop, and the fit-to-view scale collapsed to a blank canvas.
+
+Canvas rather than SVG or DOM nodes: at a few hundred movements with every pairing
+drawn, an element per node is hundreds of layout objects re-composited on every pan.
+
 ## Data model
 
 Two tables, defined in [`app/tables.py`](../app/tables.py). Entries are append-only
@@ -423,7 +473,11 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
 - `tests/test_models.py` — the data layer's non-API surface: the retired-id remap and
   the recent-exercise query.
 - `tests/test_api.py` — every endpoint, including the validation failure modes.
-- `tests/test_pages.py` — the four pages render and contain every muscle region, and
+- `tests/test_graph.py` — the training graph's rules: the warm-up exclusion reaching
+  both nodes and edges, that no edge survives pointing at a movement that is not a
+  node, the co-occurrence count, and the orphan thresholds asserted directly so
+  changing one is a deliberate edit.
+- `tests/test_pages.py` — the five pages render and contain every muscle region, and
   `/log` ships a picker shell rather than the catalog. Page markers are chosen to be
   unique to their page, since the nav links appear on all four.
 - `tests/test_migrations.py` — that the migration chain builds exactly what

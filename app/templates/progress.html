@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Training graph · Body Shop{% endblock %}
+
+{% block content %}
+<div class="wrap pt-9 pb-1">
+  <p class="type-label text-secondary mb-3">Training graph</p>
+  <h1 class="type-display text-[clamp(2rem,9vw,3.25rem)] mb-3">Where your training lives</h1>
+  <p class="type-lede">
+    Every movement you have logged, joined to the ones you do on the same day.
+    The ones drifting outside are the ones that have fallen out.
+  </p>
+</div>
+
+<div class="wrap">
+  <section class="band" aria-labelledby="graph-heading">
+    <div class="band-head">
+      <h2 id="graph-heading" class="type-label text-base-content">The graph</h2>
+      <div class="flex items-center gap-2">
+        <label class="sr-only" for="window-select">Time window</label>
+        <select id="window-select" class="field field-sm">
+          {% for key, label in windows.items() %}
+            <option value="{{ key }}" {{ 'selected' if key == default_window else '' }}>
+              {{ label }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    {#
+      The canvas is the whole drawing — nodes are not DOM elements. At a few
+      hundred movements a div per node is a scrolling jank machine, and none of
+      them need to be individually focusable: the panel below is what carries
+      a selected movement's detail, and the orphan list is what carries the
+      insight for anyone not using a pointer.
+    #}
+    <div class="graph-frame" id="graph-frame">
+      <canvas id="graph-canvas" role="img"
+              aria-label="Force-directed graph of logged movements. The list below names the neglected ones."></canvas>
+      <p class="graph-status type-label" id="graph-status">Loading…</p>
+    </div>
+
+    <p class="graph-legend type-label text-secondary" id="graph-legend" hidden>
+      <span class="flex items-center gap-2">
+        <span class="swatch swatch-scale swatch-scale-train"></span> weekly coverage of its main muscle
+      </span>
+      <span class="flex items-center gap-2">
+        <span class="graph-key-orphan" aria-hidden="true"></span> dropped or rarely logged
+      </span>
+      <span>size is sets logged</span>
+    </p>
+
+    {# Tapping a node fills this. It stays in the DOM at all times so landing on
+       it from the canvas does not shift the page. #}
+    <div class="graph-panel" id="graph-panel" hidden aria-live="polite"></div>
+  </section>
+
+  {#
+    The insight in words. A force graph that is only a hairball is decoration,
+    so the movements it is meant to surface are also named here — and this is
+    what `/progress` shows on its own before there is enough history to draw.
+  #}
+  <section class="band" aria-labelledby="orphans-heading">
+    <div class="band-head">
+      <h2 id="orphans-heading" class="type-label text-base-content">Fallen out</h2>
+      <span class="type-label text-secondary" id="orphan-basis"></span>
+    </div>
+    <div id="orphan-list" class="grid gap-1.5">
+      <p class="text-sm text-secondary m-0">Loading…</p>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { initProgress } from "{{ url_for('static', filename='js/progress.js') }}";
+  initProgress({{ selected_date.isoformat() | tojson }});
+</script>
+{% endblock %}

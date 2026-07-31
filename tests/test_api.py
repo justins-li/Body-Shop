@@ -324,3 +324,42 @@ def test_weekly_summary_reports_all_twelve_groups(client):
 def test_week_bounds_endpoint(client):
     data = client.get("/api/summary/week/bounds?date=2026-07-28").get_json()
     assert data == {"week_start": "2026-07-27", "week_end": "2026-08-02"}
+
+
+def test_progress_graph_endpoint(client, add):
+    add("2026-07-28", "Barbell_Squat", 3)
+    add("2026-07-28", "Romanian_Deadlift", 2)
+
+    data = client.get("/api/progress/graph?window=8w&date=2026-07-28").get_json()
+
+    assert data["window"] == "8w"
+    assert (data["start"], data["end"]) == ("2026-06-03", "2026-07-28")
+    assert {node["exercise_id"] for node in data["nodes"]} == {
+        "Barbell_Squat",
+        "Romanian_Deadlift",
+    }
+    assert data["edges"] == [
+        {"source": "Barbell_Squat", "target": "Romanian_Deadlift", "days": 1}
+    ]
+    # Two movements is not a graph; the page says so rather than drawing one.
+    assert data["graph_ready"] is False
+    assert data["coverage"]["quads"]["state"] == "trained"
+
+
+def test_progress_graph_falls_back_on_an_unknown_window(client):
+    """The window arrives from a view control, so a bad value should render the
+    usual view rather than a 400."""
+    response = client.get("/api/progress/graph?window=nonsense")
+    assert response.status_code == 200
+    assert response.get_json()["window"] == "8w"
+
+
+def test_progress_graph_excludes_warmup_only_movements(client, add):
+    add("2026-07-28", "Barbell_Squat", [{"set_type": "warmup"}])
+    add("2026-07-28", "Barbell_Deadlift", 3)
+
+    data = client.get("/api/progress/graph?date=2026-07-28").get_json()
+
+    assert [node["exercise_id"] for node in data["nodes"]] == ["Barbell_Deadlift"]
+    # And no edge is left pointing at the movement that dropped out.
+    assert data["edges"] == []

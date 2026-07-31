@@ -998,6 +998,79 @@
     background-color: transparent;
   }
 
+  /* -- The training graph (/progress) -----------------------------------
+     The canvas is the drawing; nothing inside it is a DOM node. `touch-action:
+     none` is required, not cosmetic — without it the browser claims the drag
+     for page scrolling and the pointer handlers never see a pan. */
+  .graph-frame {
+    position: relative;
+    height: 60vh;
+    min-height: 20rem;
+    max-height: 34rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
+    background-color: var(--color-base-200);
+    overflow: hidden;
+  }
+  #graph-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    cursor: grab;
+  }
+  #graph-canvas:active {
+    cursor: grabbing;
+  }
+
+  /* Loading, and the under-15-movements explanation. Centred over the frame so
+     an empty graph is never a blank rectangle. */
+  .graph-status {
+    position: absolute;
+    inset: auto 1.5rem 50%;
+    transform: translateY(50%);
+    margin: 0;
+    text-align: center;
+    line-height: 1.7;
+    color: var(--color-secondary);
+    pointer-events: none;
+  }
+
+  .graph-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem 1.25rem;
+    margin: 0.9rem 0 0;
+  }
+  /* The orphan mark, as drawn: a hollow ring. */
+  .graph-key-orphan {
+    width: 0.7rem;
+    height: 0.7rem;
+    border: 1.25px solid color-mix(in srgb, var(--color-base-content) 45%, transparent);
+    border-radius: 9999px;
+  }
+
+  .graph-panel {
+    margin-top: 0.9rem;
+    padding: 0.8rem 0.9rem;
+    border-left: 2px solid var(--color-primary);
+    background-color: var(--color-base-100);
+  }
+  .graph-panel-name {
+    margin: 0;
+    font-weight: 600;
+    font-size: 0.9375rem;
+  }
+  .graph-panel-meta {
+    margin: 0.35rem 0 0;
+    font-size: 0.75rem;
+    color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
+  }
+  .graph-panel-note {
+    margin: 0.4rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--color-secondary);
+  }
+
   /* -- Legend swatches -------------------------------------------------- */
   .swatch {
     display: inline-block;
