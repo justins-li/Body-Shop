@@ -6,6 +6,11 @@
   Static landing page. No fetch, no JS module — the body map below is graded in
   the markup via the macro's `demo` argument, so it shows a representative week
   rather than an empty silhouette.
+
+  The levels are intensities within each group's ramp, exactly as the server
+  would send them: 0–1 up to the weekly target, then restarting across the
+  overshoot scale. Biceps is deliberately `over` so the page shows both halves
+  of the scale it goes on to explain.
 #}
 {% set demo_front = {
   "chest":     ("trained", 0.62),
@@ -22,116 +27,133 @@
 } %}
 
 {% block content %}
-{# ---- Hero ------------------------------------------------------------- #}
-<section class="wrap grid items-center gap-16 pt-20 pb-24 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:pt-28 lg:pb-32">
-  <div>
-    <p class="type-label text-secondary mb-7">Workout logging · Muscle coverage</p>
+{# ---- Hero -------------------------------------------------------------
+     The map is the thesis, so it opens the page rather than illustrating it.
+     On a phone the headline leads and the figures follow immediately; from
+     `lg:` the two sit side by side. #}
+<section class="wrap pt-12 pb-16 lg:pt-20 lg:pb-24">
+  <div class="grid gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:items-center lg:gap-16">
+    <div>
+      <p class="type-label text-secondary mb-6">Workout logging · Muscle coverage</p>
 
-    <h1 class="type-display text-[clamp(2.75rem,7.5vw,5.25rem)] mb-8">
-      Every set.<br>Every muscle.<br>Every week.
-    </h1>
+      <h1 class="type-display text-[clamp(3rem,13vw,5.5rem)] mb-6">
+        Every set.<br>Every muscle.<br>Every week.
+      </h1>
 
-    <p class="type-lede mb-10">
-      Log the sets you actually finished. Body Shop shades a body map from pale
-      green to deep green as each muscle group closes on its weekly target — then
-      red for every set past it. The point is staying in range: nothing skipped
-      long enough to become a weak link, nothing hammered while its neighbours
-      go untouched.
-    </p>
+      <p class="type-lede mb-9">
+        Log the sets you finished, with the weight and reps if you want them.
+        Body Shop lights each muscle group as it works toward its weekly target,
+        then shifts it to red for every set past it. The point is coverage:
+        nothing skipped long enough to become a weak link, nothing hammered
+        while its neighbours go untouched.
+      </p>
 
-    <div class="flex flex-wrap items-center gap-3">
-      <a class="btn btn-primary rounded-full h-12 px-7 text-sm font-medium border-0"
-         href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}">
-        Log a workout
-      </a>
-      <a class="btn btn-outline rounded-full h-12 px-7 text-sm font-medium hairline"
-         href="{{ url_for('views.summary_page', date=selected_date.isoformat()) }}">
-        See this week
-      </a>
-    </div>
-  </div>
-
-  {# Illustrative week, not live data. `aria-hidden` because the figures' own
-     titles would otherwise announce a fictional workout to a screen reader. #}
-  <div class="rounded-[var(--radius-box)] border hairline bg-base-100 p-8 sm:p-10" aria-hidden="true">
-    <div class="grid grid-cols-2 gap-6 justify-items-center">
-      {{ body.figure("front", demo=demo_front) }}
-      {{ body.figure("back", demo=demo_back) }}
-    </div>
-    <p class="type-label text-secondary mt-8 text-center">A week in progress</p>
-  </div>
-</section>
-
-{# ---- Numbers ---------------------------------------------------------- #}
-<section class="wrap" aria-label="At a glance">
-  <dl class="grid gap-px border hairline rounded-[var(--radius-box)] overflow-hidden bg-base-content/12 sm:grid-cols-3">
-    {% for value, label, note in [
-      (exercise_count, "Movements", "Every one mapped to the groups it trains"),
-      (muscle_groups | length, "Muscle groups", "Split across a front and a back view"),
-      (region_labels | length, "Tracked regions", "Inside six groups that answer to different movements"),
-    ] %}
-      <div class="bg-base-100 px-8 py-10">
-        <dd class="type-display text-[clamp(2.25rem,4.5vw,3.25rem)] mb-3">{{ value }}</dd>
-        <dt class="type-label mb-2">{{ label }}</dt>
-        <p class="text-sm text-secondary m-0">{{ note }}</p>
+      <div class="flex flex-wrap items-center gap-3">
+        <a class="btn-brick" href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}">
+          Log a workout
+        </a>
+        <a class="btn-ghost-line" href="{{ url_for('views.summary_page', date=selected_date.isoformat()) }}">
+          See this week
+        </a>
       </div>
-    {% endfor %}
-  </dl>
+    </div>
+
+    {# Illustrative week, not live data. `aria-hidden` because the figures' own
+       titles would otherwise announce a fictional workout to a screen reader. #}
+    <figure class="specimen m-0" aria-hidden="true">
+      <figcaption class="specimen-head">
+        <span class="type-label">A week in progress</span>
+        <span class="type-label text-secondary">Illustrative</span>
+      </figcaption>
+
+      <div class="grid grid-cols-2 gap-2 justify-items-center px-4 py-6">
+        {{ body.figure("front", demo=demo_front) }}
+        {{ body.figure("back", demo=demo_back) }}
+      </div>
+
+      {# The spec strip: what the map is drawn from. Mono figures, hairline
+         dividers — the instrument's plate, not a stats block. #}
+      <dl class="spec-strip">
+        {% for value, label in [
+          (exercise_count, "Movements"),
+          (muscle_groups | length, "Groups"),
+          (region_labels | length, "Regions"),
+        ] %}
+          <div class="spec-cell">
+            <dd class="type-data text-xl text-base-content m-0">{{ value }}</dd>
+            <dt class="type-label text-secondary mt-1.5">{{ label }}</dt>
+          </div>
+        {% endfor %}
+      </dl>
+    </figure>
+  </div>
 </section>
 
 {# ---- How it works ----------------------------------------------------- #}
-<section class="wrap pt-28" aria-labelledby="how-heading">
-  <p class="type-label text-secondary mb-6">How it works</p>
-  <h2 id="how-heading" class="type-display text-[clamp(2rem,5vw,3.5rem)] mb-16 max-w-[22ch]">
+<section class="wrap band" aria-labelledby="how-heading">
+  <div class="band-head">
+    <p class="type-label">How it works</p>
+  </div>
+  <h2 id="how-heading" class="type-display text-[clamp(1.75rem,6vw,3rem)] mb-10 max-w-[20ch]">
     Three screens, no setup.
   </h2>
 
-  <ol class="grid gap-px bg-base-content/12 border hairline rounded-[var(--radius-box)] overflow-hidden md:grid-cols-3 list-none p-0 m-0">
+  {# Numbered because these are a genuine sequence — you cannot read the week
+     before logging into it — not because numbers decorate a three-column grid. #}
+  <ol class="how-list list-none p-0 m-0">
     {% for step, title, copy, endpoint in [
       ("01", "Log the sets",
-       "Pick a date, choose a movement, enter how many sets you finished. That is the whole entry — no weight, no reps, nothing to maintain.",
+       "Pick a date and a movement, then record what you finished — sets alone, or weight, reps and RPE per set. Warm-ups get their own type and stay out of the week's totals.",
        "views.log_page"),
       ("02", "Watch the week fill in",
-       "A set counts for every group the movement trains — in full for the ones doing the work, half for the ones assisting. Three sets of bench press credit chest three, shoulders and triceps one and a half.",
+       "A set counts for every group the movement trains: in full for the ones doing the work, half for the ones assisting. Three sets of bench press credit chest three, shoulders and triceps one and a half.",
        "views.summary_page"),
       ("03", "Find the gaps",
-       "Anything still untrained stays neutral on the body map, and six groups show which region carried the work — so a shoulder week that was all pressing reads as one.",
+       "Anything untrained stays unlit on the map, and six groups show which region carried the work — so a shoulder week that was all pressing reads as one.",
        "views.calendar_page"),
     ] %}
-      <li class="bg-base-100 px-8 py-10 flex flex-col">
-        <span class="type-display text-2xl text-secondary mb-6">{{ step }}</span>
-        <h3 class="type-display text-xl mb-3">{{ title }}</h3>
-        <p class="text-sm text-secondary leading-relaxed flex-1 m-0">{{ copy }}</p>
-        <a class="type-label mt-7 no-underline hover:text-secondary transition-colors"
-           href="{{ url_for(endpoint, date=selected_date.isoformat()) }}">Open →</a>
+      <li class="how-step">
+        <span class="how-index type-data" aria-hidden="true">{{ step }}</span>
+        <div>
+          <h3 class="type-display text-2xl mb-2.5">{{ title }}</h3>
+          <p class="text-sm text-secondary leading-relaxed m-0 max-w-[46ch]">{{ copy }}</p>
+          <a class="type-label link-arrow mt-5"
+             href="{{ url_for(endpoint, date=selected_date.isoformat()) }}">Open</a>
+        </div>
       </li>
     {% endfor %}
   </ol>
 </section>
 
 {# ---- The volume scale ------------------------------------------------- #}
-<section class="wrap pt-28" aria-labelledby="scale-heading">
-  <div class="grid gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-center">
+<section class="wrap band" aria-labelledby="scale-heading">
+  <div class="band-head">
+    <p class="type-label">The colour scale</p>
+  </div>
+
+  <div class="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-start lg:gap-16">
     <div>
-      <p class="type-label text-secondary mb-6">The colour scale</p>
-      <h2 id="scale-heading" class="type-display text-[clamp(2rem,5vw,3.5rem)] mb-7 max-w-[20ch]">
-        Not trained or untrained. How much.
+      <h2 id="scale-heading" class="type-display text-[clamp(1.75rem,6vw,3rem)] mb-6 max-w-[18ch]">
+        Not whether. How much.
       </h2>
       <p class="type-lede">
-        Most loggers answer yes or no. A muscle group worked once in a week is not
-        the same as one worked twelve times, so colour here is a volume scale,
+        Most loggers answer yes or no. A group worked once in a week is not the
+        same as one worked twelve times, so colour here is a volume scale,
         graded on the server against each group's weekly target.
       </p>
     </div>
 
-    <ul class="list-none p-0 m-0 grid gap-px bg-base-content/12 border hairline rounded-[var(--radius-box)] overflow-hidden">
+    <ul class="scale-list list-none p-0 m-0">
       {% for swatch, title, copy in [
-        ("swatch-rest", "No sets yet", "Neutral. The group has not been trained this week."),
-        ("swatch-scale swatch-scale-train", "One set → target", "Pale green deepening to dark as the target gets closer."),
-        ("swatch-scale swatch-scale-over", "Past the target", "Pale red deepening to dark across the next half-target of sets."),
+        ("swatch-rest", "No sets yet",
+         "Unlit. The group has not been trained this week."),
+        ("swatch-scale swatch-scale-train", "One set → target",
+         "Green, brightening as the target gets closer."),
+        ("swatch-scale swatch-scale-over", "Past the target",
+         "Red, deepening across the next half-target of sets."),
       ] %}
-        <li class="bg-base-100 flex items-start gap-5 px-8 py-7">
-          <span class="swatch {{ swatch }} mt-1 shrink-0"></span>
+        <li class="scale-row">
+          <span class="swatch {{ swatch }}"></span>
           <div>
             <p class="type-label mb-1.5">{{ title }}</p>
             <p class="text-sm text-secondary m-0">{{ copy }}</p>
@@ -142,20 +164,17 @@
   </div>
 </section>
 
-{# ---- Closing CTA ------------------------------------------------------
-     Inverted band: ink ground, cream ink. The reference alternates these to
-     break up a long cream page. #}
-<section class="wrap pt-28">
-  <div class="rounded-[var(--radius-box)] bg-primary text-primary-content px-8 py-20 text-center sm:px-16">
-    <h2 class="type-display text-[clamp(2rem,5.5vw,4rem)] mb-6 mx-auto max-w-[24ch]">
+{# ---- Closing --------------------------------------------------------- #}
+<section class="wrap band pb-4">
+  <div class="closing">
+    <h2 class="type-display text-[clamp(1.75rem,7vw,3.25rem)] mb-4 max-w-[20ch]">
       Today is a set you have not logged.
     </h2>
-    <p class="text-base opacity-70 mb-10 mx-auto max-w-[52ch] leading-relaxed">
-      There is nothing to configure and no account to make. Pick a movement and
-      the week starts filling in.
+    <p class="text-secondary mb-8 max-w-[46ch] leading-relaxed">
+      Nothing to configure and no account to make. Pick a movement and the week
+      starts filling in.
     </p>
-    <a class="btn rounded-full h-12 px-8 text-sm font-medium border-0 bg-primary-content text-primary hover:opacity-85"
-       href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}">
+    <a class="btn-brick" href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}">
       Log today's workout
     </a>
   </div>

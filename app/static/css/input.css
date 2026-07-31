@@ -264,6 +264,64 @@
     color: var(--color-secondary);
   }
 
+  /* -- Controls ---------------------------------------------------------
+     There is no filled button in this app, and that is the palette's rule
+     rather than a style preference: filled saturated colour is reserved for
+     the volume ramp, so an accent that filled anything would be confusable
+     with "past target". A primary action is a brick outline with lifted-brick
+     text; a secondary action is the same key in bone. Both clear 44pt. */
+  .btn-brick,
+  .btn-ghost-line {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+    padding: 0.6rem 1.4rem;
+    border: 1px solid;
+    border-radius: var(--radius-field);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+  }
+
+  .btn-brick {
+    border-color: var(--color-primary);
+    color: var(--color-accent);
+  }
+  .btn-brick:hover {
+    /* A wash, not a fill — it stays far below the ramp in both chroma and
+       area, so the "red area means past target" reading survives hover. */
+    border-color: var(--color-accent);
+    background-color: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  }
+
+  .btn-ghost-line {
+    border-color: color-mix(in srgb, var(--color-base-content) 22%, transparent);
+    color: var(--color-base-content);
+  }
+  .btn-ghost-line:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 50%, transparent);
+  }
+
+  /* An inline "go here" that reads as a control without being a button. */
+  .link-arrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--color-base-content);
+    text-decoration: none;
+    transition: gap 0.15s ease, color 0.15s ease;
+  }
+  .link-arrow::after {
+    content: "→";
+  }
+  .link-arrow:hover {
+    gap: 0.7rem;
+    color: var(--color-accent);
+  }
+
   /* -- The shell: header, bottom bar, safe areas -------------------------
      Mobile gets a bottom tab bar because the app is read one-handed with a
      barbell in the other; the top nav returns from `sm:` up. Home is not in
@@ -377,6 +435,98 @@
   @media (min-width: 40rem) {
     .has-tab-bar {
       padding-bottom: 0;
+    }
+  }
+
+  /* -- Home: the specimen panel ----------------------------------------
+     The one framed surface in the app. The body map is what Body Shop is for,
+     so on the landing page it gets a plate and a caption rather than being an
+     illustration beside the copy. Everything else on the page sits directly on
+     the ground. */
+  .specimen {
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    background-color: var(--color-base-100);
+  }
+
+  .specimen-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+  }
+
+  .spec-strip {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin: 0;
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+  }
+  .spec-cell {
+    padding: 0.9rem 1rem;
+    text-align: center;
+  }
+  .spec-cell + .spec-cell {
+    border-left: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+  }
+
+  /* -- Home: the three steps -------------------------------------------
+     A real sequence, so the numbers carry information. They are set in the
+     data voice and kept in brick, so they index the steps without competing
+     with their titles.
+
+     Named `how-*` rather than the obvious `steps`/`step`: daisyUI ships a
+     component under both of those names, and its rules would fight these. */
+  .how-list {
+    display: grid;
+    gap: 0;
+  }
+  .how-step {
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+    gap: 0 1rem;
+    padding-block: 1.75rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+  }
+  .how-step:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .how-index {
+    font-size: 0.9rem;
+    color: var(--color-primary);
+    padding-top: 0.3rem;
+  }
+
+  /* -- Home: the volume-scale legend ------------------------------------ */
+  .scale-list {
+    display: grid;
+  }
+  .scale-row {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+    align-items: start;
+    gap: 1rem;
+    padding-block: 1.15rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+  }
+  .scale-row:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  /* -- Home: the closing block ------------------------------------------
+     A hairline frame on the ground. The old design filled this band with the
+     accent, which is exactly the "saturated area that is not the ramp" the
+     palette now rules out. */
+  .closing {
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    padding: 3rem 1.5rem;
+  }
+  @media (min-width: 40rem) {
+    .closing {
+      padding: 4.5rem 3.5rem;
     }
   }
 
@@ -612,7 +762,7 @@
     display: inline-block;
     width: 0.85rem;
     height: 0.85rem;
-    border-radius: 4px;
+    border-radius: 2px;
     border: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
     vertical-align: -2px;
   }
@@ -621,6 +771,14 @@
   }
   .swatch-scale {
     width: 3.25rem;
+  }
+  /* In the legend list all three keys share a column, so the untrained swatch
+     is widened to match the two gradients — three marks of different widths
+     read as three different kinds of thing. */
+  .scale-row .swatch {
+    width: 100%;
+    height: 0.85rem;
+    margin-top: 0.15rem;
   }
   .swatch-scale-train {
     background: linear-gradient(90deg, var(--color-train-min), var(--color-train-max));
