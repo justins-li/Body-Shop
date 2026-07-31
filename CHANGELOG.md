@@ -8,6 +8,10 @@ All notable changes to Body Shop are documented here. This project follows
 
 ### Added
 
+- **Credits and a contact block on `/how-to-use`.** Justin Li and Owen Zhang, both
+  lead developers, with portraits; plus a "Have questions?" section. The address is a
+  placeholder on the reserved `.example` TLD, so nothing sent to it can reach a stranger
+  who happens to own the domain — swap it before launch.
 - **A dark mode, and a toggle for it** (bottom-left, beside the rest readout). The cream
   theme stays the default; the dark one is Phase 4.5's instrument palette restored as an
   option rather than reinvented, so it arrives with its contrast reasoning intact.

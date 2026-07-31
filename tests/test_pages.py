@@ -326,3 +326,14 @@ def test_both_themes_and_both_ramps_are_compiled(client):
     # Cream ramp (pale -> deep) and dark ramp (dim -> lit) both present.
     assert "#4f9068" in css and "#14432a" in css
     assert "#428262" in css and "#5fd98a" in css
+
+
+def test_how_to_use_credits_both_leads_and_offers_contact(client):
+    body = client.get("/how-to-use").data.decode()
+    for name in ("Justin Li", "Owen Zhang"):
+        assert name in body
+    assert body.count("Lead developer") == 2
+    assert "Have questions?" in body
+    assert "mailto:" in body
+    # Portraits degrade to initials rather than a broken image.
+    assert body.count("this.remove()") == 2
