@@ -72,17 +72,13 @@
 
     {# ---- Right shelves: every other section ----------------------------- #}
     <nav class="shelf-stack" aria-label="Sections">
-      {% for endpoint, key, label, blurb in right_shelves %}
+      {% for endpoint, key, label, chapter, blurb in right_shelves %}
         <a class="shelf" data-nav
            href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
            title="{{ blurb }}">
-          <span class="shelf-top type-label" aria-hidden="true">
-            [{{ loop.index }}]
-          </span>
+          <span class="shelf-top type-label" aria-hidden="true">[{{ chapter }}]</span>
           <span class="shelf-name">{{ label }}</span>
-          <span class="shelf-foot type-data" aria-hidden="true">
-            {{ '%02d' % loop.index }}<br>Chp.
-          </span>
+          <span class="shelf-foot type-data" aria-hidden="true">{{ chapter }}<br>Chp.</span>
         </a>
       {% endfor %}
     </nav>
@@ -117,7 +113,7 @@
 
   {# Thumb-zone navigation. Hidden from `sm:` up, where the shelves take over. #}
   <nav class="tab-bar sm:hidden" aria-label="Primary">
-    {% for endpoint, key, label, blurb in sections if key != 'home' %}
+    {% for endpoint, key, label, chapter, blurb in sections if key not in ('home', 'how') %}
       <a href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
          class="tab-link type-label {{ 'is-primary' if key == 'log' else '' }}"
          {% if page == key %}aria-current="page"{% endif %}>{{ label.split(' ')[0] }}</a>
