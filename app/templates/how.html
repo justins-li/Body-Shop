@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}How to use · Body Shop{% endblock %}
+
+{#
+  Chapter 01. This is the explainer that used to sit under the landing page;
+  when `/` became a single screen it needed somewhere to live, and a chapter of
+  its own is truer to the shelf metaphor than a scroll nobody reaches.
+
+  Static, like `/` — no fetch, no page module.
+#}
+{% block content %}
+<div class="chapter-page">
+  <header class="chapter-head">
+    <p class="type-label text-secondary">01 Chp.</p>
+    <h1 class="chapter-title">How to use</h1>
+    <p class="chapter-lede">
+      Body Shop answers one question: which muscle groups did this week's sets
+      actually cover? Everything below serves that, and nothing else.
+    </p>
+  </header>
+
+  {# Numbered because these are a genuine sequence — you cannot read the week
+     before logging into it — not because numbers decorate a three-column grid. #}
+  <section aria-labelledby="how-heading">
+    <div class="band-head">
+      <p class="type-label" id="how-heading">The sequence</p>
+    </div>
+
+    <ol class="how-list list-none p-0 m-0">
+      {% for step, title, copy, endpoint in [
+        ("01", "Log the sets",
+         "Pick a date and a movement, then record what you finished — sets alone, or weight, reps and RPE per set. Warm-ups get their own type and stay out of the week's totals.",
+         "views.log_page"),
+        ("02", "Watch the week fill in",
+         "A set counts for every group the movement trains: in full for the ones doing the work, half for the ones assisting. Three sets of bench press credit chest three, shoulders and triceps one and a half.",
+         "views.summary_page"),
+        ("03", "Find the gaps",
+         "Anything untrained stays unlit on the map, and six groups show which region carried the work — so a shoulder week that was all pressing reads as one.",
+         "views.calendar_page"),
+      ] %}
+        <li class="how-step">
+          <span class="how-index type-data" aria-hidden="true">{{ step }}</span>
+          <div>
+            <h2 class="chapter-subtitle">{{ title }}</h2>
+            <p class="text-sm text-secondary leading-relaxed m-0 max-w-[52ch]">{{ copy }}</p>
+            <a class="type-label link-arrow mt-2"
+               href="{{ url_for(endpoint, date=selected_date.isoformat()) }}">Open</a>
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <section aria-labelledby="scale-heading" class="mt-12">
+    <div class="band-head">
+      <p class="type-label" id="scale-heading">The colour scale</p>
+    </div>
+
+    <div class="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-start lg:gap-14">
+      <div>
+        <h2 class="chapter-subtitle text-2xl mb-4 max-w-[18ch]">Not whether. How much.</h2>
+        <p class="text-secondary leading-relaxed">
+          Most loggers answer yes or no. A group worked once in a week is not the
+          same as one worked twelve times, so colour here is a volume scale,
+          graded on the server against each group's weekly target.
+        </p>
+      </div>
+
+      <ul class="scale-list list-none p-0 m-0">
+        {% for swatch, title, copy in [
+          ("swatch-rest", "No sets yet",
+           "Unlit. The group has not been trained this week."),
+          ("swatch-scale swatch-scale-train", "One set → target",
+           "Green, deepening as the target gets closer."),
+          ("swatch-scale swatch-scale-over", "Past the target",
+           "Red, deepening across the next half-target of sets."),
+        ] %}
+          <li class="scale-row">
+            <span class="swatch {{ swatch }}"></span>
+            <div>
+              <p class="type-label mb-1.5">{{ title }}</p>
+              <p class="text-sm text-secondary m-0">{{ copy }}</p>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+
+  <section class="mt-12">
+    <div class="band-head">
+      <p class="type-label">Start</p>
+    </div>
+    <h2 class="chapter-subtitle text-2xl mb-4 max-w-[20ch]">
+      Today is a set you have not logged.
+    </h2>
+    <p class="text-secondary mb-7 max-w-[46ch] leading-relaxed">
+      Nothing to configure and no account to make. Pick a movement and the week
+      starts filling in.
+    </p>
+    <a class="btn-brick" href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}">
+      Log today's workout
+    </a>
+  </section>
+</div>
+{% endblock %}

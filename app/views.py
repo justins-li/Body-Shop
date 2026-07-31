@@ -79,6 +79,17 @@ def home_page():
     )
 
 
+@bp.get("/how-to-use")
+def how_page():
+    """Chapter 01 — purpose, the sequence, and what the colours mean.
+
+    Static, like ``/``. This is the explainer that used to sit below the landing
+    page; once ``/`` became a single screen it needed a chapter of its own,
+    which is also what makes it a shelf rather than a scroll.
+    """
+    return render_template("how.html", page="how", selected_date=_requested_date())
+
+
 @bp.get("/calendar")
 def calendar_page():
     """Month calendar. Clicking a day shows what was logged that day."""

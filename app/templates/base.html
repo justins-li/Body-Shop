@@ -37,12 +37,20 @@
     page you are on is the centre column and never appears as a shelf beside
     itself.
   #}
+  {#
+    Chapter numbers are **fixed to the section, not to its position in the
+    stack**. Calendar is 02 whether it is the first shelf on screen or the
+    third: a chapter that renumbers itself depending on where you are reading
+    from is not a chapter, and the whole point of the mark is that it is stable
+    enough to navigate by.
+  #}
   {% set sections = [
-    ('views.home_page',     'home',     'Home',           'Purpose and the map'),
-    ('views.calendar_page', 'calendar', 'Calendar',       'Every day you trained'),
-    ('views.log_page',      'log',      'Log workout',    'Sets, weight, reps, RPE'),
-    ('views.summary_page',  'summary',  'Weekly summary', 'Coverage, twelve groups'),
-    ('views.progress_page', 'progress', 'Graph',          'The week, drawn'),
+    ('views.home_page',     'home',     'Home',           '00', 'Purpose and the map'),
+    ('views.how_page',      'how',      'How to use',     '01', 'The idea, and the colours'),
+    ('views.calendar_page', 'calendar', 'Calendar',       '02', 'Every day you trained'),
+    ('views.log_page',      'log',      'Log workout',    '03', 'Sets, weight, reps, RPE'),
+    ('views.summary_page',  'summary',  'Weekly summary', '04', 'Coverage, twelve groups'),
+    ('views.progress_page', 'progress', 'Graph',          '05', 'The week, drawn'),
   ] %}
   {% set right_shelves = sections | rejectattr('1', 'equalto', page)
                                   | rejectattr('1', 'equalto', 'home') | list %}
