@@ -23,87 +23,71 @@
 @source "../js/**/*.js";
 
 @plugin "../../../tools/daisyui" {
-  themes: false; /* Two hand-written themes below; none of the 35 stock ones. */
+  themes: false; /* One hand-written theme below; none of the 35 stock ones. */
 }
 
-/* 2) Theme pair -----------------------------------------------------------
-   Warm cream and warm near-black, adapted from the Jesko Jets palette: the page
-   is #fff8ed, the ink is #312726, and there is no chromatic accent at all. The
-   only saturated colour in the interface is the volume ramp in section 3 — which
-   means the muscle heatmap is the most colourful thing on screen, exactly where
-   the product wants the eye to go.
+/* 2) The theme ------------------------------------------------------------
+   Dark, dense and instrument-like: a near-black desaturated blue-black ground
+   that surfaces can layer on, warm bone for every data mark, cold slate for
+   structure, and an oxidised brick red as the only accent.
 
-   depth/noise are 0 and shadows are unused throughout: separation comes from
-   hairline borders at 10–20% ink, the way the reference does it. */
+   **There is one theme.** Phase 4.5 retired the light `bodyshop` pair. The
+   volume ramp below now climbs in *luminance* (dim → lit), which is the honest
+   metaphor on a dark ground and inverts on a light one; maintaining both would
+   mean two ramps whose colours mean opposite things, which is exactly the
+   disagree-with-itself bug this codebase's single-source-of-truth design exists
+   to avoid.
+
+   Two rules the palette has to keep, both from docs/redesign-brief.md:
+
+   1. *The ramp wins the eye.* Brick is matte and low-chroma, bone and slate are
+      effectively neutral, and nothing outside the body map, the muscle bars and
+      the graph nodes is filled with a saturated colour. The ramp is the only
+      chroma of any area on screen.
+   2. *The accent and "over target" must never be confusable*, though both are
+      red. They are separated on three axes: luminance (brick sits well below
+      the over ramp), chroma (matte vs. hot) and — the load-bearing one — form.
+      **The accent never fills an area.** Primary actions are hairline-outlined
+      with brick borders and `--color-brick-lit` text, so red *area* means
+      volume past target and red *outline or text* means an action.
+
+   depth/noise stay 0 and nothing casts a shadow: separation is a hairline. */
 @plugin "../../../tools/daisyui/theme" {
   name: "bodyshop";
   default: true;
-  color-scheme: light;
-
-  --color-base-100: #fffdf8; /* raised surfaces (cards) */
-  --color-base-200: #fff8ed; /* page */
-  --color-base-300: #ead9c2; /* hairlines, untrained fills */
-  --color-base-content: #312726;
-
-  --color-primary: #312726;
-  --color-primary-content: #fff8ed;
-  --color-secondary: #7a716e;
-  --color-secondary-content: #fff8ed;
-  --color-accent: #312726;
-  --color-accent-content: #fff8ed;
-  --color-neutral: #312726;
-  --color-neutral-content: #fff8ed;
-
-  --color-info: #7a716e;
-  --color-info-content: #fff8ed;
-  --color-success: #1ba64b;
-  --color-success-content: #fff8ed;
-  --color-warning: #ffa800;
-  --color-warning-content: #312726;
-  --color-error: #e23d3d;
-  --color-error-content: #fff8ed;
-
-  --radius-selector: 9999px;
-  --radius-field: 0.75rem;
-  --radius-box: 1.75rem;
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
-  --border: 1px;
-  --depth: 0;
-  --noise: 0;
-}
-
-@plugin "../../../tools/daisyui/theme" {
-  name: "bodyshop-dark";
-  prefersdark: true;
   color-scheme: dark;
 
-  --color-base-100: #231d1c;
-  --color-base-200: #191413;
-  --color-base-300: #3a2f2d;
-  --color-base-content: #f4ebdf;
+  --color-base-100: #141922; /* the one raised step: inputs, sheets, the field */
+  --color-base-200: #0d1014; /* ground */
+  --color-base-300: #242b36; /* hairlines, untrained fills */
+  --color-base-content: #ede6db; /* bone — text and every data mark */
 
-  --color-primary: #fff8ed;
-  --color-primary-content: #231d1c;
-  --color-secondary: #a89b96;
-  --color-secondary-content: #191413;
-  --color-accent: #fff8ed;
-  --color-accent-content: #231d1c;
-  --color-neutral: #f4ebdf;
-  --color-neutral-content: #191413;
+  /* Brick is a border-and-mark colour. At 3.24:1 on the ground it clears AA for
+     large text and UI components but *not* for body copy, which is what
+     `--color-accent` (the lifted brick, 6.25:1) is for. */
+  --color-primary: #a34a38;
+  --color-primary-content: #ede6db;
+  --color-secondary: #7e8ca0; /* cold slate — secondary text and structure */
+  --color-secondary-content: #0d1014;
+  --color-accent: #d97a63; /* lifted brick, for accent text at body size */
+  --color-accent-content: #0d1014;
+  --color-neutral: #242b36;
+  --color-neutral-content: #ede6db;
 
-  --color-info: #a89b96;
-  --color-info-content: #191413;
-  --color-success: #37c46b;
-  --color-success-content: #191413;
-  --color-warning: #ffb833;
-  --color-warning-content: #191413;
-  --color-error: #f06b6b;
-  --color-error-content: #191413;
+  --color-info: #7e8ca0;
+  --color-info-content: #0d1014;
+  --color-success: #5fd98a;
+  --color-success-content: #0d1014;
+  --color-warning: #f2a03f;
+  --color-warning-content: #0d1014;
+  --color-error: #f2745f;
+  --color-error-content: #0d1014;
 
-  --radius-selector: 9999px;
-  --radius-field: 0.75rem;
-  --radius-box: 1.75rem;
+  /* Instrument, not app store: panels are square and only controls round off.
+     A uniform large radius on every surface is explicitly out. */
+  --radius-selector: 0.25rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
   --border: 1px;
@@ -113,53 +97,37 @@
 
 /* 3) Shared tokens ------------------------------------------------------- */
 @theme {
-  /* Archivo is a variable font with a width axis, which is what makes it a
-     usable stand-in for the reference's GT America Extended/Expanded. Width is
-     applied with Tailwind's `font-stretch-*` utilities, so there is one family
-     here and the display voice is a utility, not a second webfont. */
-  --font-sans: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Three faces, four named voices (section 5). Big Shoulders is condensed
+     industrial signage and carries the display voice; the two Plex faces are
+     one superfamily, so body copy and the numbers beside it cohere for free.
+     Every number in the app is set in the mono, with tabular figures, so digits
+     do not shift width as they change. */
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: "Big Shoulders Display", "IBM Plex Sans", ui-sans-serif, sans-serif;
 
   /* Volume scale. Elements on the scale carry `--level` (0–1, written by
      summary.js) and mix between the two ends of whichever ramp their state
      selects. Kept as real tokens rather than utilities because the mix is
-     computed: see the note in section 5. */
-  --color-rest: #ead9c2;
-  --color-train-light: #d5ecdb;
-  --color-train-dark: #0f6e33;
-  --color-over-light: #f9dada;
-  --color-over-dark: #a82a2a;
-  /* Readable-on-background versions of the two ramps, for text. */
-  --color-train-accent: #0f6e33;
-  --color-over-accent: #c02f2f;
+     computed: see the note in section 5.
+
+     **The ramp climbs in luminance, `min` → `max`.** On this ground "more
+     light" is "more volume"; the old light→dark ramp read backwards here, since
+     a dark green against near-black is the least-lit thing on screen. The two
+     ramps peak at similar brightness, so crossing the target reads as a hue
+     flip rather than a fade — which is what keeps one set past target a visible
+     step. Renamed from `--color-train-light/dark`, because after the
+     re-derivation "dark" would have named the bright end. */
+  --color-rest: #242b36;
+  --color-train-min: #2c5a42;
+  --color-train-max: #5fd98a;
+  --color-over-min: #f2743f;
+  --color-over-max: #f5391f;
+  /* Readable-on-ground versions of the two ramps, for text. */
+  --color-train-accent: #5fd98a;
+  --color-over-accent: #f2905f;
 
   --spacing-wrap: 76rem;
-}
-
-/* The ramp endpoints are theme-dependent: a pale green that reads as "barely
-   trained" on cream would read as "nearly done" against near-black. `@layer
-   base` beats `@layer theme`, so these win over the values above. */
-@layer base {
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="bodyshop"]) {
-      --color-rest: #3a2f2d;
-      --color-train-light: #c7ead2;
-      --color-train-dark: #15833f;
-      --color-over-light: #f7d5d5;
-      --color-over-dark: #b32e2e;
-      --color-train-accent: #59c983;
-      --color-over-accent: #ef8888;
-    }
-  }
-
-  [data-theme="bodyshop-dark"] {
-    --color-rest: #3a2f2d;
-    --color-train-light: #c7ead2;
-    --color-train-dark: #15833f;
-    --color-over-light: #f7d5d5;
-    --color-over-dark: #b32e2e;
-    --color-train-accent: #59c983;
-    --color-over-accent: #ef8888;
-  }
 }
 
 /* 4) Base ---------------------------------------------------------------- */
@@ -167,26 +135,28 @@
   html {
     -webkit-font-smoothing: antialiased;
     scroll-behavior: smooth;
+    /* The bottom tab bar is fixed, so the ground has to reach behind the home
+       indicator or the page ends in a bright seam on a notched phone. */
+    background-color: var(--color-base-200);
   }
 
   body {
     background-color: var(--color-base-200);
-    font-stretch: 104%;
-    letter-spacing: -0.011em;
+    letter-spacing: -0.006em;
   }
 
-  /* Tight tracking on headings is most of the reference's voice — it runs
-     -0.032em on small text down to -0.08em on display sizes. */
   h1,
   h2,
   h3 {
-    letter-spacing: -0.045em;
     line-height: 1.02;
   }
 
+  /* Brick is the accent everywhere else, but a focus ring has to be found, not
+     admired: bone at full strength is the highest-contrast mark available on
+     this ground, and it never collides with the ramp. */
   :focus-visible {
     outline: 2px solid var(--color-base-content);
-    outline-offset: 3px;
+    outline-offset: 2px;
     border-radius: 2px;
   }
 
@@ -222,41 +192,192 @@
 
    Static structure stays in the templates as utilities. */
 @layer components {
-  /* -- Typography voices ------------------------------------------------ */
+  /* -- Typography voices ------------------------------------------------
+     Four named voices, three faces. The rule survives from Phase 1 — no
+     ad-hoc size/weight/tracking stacks in templates — but the data voice is
+     new: every number in the app is set in the mono with tabular figures, so
+     a weight counting up does not shuffle the column beside it. */
   .type-display {
-    font-stretch: 112%;
+    font-family: var(--font-display);
     font-weight: 700;
-    letter-spacing: -0.055em;
-    line-height: 0.94;
+    letter-spacing: -0.005em;
+    line-height: 0.92;
+    text-transform: uppercase;
     text-wrap: balance;
   }
 
   .type-label {
+    font-family: var(--font-mono);
     font-size: 0.6875rem;
     font-weight: 500;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     line-height: 1;
   }
 
   .type-lede {
-    font-size: 1.0625rem;
+    font-size: 1rem;
     line-height: 1.55;
-    letter-spacing: -0.014em;
     color: var(--color-secondary);
     max-width: 62ch;
   }
 
-  /* -- Layout ----------------------------------------------------------- */
+  .type-data {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+    letter-spacing: -0.01em;
+  }
+
+  /* -- Layout -----------------------------------------------------------
+     One continuous ground divided by hairline rules, not a page of cards. A
+     `.band` is a labelled horizontal section; `.band-head` carries its mono
+     micro-label. On near-black a card is a slightly-lighter rounded rectangle
+     with a border, which is the generic dark dashboard — bands are the
+     instrument idiom and they cost no extra surface. */
   .wrap {
     width: 100%;
     max-width: var(--spacing-wrap);
     margin-inline: auto;
-    padding-inline: 1.5rem;
+    padding-inline: 1.25rem;
   }
 
   .hairline {
     border-color: color-mix(in srgb, var(--color-base-content) 14%, transparent);
+  }
+
+  .band {
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
+    padding-block: 1.75rem;
+  }
+  .band:first-of-type {
+    border-top: 0;
+  }
+
+  .band-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem 1rem;
+    margin-bottom: 1.1rem;
+    color: var(--color-secondary);
+  }
+
+  /* -- The shell: header, bottom bar, safe areas -------------------------
+     Mobile gets a bottom tab bar because the app is read one-handed with a
+     barbell in the other; the top nav returns from `sm:` up. Home is not in
+     the bar — it is a landing page, not a place you navigate to mid-set — so
+     the wordmark is the way back to it. */
+  .app-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background-color: color-mix(in srgb, var(--color-base-200) 92%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .wordmark {
+    font-family: var(--font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    line-height: 1;
+  }
+
+  /* Desktop nav link. Active is a brick underline rather than a filled pill —
+     the accent never fills an area (see the theme note). */
+  .nav-link {
+    position: relative;
+    padding: 0.5rem 0.15rem;
+    color: var(--color-secondary);
+    text-decoration: none;
+    transition: color 0.15s ease;
+  }
+  .nav-link:hover {
+    color: var(--color-base-content);
+  }
+  .nav-link[aria-current="page"] {
+    color: var(--color-base-content);
+  }
+  .nav-link[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -0.15rem;
+    height: 2px;
+    background-color: var(--color-primary);
+  }
+
+  .tab-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 55;
+    display: grid;
+    /* Auto columns rather than a fixed count: the bar gains its Graph tab when
+       /progress lands, and nothing here needs to know how many there are. */
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    background-color: var(--color-base-200);
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .tab-link {
+    position: relative;
+    display: grid;
+    place-items: center;
+    /* 44pt floor, before the safe-area padding underneath it. */
+    min-height: 3.25rem;
+    padding: 0.5rem 0.25rem;
+    color: var(--color-secondary);
+    text-decoration: none;
+    transition: color 0.15s ease;
+  }
+  .tab-link:hover {
+    color: var(--color-base-content);
+  }
+  /* A 2px rule along the top edge, so the bar reads as an instrument's mode
+     selector rather than a stock iOS tab bar. */
+  .tab-link[aria-current="page"] {
+    color: var(--color-base-content);
+  }
+  .tab-link[aria-current="page"]::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: var(--color-primary);
+  }
+  /* Logging is the hot path, so its tab is bracketed rather than merely
+     labelled — findable without reading, one-handed. */
+  .tab-link.is-primary {
+    color: var(--color-base-content);
+  }
+  .tab-link.is-primary::after {
+    content: "";
+    position: absolute;
+    inset: 0.5rem 0.6rem;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 70%, transparent);
+    border-radius: var(--radius-field);
+    pointer-events: none;
+  }
+
+  /* The bar is fixed, so every page needs its height back at the bottom or the
+     last row sits under it. */
+  .has-tab-bar {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 40rem) {
+    .has-tab-bar {
+      padding-bottom: 0;
+    }
   }
 
   /* -- Calendar day cells (state toggled by calendar.js) ---------------- */
@@ -300,27 +421,35 @@
     background-color: transparent;
   }
   .day-cell.has-entries .day-dot {
-    background-color: var(--color-train-dark);
+    background-color: var(--color-train-max);
   }
   .day-cell.is-selected.has-entries .day-dot {
     background-color: var(--color-primary-content);
   }
 
-  /* -- Toast (visibility toggled by ui.js) ------------------------------ */
+  /* -- Toast (visibility toggled by ui.js) ------------------------------
+     Sits above the tab bar, not under it. Square-cornered and hairlined like
+     everything else; the error tone borrows the theme's error colour, which is
+     a warm coral deliberately kept clear of both the accent and the over ramp. */
   .toast-bar {
     position: fixed;
     left: 50%;
-    bottom: 1.75rem;
+    bottom: calc(5.25rem + env(safe-area-inset-bottom));
     z-index: 60;
     transform: translate(-50%, 175%);
-    padding: 0.7rem 1.35rem;
-    border-radius: 9999px;
-    border: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    padding: 0.7rem 1.1rem;
+    border-radius: var(--radius-field);
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
     background-color: var(--color-base-100);
     font-size: 0.875rem;
     opacity: 0;
     pointer-events: none;
     transition: transform 0.28s ease, opacity 0.28s ease;
+  }
+  @media (min-width: 40rem) {
+    .toast-bar {
+      bottom: 1.75rem;
+    }
   }
   .toast-bar.is-visible {
     transform: translate(-50%, 0);
@@ -355,12 +484,12 @@
   /* `.is-over` must stay below `.is-worked`: a group past its target carries
      both classes, and the red ramp has to win. */
   .muscle.is-worked {
-    fill: color-mix(in srgb, var(--color-train-dark) calc(var(--level) * 100%), var(--color-train-light));
-    stroke: color-mix(in srgb, var(--color-train-dark) 70%, #000);
+    fill: color-mix(in srgb, var(--color-train-max) calc(var(--level) * 100%), var(--color-train-min));
+    stroke: color-mix(in srgb, var(--color-train-max) 45%, transparent);
   }
   .muscle.is-over {
-    fill: color-mix(in srgb, var(--color-over-dark) calc(var(--level) * 100%), var(--color-over-light));
-    stroke: color-mix(in srgb, var(--color-over-dark) 70%, #000);
+    fill: color-mix(in srgb, var(--color-over-max) calc(var(--level) * 100%), var(--color-over-min));
+    stroke: color-mix(in srgb, var(--color-over-max) 55%, transparent);
   }
 
   /* -- Per-muscle breakdown rows ---------------------------------------- */
@@ -406,10 +535,10 @@
     transition: width 0.4s ease, background-color 0.35s ease;
   }
   .muscle-row.is-worked .muscle-bar-fill {
-    background-color: color-mix(in srgb, var(--color-train-dark) calc(var(--level) * 100%), var(--color-train-light));
+    background-color: color-mix(in srgb, var(--color-train-max) calc(var(--level) * 100%), var(--color-train-min));
   }
   .muscle-row.is-over .muscle-bar-fill {
-    background-color: color-mix(in srgb, var(--color-over-dark) calc(var(--level) * 100%), var(--color-over-light));
+    background-color: color-mix(in srgb, var(--color-over-max) calc(var(--level) * 100%), var(--color-over-min));
   }
   .muscle-row.is-worked .muscle-sets {
     color: var(--color-train-accent);
@@ -494,10 +623,10 @@
     width: 3.25rem;
   }
   .swatch-scale-train {
-    background: linear-gradient(90deg, var(--color-train-light), var(--color-train-dark));
+    background: linear-gradient(90deg, var(--color-train-min), var(--color-train-max));
   }
   .swatch-scale-over {
-    background: linear-gradient(90deg, var(--color-over-light), var(--color-over-dark));
+    background: linear-gradient(90deg, var(--color-over-min), var(--color-over-max));
   }
 
   /* -- Exercise picker (built by log.js) -------------------------------- */
@@ -802,12 +931,29 @@
     display: none;
   }
 
-  /* ---- Rest timer ------------------------------------------------------ */
+  /* ---- Rest timer ------------------------------------------------------
+     The countdown lives in the shared header so it survives navigation — rest
+     does not stop because you looked at the calendar. `timer.js` persists the
+     *deadline* rather than the remaining seconds, so a page load mid-rest
+     resumes at the right number instead of restarting.
+
+     The strip is readout + toggle only. Choosing a rest length is a setup
+     decision, so the duration select stays on `/log` where the sets are; the
+     strip binds to whichever of the two shells the current page ships. */
+  .rest-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
 
   .rest-timer-readout {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+    font-size: 1rem;
+    font-weight: 500;
+    /* Idle is dim: a stopped clock is not information. */
+    color: color-mix(in srgb, var(--color-base-content) 40%, transparent);
     transition: color 0.2s ease;
   }
 
@@ -815,6 +961,41 @@
      as `.is-warmup` above. */
   .rest-timer.is-running .rest-timer-readout {
     color: var(--color-base-content);
+  }
+
+  /* A square-cornered instrument key, not a pill. 44pt tap target. */
+  .rest-toggle {
+    display: grid;
+    place-items: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 18%, transparent);
+    border-radius: var(--radius-field);
+    background: none;
+    color: var(--color-secondary);
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .rest-toggle:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 40%, transparent);
+    color: var(--color-base-content);
+  }
+  .rest-timer.is-running .rest-toggle {
+    border-color: color-mix(in srgb, var(--color-primary) 75%, transparent);
+    color: var(--color-accent);
+  }
+  .rest-toggle svg {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+  /* One button, two states: the glyphs swap rather than the label changing, so
+     the control never resizes mid-rest. */
+  .rest-timer .rest-icon-stop,
+  .rest-timer.is-running .rest-icon-start {
+    display: none;
+  }
+  .rest-timer.is-running .rest-icon-stop {
+    display: block;
   }
 
   /* ---- Sets on an entry row -------------------------------------------- */

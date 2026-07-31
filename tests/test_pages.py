@@ -166,8 +166,25 @@ def test_bad_date_falls_back_to_today(client):
     assert client.get("/summary?date=nonsense").status_code == 200
 
 
-def test_log_page_ships_the_rest_timer_shell(client):
-    """The timer is client-side; the page only provides its controls."""
-    body = client.get("/log").data.decode()
+@pytest.mark.parametrize("path", ["/", "/calendar", "/log", "/summary"])
+def test_every_page_ships_the_rest_timer_strip(client, path):
+    """The countdown moved into `base.html` in Phase 4.5.
+
+    It used to live on `/log` alone, which killed a rest the moment you looked
+    at the calendar. The strip is now shared, and `timer.js` persists a deadline
+    so the count survives the navigation.
+    """
+    body = client.get(path).data.decode()
     for marker in ('id="rest-timer"', "data-timer-readout", "data-timer-toggle"):
         assert marker in body
+
+
+def test_only_log_ships_the_rest_duration_select(client):
+    """Choosing a rest length is a setup decision, so it stays beside the sets.
+
+    It also has to appear exactly once: `timer.js` binds the first one it finds
+    in the document, so a second copy would be silently dead.
+    """
+    assert client.get("/log").data.decode().count("data-timer-duration") == 1
+    for path in ("/", "/calendar", "/summary"):
+        assert "data-timer-duration" not in client.get(path).data.decode()

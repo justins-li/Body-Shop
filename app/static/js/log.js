@@ -33,7 +33,7 @@ import {
   saveUnit, syncUrlDate, toKg, toast,
 } from "./ui.js";
 import { DEFAULT_BAR, describePlates } from "./plates.js";
-import { initRestTimer, startRestTimer } from "./timer.js";
+import { startRestTimer } from "./timer.js";
 
 let selectedIso;
 let catalog = [];
@@ -703,7 +703,8 @@ export async function initLog(initialIso) {
     renderSetGrid();
   });
   $("#add-set").addEventListener("click", addSetRow);
-  initRestTimer($("#rest-timer"));
+  // The timer is booted from base.html — it runs on every page now, so binding
+  // it again here would double up its listeners.
   renderSetGrid();
 
   retargetLinks([$("#view-summary")], selectedIso);

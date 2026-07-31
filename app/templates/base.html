@@ -1,53 +1,81 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="bodyshop">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0d1014">
   <title>{% block title %}Body Shop{% endblock %}</title>
   <meta name="description" content="Body Shop — log your workouts and see which muscle groups you hit each week.">
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
 
-  {# Archivo carries a width axis, which is what the `font-stretch-*` utilities
-     widen for the display voice. Loaded before the stylesheet so the swap
-     happens once. #}
+  {#
+    Three faces, four voices (see `.type-*` in input.css). Big Shoulders
+    Display carries the display voice; IBM Plex Sans and Plex Mono are one
+    superfamily, so body copy and the numbers beside it cohere. Weights are
+    pinned narrowly — this is three requests, so nothing unused is fetched.
+  #}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+        href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&display=swap">
 
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
-<body data-page="{{ page }}" class="min-h-screen flex flex-col">
+<body data-page="{{ page }}" class="min-h-screen flex flex-col has-tab-bar">
   <a class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[70]
-            focus:rounded-full focus:border focus:border-base-content/20 focus:bg-base-100
+            focus:border focus:border-base-content/25 focus:bg-base-100
             focus:px-4 focus:py-2 focus:text-sm focus:no-underline"
      href="#main">Skip to content</a>
 
-  <header class="sticky top-0 z-50 border-b hairline bg-base-200/85 backdrop-blur-md">
-    <div class="wrap flex flex-wrap items-center justify-between gap-x-6 gap-y-3 py-4">
-      <a class="flex items-center gap-2.5 no-underline text-base-content"
-         href="{{ url_for('views.home_page') }}">
-        <span aria-hidden="true" class="text-lg leading-none">◈</span>
-        <span class="type-display text-lg">Body Shop</span>
+  {# Nav destinations, shared by the desktop bar and the mobile tab bar. The
+     mobile bar omits Home: it is a landing page, not somewhere you go
+     mid-session, and the wordmark already links there. #}
+  {% set links = [
+    ('views.calendar_page', 'calendar', 'Calendar', true),
+    ('views.log_page',      'log',      'Log',      true),
+    ('views.summary_page',  'summary',  'Week',     true),
+  ] %}
+
+  <header class="app-header">
+    <div class="wrap flex items-center justify-between gap-4 py-3">
+      <a class="flex items-center gap-2 no-underline text-base-content"
+         href="{{ url_for('views.home_page', date=selected_date.isoformat()) }}">
+        <span aria-hidden="true" class="text-primary leading-none">◈</span>
+        <span class="wordmark text-lg">Body Shop</span>
       </a>
 
-      <nav class="flex flex-wrap items-center gap-1" aria-label="Primary">
-        {% set links = [
-          ('views.home_page',     'home',     'Home'),
-          ('views.calendar_page', 'calendar', 'Calendar'),
-          ('views.log_page',      'log',      'Log workout'),
-          ('views.summary_page',  'summary',  'Weekly summary'),
-        ] %}
-        {% for endpoint, key, label in links %}
-          {% set active = page == key %}
+      <nav class="hidden sm:flex items-center gap-6 type-label" aria-label="Primary">
+        <a href="{{ url_for('views.home_page', date=selected_date.isoformat()) }}"
+           class="nav-link"
+           {% if page == 'home' %}aria-current="page"{% endif %}>Home</a>
+        {% for endpoint, key, label, _mobile in links %}
           <a href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
-             class="nav-link type-label rounded-full px-3.5 py-2 no-underline transition-colors
-                    {{ 'bg-primary text-primary-content'
-                       if active else
-                       'text-secondary hover:text-base-content hover:bg-base-content/6' }}"
-             {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
+             class="nav-link"
+             {% if page == key %}aria-current="page"{% endif %}>{{ label }}</a>
         {% endfor %}
       </nav>
+
+      {#
+        The rest countdown lives here, not on /log, so navigating away does not
+        kill it — `timer.js` persists the deadline and every page re-reads it.
+        Readout and toggle only: choosing a rest length is a setup decision, so
+        that select stays on /log beside the sets.
+      #}
+      <div class="rest-timer rest-strip" id="rest-timer">
+        <span class="type-label text-secondary" aria-hidden="true">Rest</span>
+        <span class="rest-timer-readout" data-timer-readout
+              role="timer" aria-live="off">2:00</span>
+        <button type="button" class="rest-toggle" data-timer-toggle
+                aria-label="Start or stop the rest timer">
+          <svg class="rest-icon-start" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+            <path d="M4 2.5 13 8l-9 5.5z"></path>
+          </svg>
+          <svg class="rest-icon-stop" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+            <rect x="3.5" y="3.5" width="9" height="9"></rect>
+          </svg>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -55,15 +83,30 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="border-t hairline mt-24">
-    <div class="wrap flex flex-wrap items-center justify-between gap-4 py-8 text-sm text-secondary">
-      <p class="type-label">Body Shop — logged locally in SQLite</p>
+  <footer class="hidden sm:block border-t hairline mt-20">
+    <div class="wrap flex flex-wrap items-center justify-between gap-4 py-7 text-secondary">
+      <p class="type-label">Body Shop — logged locally</p>
       <a class="type-label no-underline hover:text-base-content transition-colors"
          href="/api/exercises">API</a>
     </div>
   </footer>
 
+  {# Thumb-zone navigation. Hidden from `sm:` up, where the header nav takes over. #}
+  <nav class="tab-bar sm:hidden" aria-label="Primary">
+    {% for endpoint, key, label, _mobile in links %}
+      <a href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
+         class="tab-link type-label {{ 'is-primary' if key == 'log' else '' }}"
+         {% if page == key %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+
   <div id="toast" class="toast-bar" role="status" aria-live="polite"></div>
+
+  {# The timer is on every page, so it boots from here rather than per-page. #}
+  <script type="module">
+    import { initRestTimer } from "{{ url_for('static', filename='js/timer.js') }}";
+    initRestTimer(document.getElementById("rest-timer"));
+  </script>
 
   {% block scripts %}{% endblock %}
 </body>

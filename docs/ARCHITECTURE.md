@@ -52,7 +52,7 @@ why it is worth having before auth exists.
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
 | `app/views.py` | Page shells and template context. | Contain business rules. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
-| `app/static/js/timer.js` | The rest countdown on `/log`. Pure client state. | Touch the API or persist anything but its own duration. |
+| `app/static/js/timer.js` | The rest countdown, booted from `base.html` on every page. Pure client state, persisted as a *deadline* so it survives navigation and tab throttling. | Touch the API, or persist anything but its duration and that deadline. |
 | `app/static/js/plates.js` | Plate arithmetic — a pure function of weight and bar. | Store anything, or fetch. |
 | `app/static/css/input.css` | The design system: theme pair, tokens, and every hand-written rule. | — (`styles.css` beside it is generated; never edit it) |
 
@@ -65,8 +65,14 @@ written — there is no bundler. The compiled `styles.css` is committed, so runn
 app or CI never needs the toolchain; only editing `input.css` does.
 
 Configuration is CSS-first (Tailwind v4): no `tailwind.config.js`. `@theme` holds the
-tokens, two `@plugin "daisyui/theme"` blocks define the `bodyshop` / `bodyshop-dark`
-pair, and `@source` directives list the content globs.
+tokens, a single `@plugin "daisyui/theme"` block defines the one `bodyshop` theme, and
+`@source` directives list the content globs.
+
+That theme is **dark, and the only one**. Phase 4.5 retired the light half of the pair
+rather than re-deriving it: the volume ramp now climbs in luminance (dim → lit), which
+is how "more volume" reads on a near-black ground and exactly backwards on a light one.
+Maintaining both would have meant two ramps whose colours mean opposite things — the
+kind of disagreement this codebase's single-source-of-truth design exists to prevent.
 
 The division of labour is the part worth internalising:
 
@@ -253,7 +259,14 @@ The front-end does no grading of its own: `summary.js` writes `intensity` to a
 `--level` custom property and toggles `.is-worked` / `.is-over` on every element with
 the matching `data-muscle` attribute — SVG regions and breakdown rows alike. Colour
 still lives entirely in CSS, which mixes between the ramp endpoints
-(`--train-light`/`--train-dark`, `--over-light`/`--over-dark`) with `color-mix`.
+(`--train-min`/`--train-max`, `--over-min`/`--over-max`) with `color-mix`.
+
+**The ramp climbs in luminance.** Phase 4.5 re-derived it for the dark ground and
+renamed the tokens with it: a dark green against near-black is the *least*-lit thing on
+screen, so the old light→dark direction said "less" where it meant "more", and "dark"
+would now have named the bright end. Both ramps peak at similar brightness, so crossing
+the target reads as a hue flip rather than a fade — which is what keeps one set past
+target a visible step on either scale.
 
 ### Weighted sets
 
