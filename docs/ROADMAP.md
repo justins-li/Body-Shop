@@ -633,6 +633,9 @@ rebuilt: `/` leads with the body map, `/calendar` became one ruled sheet with a 
 bar per day, `/log` got a two-tier set row and a docked submit, `/summary` became a
 readout, and `/progress` is new.
 
+All five at 390×844 are in [screenshots/](screenshots/) — `home`, `calendar`, `log`,
+`summary`, `progress`.
+
 ### Where it diverged from the brief
 
 **1. The branch is `phase-4.5-frontend-revamp`, not `redesign`.** The brief named a
