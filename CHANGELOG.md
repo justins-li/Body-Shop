@@ -21,9 +21,15 @@ All notable changes to Body Shop are documented here. This project follows
   - **The top header is gone.** Navigation is thin vertical shelves down the sides, with
     the section name set sideways. The leftmost is always Home; the right stack is every
     section except the one being read, so a page never appears as a shelf beside itself.
-  - **`/` is one screen.** The how-it-works, colour-scale and closing sections are gone;
-    the page is the updates column, the wordmark and the body map. Everything those
-    sections explained is now reachable as a shelf.
+  - **`/` is exactly one screen**, and enforced as one: `height: 100vh; overflow: hidden`,
+    with the specimen as the only element that flexes, so the wordmark, the two actions
+    and the follow row are always in view without scrolling.
+  - **`/how-to-use` is a new chapter** holding the explainer that used to sit below the
+    landing page — the sequence, the colour scale and the closing prompt. It became a
+    shelf rather than a scroll nobody reached.
+  - **Chapter numbers are fixed to the section**, not to a shelf's position in the stack:
+    Calendar is `02` whether it is the first shelf on screen or the third. A mark that
+    renumbers itself by where you happen to be reading from is not one you can navigate by.
   - **Noto Serif 300 carries the identity** — wordmark, shelf names, headings — at the
     reference's measurements (`7.15vw`, `-0.21vw` tracking, `106%` leading). A fourth
     face, display use only.

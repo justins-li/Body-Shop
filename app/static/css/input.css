@@ -1,3 +1,144 @@
+  /* -- Centre column ----------------------------------------------------
+     The whole landing page has to fit one screen: kicker, wordmark, tagline,
+     specimen, the two actions and the follow row, with no scroll. So the
+     column is a flex stack at exactly viewport height and the *specimen* is
+     the only thing that flexes — it is the one element that can lose height
+     without losing meaning, since the figures scale. Everything else keeps
+     its size, because a wordmark that shrinks with the window looks broken. */
+  .home-centre {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: center;
+  }
+  @media (width >= 64rem) {
+    .home-centre {
+      height: 100vh;
+      /* Tight to the top — the kicker sits just under the window edge. */
+      padding: 1.6vw 2vw 1.4vw;
+    }
+  }
+
+  /* Rotating subheading. Their `.block-subheading` is a short strip with
+     `overflow:hidden` and a column inside that translates, so lines arrive
+     from below rather than cross-fading — that vertical travel is most of
+     what the motion reads as. */
+  .home-kicker {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    flex: none;
+    width: 100%;
+    height: 1.9em;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+    color: var(--color-secondary);
+  }
+  .home-rotator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: home-rotate 20s infinite;
+  }
+  .home-rotator > span {
+    height: 1.9em;
+    line-height: 1.9em;
+    flex: none;
+  }
+
+  /* Five lines, so each step is -100% of one line height and holds. */
+  @keyframes home-rotate {
+    0%, 16%   { transform: translateY(0); }
+    20%, 36%  { transform: translateY(-1.9em); }
+    40%, 56%  { transform: translateY(-3.8em); }
+    60%, 76%  { transform: translateY(-5.7em); }
+    80%, 96%  { transform: translateY(-7.6em); }
+    100%      { transform: translateY(-9.5em); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .home-rotator { animation: none; }
+  }
+
+  /* The signature: a light serif at 7.15vw with negative tracking. */
+  .home-title {
+    flex: none;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(2.5rem, 7.15vw, 8.5rem);
+    letter-spacing: -0.21vw;
+    line-height: 106%;
+    margin: 0;
+    text-transform: none;
+  }
+  .home-tagline {
+    flex: none;
+    max-width: 52ch;
+    margin: 0.5rem auto 0;
+    color: var(--color-secondary);
+    font-size: clamp(0.85rem, 0.95vw, 1rem);
+    line-height: 1.55;
+  }
+
+  /* The one element that gives up height when the window is short. */
+  .home-specimen {
+    width: min(100%, 26rem);
+    margin: 1.25rem auto 0;
+    text-align: left;
+  }
+  @media (width >= 64rem) {
+    .home-specimen {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      margin: 1.2vw auto 0;
+    }
+    /* The figures share whatever height is left, and scale into it. */
+    .home-specimen > div {
+      flex: 1 1 auto;
+      min-height: 0;
+      padding-block: 1vw;
+    }
+    .home-specimen .body-svg {
+      height: 100%;
+      width: auto;
+      max-height: 100%;
+    }
+  }
+
+  .home-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    flex: none;
+    margin-top: 1.1vw;
+  }
+
+  /* Their `.follow-text-block` sits at the foot of the hero, centred, with a
+     label and a row of marks. Empty until the accounts exist. */
+  .home-follow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    flex: none;
+    width: 100%;
+    margin-top: 1.1vw;
+    padding-top: 1.1vw;
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+  }
+  .home-follow-slot {
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+    background-color: transparent;
+    cursor: default;
+  }
+
 /* ==========================================================================
    Body Shop — stylesheet source.
 
@@ -708,6 +849,44 @@
     .page-veil-mark { animation: none; }
   }
 
+  /* -- Chapter pages -----------------------------------------------------
+     A chapter that is prose rather than an instrument: /how-to-use. Narrow
+     measure, serif headings, the same hairline bands as everywhere else. */
+  .chapter-page {
+    max-width: 62rem;
+    margin-inline: auto;
+    padding: 3rem 1.5rem 5rem;
+  }
+  @media (width >= 64rem) {
+    .chapter-page { padding: 4vw 3vw 6vw; }
+  }
+  .chapter-head {
+    padding-bottom: 2rem;
+    margin-bottom: 2.5rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+  }
+  .chapter-title {
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(2.25rem, 5vw, 4rem);
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    margin: 0.5rem 0 1rem;
+  }
+  .chapter-subtitle {
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 400;
+    font-size: 1.4rem;
+    line-height: 1.15;
+    margin: 0 0 0.6rem;
+  }
+  .chapter-lede {
+    max-width: 56ch;
+    margin: 0;
+    color: var(--color-secondary);
+    line-height: 1.6;
+  }
+
   /* -- Home masthead ------------------------------------------------------
      Modelled closely on glukhovsky.com: one full-height screen, a centre
      column a little under two-thirds of the viewport, and everything sized in
@@ -729,9 +908,11 @@
       grid-template-columns: minmax(0, 21rem) minmax(0, 1fr);
       gap: 0;
       align-items: stretch;
-      min-height: 100vh;
-      padding: 0 0 2vw;
+      height: 100vh;
+      overflow: hidden;
+      padding: 0;
     }
+    .home-specimen figcaption { display: none; }
   }
 
   .home-rail {

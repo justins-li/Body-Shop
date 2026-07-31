@@ -17,6 +17,7 @@ from app.exercises import DEFAULT_MUSCLE_SCHEME, MUSCLE_GROUPS, MUSCLE_SCHEMES
         ("/log", b"New entry"),
         ("/summary", b"Sets by split"),
         ("/progress", b"Where your training lives"),
+        ("/how-to-use", b"How to use"),
     ],
 )
 def test_pages_render(client, path, marker):
@@ -224,3 +225,38 @@ def test_only_log_ships_the_rest_duration_select(client):
     assert client.get("/log").data.decode().count("data-timer-duration") == 1
     for path in ("/", "/calendar", "/summary"):
         assert "data-timer-duration" not in client.get(path).data.decode()
+
+
+# ---- The shelf navigation --------------------------------------------------
+
+
+def test_the_current_page_is_never_a_shelf_beside_itself(client):
+    """Leftmost is Home; the right stack is every section except this one."""
+    for path, key in [("/", "home"), ("/how-to-use", "how"), ("/calendar", "calendar"),
+                      ("/log", "log"), ("/summary", "summary"), ("/progress", "progress")]:
+        body = client.get(path).data.decode()
+        shelves = re.findall(r'class="shelf(?: shelf-home)?" data-nav\s+href="([^"?]+)', body)
+        assert path not in shelves, path
+        # Home leads on every page but its own.
+        assert ("/" in shelves) == (key != "home"), path
+        # Five sections, minus the one being read.
+        assert len(shelves) == 5, (path, shelves)
+
+
+def test_chapter_numbers_are_fixed_to_the_section(client):
+    """A chapter that renumbers by position is not a chapter you can navigate by."""
+    expected = {"/how-to-use": "01", "/calendar": "02", "/log": "03",
+                "/summary": "04", "/progress": "05"}
+    for path in ("/", "/log", "/progress"):
+        body = client.get(path).data.decode()
+        marks = dict(re.findall(
+            r'class="shelf" data-nav\s+href="([^"?]+)[^>]*>\s*<span class="shelf-top[^>]*>\[(\d\d)\]',
+            body))
+        for href, chapter in marks.items():
+            assert expected[href] == chapter, (path, href, chapter)
+
+
+def test_there_is_no_top_header(client):
+    body = client.get("/").data.decode()
+    assert "app-header" not in body
+    assert 'class="shelf' in body
