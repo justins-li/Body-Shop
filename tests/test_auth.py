@@ -86,3 +86,51 @@ class TestDecodeToken:
         """An empty token must fail before the key resolver is ever consulted."""
         with pytest.raises(AuthError):
             decode_token("", supabase_url=URL, jwt_secret=None)
+
+
+from app.models import add_entry, delete_user, ensure_user, get_user
+
+
+class TestUserMirror:
+    """Rows appear just-in-time. There is no signup webhook to create them."""
+
+    def test_a_new_sub_is_inserted(self, app):
+        with app.app_context():
+            ensure_user(SUB, "tester@example.com")
+            assert get_user(SUB) == {"id": SUB, "email": "tester@example.com"}
+
+    def test_an_unknown_sub_reads_as_none(self, app):
+        with app.app_context():
+            assert get_user(SUB) is None
+
+    def test_a_second_call_does_not_duplicate_the_row(self, app):
+        with app.app_context():
+            ensure_user(SUB, "tester@example.com")
+            ensure_user(SUB, "tester@example.com")
+            assert get_user(SUB) == {"id": SUB, "email": "tester@example.com"}
+
+    def test_a_changed_email_is_written_through(self, app):
+        """Supabase is the source of truth for the address, so it wins."""
+        with app.app_context():
+            ensure_user(SUB, "old@example.com")
+            ensure_user(SUB, "new@example.com")
+            assert get_user(SUB)["email"] == "new@example.com"
+
+    def test_deleting_a_user_reports_it(self, app):
+        with app.app_context():
+            ensure_user(SUB, "tester@example.com")
+            assert delete_user(SUB) is True
+            assert get_user(SUB) is None
+
+    def test_deleting_an_absent_user_reports_false(self, app):
+        with app.app_context():
+            assert delete_user(SUB) is False
+
+    def test_deleting_a_user_cascades_to_entries_and_sets(self, app):
+        """One DELETE, no cascade handling in Python — the FK does the work."""
+        with app.app_context():
+            ensure_user(SUB, "tester@example.com")
+            entry = add_entry(SUB, "2026-07-28", "Barbell_Squat", [{}, {}])
+            assert entry.sets == 2
+            delete_user(SUB)
+            assert get_user(SUB) is None

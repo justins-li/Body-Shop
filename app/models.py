@@ -27,7 +27,7 @@ import sqlalchemy as sa
 
 from .db import get_db
 from .exercises import get_exercise
-from .tables import workout_entry, workout_set
+from .tables import user, workout_entry, workout_set
 
 #: The four set types. Only ``warmup`` is excluded from weekly volume.
 SET_TYPES = ("normal", "warmup", "drop", "failure")
@@ -119,6 +119,64 @@ def parse_date(value: str | date | None, *, field: str = "date") -> date:
         raise ValidationError(
             f"'{field}' must be an ISO date such as 2026-07-28."
         ) from exc
+
+
+def ensure_user(user_id: str, email: str) -> None:
+    """Create the mirror row for ``user_id`` if it is not there, or refresh it.
+
+    Called on **every** authenticated request, which makes this the only place
+    in the app where a GET writes. Worth knowing before anyone adds a read
+    replica or wonders why a summary request opened a transaction.
+
+    The insert catches ``IntegrityError`` rather than using an upsert, because
+    ``on_conflict_do_nothing()`` is spelled differently per dialect and this
+    layer serves both. Two concurrent first requests therefore race safely: one
+    inserts, the other rolls back and carries on.
+
+    The email is written through on change — Supabase owns the address, so a
+    stale mirror is simply wrong.
+    """
+    db = get_db()
+    row = db.execute(sa.select(user.c.email).where(user.c.id == user_id)).first()
+
+    if row is None:
+        try:
+            db.execute(sa.insert(user).values(id=user_id, email=email))
+            db.commit()
+        except sa.exc.IntegrityError:
+            # Lost the race, or the address belongs to another sub. Either way
+            # the row we needed exists; a failed mirror must not fail the request.
+            db.rollback()
+        return
+
+    if row.email != email:
+        db.execute(sa.update(user).where(user.c.id == user_id).values(email=email))
+        db.commit()
+
+
+def get_user(user_id: str) -> dict | None:
+    """Return ``{"id", "email"}`` for ``user_id``, or ``None``."""
+    row = get_db().execute(sa.select(user).where(user.c.id == user_id)).first()
+    if row is None:
+        return None
+    # str() for the same reason WorkoutSet.id does it: Postgres hands back a
+    # UUID object where SQLite hands back the hyphenated string.
+    return {"id": str(row.id), "email": row.email}
+
+
+def delete_user(user_id: str) -> bool:
+    """Delete an account and, by cascade, everything it owns.
+
+    One statement. ``workout_entry.user_id`` and ``workout_set.entry_id`` are
+    both ``ON DELETE CASCADE`` and app/db.py enables SQLite foreign keys per
+    connection, so there is no cascade handling to write here — and Phase 7's
+    ``body_metric`` and Phase 8's ``custom_exercise`` inherit that by declaring
+    the same FK.
+    """
+    db = get_db()
+    result = db.execute(sa.delete(user).where(user.c.id == user_id))
+    db.commit()
+    return result.rowcount > 0
 
 
 def validate_entry(entry_date, exercise_id) -> tuple[date, str]:
