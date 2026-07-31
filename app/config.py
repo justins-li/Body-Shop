@@ -72,6 +72,30 @@ class BaseConfig:
         "@b0eed061e1c832b3ed815fbaa4b45b3cdc14df49/exercises",
     )
 
+    #: Supabase project URL, e.g. ``https://abcdefgh.supabase.co``.
+    #:
+    #: Three things derive from it: the GoTrue base the browser posts to, the
+    #: ``iss`` claim every token must carry, and the JWKS path used when no
+    #: shared secret is configured. Stored without a trailing slash so those
+    #: three concatenations cannot produce a double one.
+    SUPABASE_URL = (os.environ.get("BODYSHOP_SUPABASE_URL") or "").rstrip("/")
+
+    #: Public by design — it is rendered into every page and identifies the
+    #: project to GoTrue. It grants nothing on its own; row access is decided by
+    #: the bearer token, which this key cannot mint.
+    SUPABASE_ANON_KEY = os.environ.get("BODYSHOP_SUPABASE_ANON_KEY")
+
+    #: Optional. Set → tokens are verified as HS256 against this shared secret.
+    #: Unset → verified as ES256/RS256 against the project's published JWKS.
+    #: Supabase projects differ by age, so both are supported behind one
+    #: resolver; see app/services/auth.py.
+    SUPABASE_JWT_SECRET = os.environ.get("BODYSHOP_SUPABASE_JWT_SECRET")
+
+    #: **Secret.** Used by ``DELETE /api/account`` and nowhere else — a user
+    #: cannot delete their own auth record with the anon key. This is the one
+    #: place Flask holds a Supabase credential.
+    SUPABASE_SERVICE_ROLE_KEY = os.environ.get("BODYSHOP_SUPABASE_SERVICE_ROLE_KEY")
+
     JSON_SORT_KEYS = False
 
 
@@ -84,6 +108,15 @@ class TestingConfig(BaseConfig):
     CONFIG_NAME = "testing"
     TESTING = True
     SECRET_KEY = "testing"
+
+    # Pinned rather than read from the environment, and the JWT secret is what
+    # buys back the offline suite: with it set, app/services/auth.py always
+    # takes the HS256 branch, so conftest mints tokens in-process and no test
+    # ever resolves a JWKS document over the network.
+    SUPABASE_URL = "https://test.supabase.co"
+    SUPABASE_ANON_KEY = "test-anon-key"
+    SUPABASE_JWT_SECRET = "test-jwt-secret"
+    SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key"
 
 
 class ProductionConfig(BaseConfig):
@@ -149,3 +182,28 @@ def validate(config: Mapping) -> None:
             "an ephemeral filesystem, so a SQLite file is silently lost between "
             "invocations. Use Postgres in production."
         )
+
+    if not config.get("SUPABASE_URL"):
+        raise ConfigError(
+            "BODYSHOP_SUPABASE_URL is unset. Production needs the Supabase "
+            "project URL — it is the GoTrue base, the expected token issuer and "
+            "the JWKS location. See .env.example."
+        )
+
+    if not config.get("SUPABASE_ANON_KEY"):
+        raise ConfigError(
+            "BODYSHOP_SUPABASE_ANON_KEY is unset. Without it the sign-in pages "
+            "cannot reach Supabase at all."
+        )
+
+    if not config.get("SUPABASE_SERVICE_ROLE_KEY"):
+        raise ConfigError(
+            "BODYSHOP_SUPABASE_SERVICE_ROLE_KEY is unset. Account deletion needs "
+            "it — a user cannot delete their own auth record with the anon key, "
+            "and shipping without in-app deletion fails Apple's Guideline "
+            "5.1.1(v)."
+        )
+
+    # SUPABASE_JWT_SECRET is deliberately not required. Its absence is a valid
+    # configuration meaning "this project signs asymmetrically; verify against
+    # the published JWKS".

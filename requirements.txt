@@ -10,6 +10,12 @@ alembic>=1.13,<2.0
 # Postgres driver. The binary extra ships a wheel, so there is no libpq build.
 psycopg[binary]>=3.1,<4.0
 
+# Verifies Supabase's JWTs. The `crypto` extra pulls cryptography, which the
+# asymmetric (ES256/RS256) branch of app/services/auth.py needs; projects old
+# enough to sign with the shared HS256 secret do not, but one resolver serves
+# both rather than guessing which kind of project this is.
+PyJWT[crypto]>=2.8,<3.0
+
 # Reads .env. Flask's CLI picks it up natively when installed, so
 # `flask --app app upgrade-db` sees the same configuration run.py does.
 python-dotenv>=1.0,<2.0
