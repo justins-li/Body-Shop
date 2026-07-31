@@ -15,7 +15,7 @@ from datetime import date
 import pytest
 
 from app.exercises import LARGE_MUSCLE_TARGET, MUSCLE_GROUPS, SMALL_MUSCLE_TARGET
-from app.models import WorkoutEntry, add_entry
+from app.models import WorkoutEntry, WorkoutSet, add_entry
 from app.services.summary import grade, summarise_entries, weekly_summary
 
 BENCH = "Barbell_Bench_Press_-_Medium_Grip"
@@ -27,7 +27,30 @@ HAMSTRING_STRETCH = "90_90_Hamstring"
 
 
 def entry(exercise_id: str, sets: int, day: str = "2026-07-28") -> WorkoutEntry:
-    return WorkoutEntry(id=1, entry_date=date.fromisoformat(day), exercise_id=exercise_id, sets=sets)
+    """A detached entry with `sets` plain working sets — no database involved."""
+    return WorkoutEntry(
+        id=1,
+        entry_date=date.fromisoformat(day),
+        exercise_id=exercise_id,
+        set_rows=tuple(
+            WorkoutSet(
+                id=f"set-{index}", set_index=index, weight=None, reps=None,
+                rpe=None, set_type="normal",
+            )
+            for index in range(1, sets + 1)
+        ),
+    )
+
+
+def logged(count: int) -> list[dict]:
+    """``count`` blank sets — shorthand for direct ``add_entry`` calls below.
+
+    ``add_entry`` takes the set array the API takes, not a bare count; this
+    mirrors the ``add`` fixture's int shorthand (``conftest.py``) for the tests
+    here that call the model function directly instead of going through the
+    client.
+    """
+    return [{} for _ in range(count)]
 
 
 def worked(summary: dict) -> set[str]:
@@ -92,6 +115,35 @@ def test_non_strength_movements_do_not_count_toward_volume():
     assert worked(summary) == set()
     assert summary["hamstrings"]["sets"] == 0
     assert summary["hamstrings"]["state"] == "rest"
+
+
+def test_an_all_warmup_entry_does_not_mark_worked_or_list_the_exercise():
+    """entry.sets excludes warm-ups, so an all-warm-up entry weighs zero.
+
+    Before Phase 4 this case couldn't happen — the flat ``sets`` column had a
+    ``CHECK (sets > 0)`` constraint, so a stored entry always contributed some
+    volume. A child-row entry can now be all warm-ups and still exist.
+    """
+    warmup_entry = WorkoutEntry(
+        id=1,
+        entry_date=date.fromisoformat("2026-07-28"),
+        exercise_id=BENCH,
+        set_rows=(
+            WorkoutSet(
+                id="set-1", set_index=1, weight=None, reps=None,
+                rpe=None, set_type="warmup",
+            ),
+            WorkoutSet(
+                id="set-2", set_index=2, weight=None, reps=None,
+                rpe=None, set_type="warmup",
+            ),
+        ),
+    )
+    summary = summarise_entries([warmup_entry])
+    assert summary["chest"]["worked"] is False
+    assert summary["chest"]["sets"] == 0.0
+    assert summary["chest"]["state"] == "rest"
+    assert summary["chest"]["exercises"] == []
 
 
 def test_sets_accumulate_across_entries_and_exercises():
@@ -163,8 +215,8 @@ def test_group_under_its_target_is_not_over():
 
 def test_weekly_summary_lists_groups_at_and_over_target(app):
     with app.app_context():
-        add_entry("2026-07-28", SITUP, 12)  # abs: small target 10 -> over
-        add_entry("2026-07-28", BENCH, 20)  # chest: large target 20 -> exactly at it
+        add_entry("2026-07-28", SITUP, logged(12))  # abs: small target 10 -> over
+        add_entry("2026-07-28", BENCH, logged(20))  # chest: large target 20 -> exactly at it
         summary = weekly_summary(date(2026, 7, 28))
 
     # Bench press gives triceps and shoulders 10 sets each at half weight:
@@ -184,9 +236,9 @@ def test_exercise_names_are_listed_without_duplicates():
 
 def test_weekly_summary_only_includes_the_target_week(app):
     with app.app_context():
-        add_entry("2026-07-27", SITUP, 5)  # Monday, in week
-        add_entry("2026-08-02", PULLUP, 2)  # Sunday, in week
-        add_entry("2026-08-03", BENCH, 3)  # next Monday, out of week
+        add_entry("2026-07-27", SITUP, logged(5))  # Monday, in week
+        add_entry("2026-08-02", PULLUP, logged(2))  # Sunday, in week
+        add_entry("2026-08-03", BENCH, logged(3))  # next Monday, out of week
 
         summary = weekly_summary(date(2026, 7, 28))
 
@@ -283,7 +335,7 @@ def test_untrained_groups_have_zero_shares_and_no_flags():
 
 def test_weekly_summary_lists_every_neglected_region(app):
     with app.app_context():
-        add_entry("2026-07-28", BENCH, 10)
+        add_entry("2026-07-28", BENCH, logged(10))
         summary = weekly_summary(date(2026, 7, 28))
 
     flagged = {(r["muscle"], r["region"]) for r in summary["regions_neglected"]}

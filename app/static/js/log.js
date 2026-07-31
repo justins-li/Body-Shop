@@ -26,16 +26,31 @@
 
 import {
   createEntry, deleteEntry, fetchEntriesForDate, fetchExerciseDetail,
-  fetchExercises, fetchRecentExercises,
+  fetchExercises, fetchLastSets, fetchRecentExercises,
 } from "./api.js";
 import {
-  $, formatDate, renderEntries, retargetLinks, syncUrlDate, toast,
+  $, formatDate, formatWeight, loadUnit, renderEntries, retargetLinks,
+  saveUnit, syncUrlDate, toKg, toast,
 } from "./ui.js";
+import { DEFAULT_BAR, describePlates } from "./plates.js";
+import { initRestTimer, startRestTimer } from "./timer.js";
 
 let selectedIso;
 let catalog = [];
 let byId = new Map();
 let selectedId = null;
+
+/** The reader's display unit. Weight is kilograms everywhere else. */
+let unit = loadUnit();
+
+/** Last session's sets for the chosen movement — placeholders, never values. */
+let previousSets = [];
+
+const SET_TYPES = ["normal", "warmup", "drop", "failure"];
+const SET_TYPE_LABELS = {
+  normal: "Working", warmup: "Warm-up", drop: "Drop", failure: "To failure",
+};
+const MAX_SETS = 100;
 
 /** muscle slug → its movements, pre-sorted. Built once, after the one fetch. */
 let byMuscle = new Map();
@@ -297,6 +312,11 @@ async function selectExercise(id) {
     row.setAttribute("aria-pressed", String(row.dataset.id === id));
   });
 
+  await Promise.all([renderChosenFor(id), loadPreviousSets(id)]);
+}
+
+/** Render the chosen movement's card, falling back to the light shape. */
+async function renderChosenFor(id) {
   try {
     renderChosen(await fetchExerciseDetail(id));
   } catch (err) {
@@ -305,6 +325,189 @@ async function selectExercise(id) {
     if (exercise) renderChosen({ ...exercise, images: [], instructions: [] });
     toast(err.message, "error");
   }
+}
+
+/**
+ * Prefill the grid from the last time this movement was logged.
+ *
+ * A failure here is not worth a toast — the grid still works, it just starts
+ * empty — so it degrades to no placeholders rather than an error.
+ */
+async function loadPreviousSets(id) {
+  const note = $("#prefill-note");
+  try {
+    const data = await fetchLastSets(id);
+    previousSets = data.sets || [];
+    note.hidden = !data.date;
+    if (data.date) {
+      note.textContent = `Greyed values are what you did on ${formatDate(data.date, {
+        month: "short", day: "numeric",
+      })}.`;
+    }
+  } catch {
+    previousSets = [];
+    note.hidden = true;
+  }
+  renderSetGrid();
+}
+
+// ---- The set grid -----------------------------------------------------
+
+/**
+ * Build one row of the grid.
+ *
+ * `previous` is last session's set at this position, if there was one. It is
+ * rendered as a **placeholder, not a value** — visible enough to aim at, absent
+ * enough that an untouched row saves as NULL rather than silently re-logging
+ * weights nobody lifted today.
+ */
+function setRow(index, previous) {
+  const row = document.createElement("div");
+  row.className = "set-row";
+  row.dataset.index = String(index);
+
+  const number = document.createElement("span");
+  number.className = "set-row-index";
+  number.textContent = String(index);
+
+  const weight = document.createElement("input");
+  weight.type = "number";
+  weight.step = "any";
+  weight.min = "0";
+  weight.className = "input input-sm bg-base-200 border hairline set-weight tabular-nums";
+  weight.setAttribute("aria-label", `Set ${index} weight in ${unit}`);
+  if (previous && previous.weight !== null && previous.weight !== undefined) {
+    weight.placeholder = formatWeight(previous.weight, unit);
+  }
+
+  const reps = document.createElement("input");
+  reps.type = "number";
+  reps.min = "1";
+  reps.max = "1000";
+  reps.className = "input input-sm bg-base-200 border hairline set-reps tabular-nums";
+  reps.setAttribute("aria-label", `Set ${index} reps`);
+  if (previous && previous.reps !== null && previous.reps !== undefined) {
+    reps.placeholder = String(previous.reps);
+  }
+
+  const rpe = document.createElement("input");
+  rpe.type = "number";
+  rpe.min = "1";
+  rpe.max = "10";
+  rpe.step = "0.5";
+  rpe.className = "input input-sm bg-base-200 border hairline set-rpe tabular-nums";
+  rpe.setAttribute("aria-label", `Set ${index} RPE`);
+
+  const type = document.createElement("select");
+  type.className = "select select-sm bg-base-200 border hairline set-type";
+  type.setAttribute("aria-label", `Set ${index} type`);
+  SET_TYPES.forEach((value) => type.append(new Option(SET_TYPE_LABELS[value], value)));
+  if (previous && previous.set_type) type.value = previous.set_type;
+  type.addEventListener("change", () => {
+    row.classList.toggle("is-warmup", type.value === "warmup");
+  });
+  row.classList.toggle("is-warmup", type.value === "warmup");
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "set-row-remove";
+  remove.textContent = "×";
+  remove.setAttribute("aria-label", `Remove set ${index}`);
+  remove.addEventListener("click", () => {
+    row.remove();
+    renumberRows();
+  });
+
+  // What to load to make the number just typed. Pure arithmetic on the value
+  // in the box — it spans the row beneath the inputs, and stays empty (and so
+  // `display: none`) until there is something to say.
+  const hint = document.createElement("span");
+  hint.className = "plate-hint";
+  const updateHint = () => {
+    hint.textContent = weight.value.trim() === ""
+      ? ""
+      : describePlates(Number(weight.value), DEFAULT_BAR[unit], unit);
+  };
+  weight.addEventListener("input", updateHint);
+
+  // Rest happens *between* sets, but the entry is one POST at the end — so
+  // leaving a row you have filled in is the earliest honest signal that a set
+  // just finished. `focusout` with the check below fires when focus leaves the
+  // row entirely, not when it moves weight -> reps inside it.
+  row.addEventListener("focusout", (event) => {
+    if (row.contains(event.relatedTarget)) return;
+    if (rowHasData(row)) startRestTimer();
+  });
+
+  row.append(number, weight, reps, rpe, type, remove, hint);
+  return row;
+}
+
+/** Keep the visible numbering contiguous after a removal. */
+function renumberRows() {
+  const rows = [...document.querySelectorAll("#set-grid .set-row")];
+  rows.forEach((row, position) => {
+    const index = position + 1;
+    row.dataset.index = String(index);
+    row.querySelector(".set-row-index").textContent = String(index);
+    row.querySelector(".set-row-remove")
+      .setAttribute("aria-label", `Remove set ${index}`);
+  });
+  // Never leave the grid empty: an entry needs at least one set.
+  if (!rows.length) addSetRow();
+}
+
+/** Append a row, seeded from last session's set at that position. */
+function addSetRow() {
+  const grid = $("#set-grid");
+  const index = grid.children.length + 1;
+  if (index > MAX_SETS) {
+    showError(`An entry can hold at most ${MAX_SETS} sets.`);
+    return;
+  }
+  // Reaching for another row means the one above it is done, so this is the
+  // other end of the same signal as the row's own `focusout`.
+  const last = grid.lastElementChild;
+  if (last && rowHasData(last)) startRestTimer();
+  grid.append(setRow(index, previousSets[index - 1]));
+}
+
+/** Whether a row records anything yet — a blank row is not a finished set. */
+function rowHasData(row) {
+  return ["set-weight", "set-reps", "set-rpe"].some(
+    (field) => row.querySelector(`.${field}`).value.trim() !== "",
+  );
+}
+
+/** Rebuild the grid from scratch, one row per remembered set (min 1). */
+function renderSetGrid() {
+  const grid = $("#set-grid");
+  grid.textContent = "";
+  const count = Math.max(1, Math.min(previousSets.length, MAX_SETS));
+  for (let index = 1; index <= count; index += 1) {
+    grid.append(setRow(index, previousSets[index - 1]));
+  }
+}
+
+/**
+ * Read the grid into the API's shape.
+ *
+ * A blank field becomes `null`, not `0` — "not recorded" and "zero" are
+ * different facts, and the schema keeps them apart. Weight is converted to
+ * kilograms here, which is the only unit the API accepts.
+ */
+function setGridValues() {
+  return [...document.querySelectorAll("#set-grid .set-row")].map((row) => {
+    const rawWeight = row.querySelector(".set-weight").value.trim();
+    const rawReps = row.querySelector(".set-reps").value.trim();
+    const rawRpe = row.querySelector(".set-rpe").value.trim();
+    return {
+      weight: rawWeight === "" ? null : toKg(Number(rawWeight), unit),
+      reps: rawReps === "" ? null : Number(rawReps),
+      rpe: rawRpe === "" ? null : Number(rawRpe),
+      set_type: row.querySelector(".set-type").value,
+    };
+  });
 }
 
 // ---- Panels ---------------------------------------------------------------
@@ -454,11 +657,11 @@ async function onSubmit(event) {
 
   const form = event.currentTarget;
   const data = new FormData(form);
-  const sets = Number(data.get("sets"));
+  const sets = setGridValues();
 
   if (!data.get("date")) return showError("Pick a date first.");
   if (!data.get("exercise_id")) return showError("Choose an exercise.");
-  if (!Number.isInteger(sets) || sets < 1) return showError("Sets must be a whole number of 1 or more.");
+  if (!sets.length) return showError("Add at least one set.");
 
   try {
     const entry = await createEntry({
@@ -466,22 +669,12 @@ async function onSubmit(event) {
       exercise_id: data.get("exercise_id"),
       sets,
     });
-    toast(`Logged ${entry.sets} × ${entry.exercise_name}.`);
-    await Promise.all([refreshDay(), loadRecent()]);
+    toast(`Logged ${entry.set_count} × ${entry.exercise_name}.`);
+    startRestTimer();
+    await Promise.all([refreshDay(), loadRecent(), loadPreviousSets(entry.exercise_id)]);
   } catch (err) {
     showError(err.message);
   }
-}
-
-/** Wire the +/− buttons around the sets input. */
-function initStepper() {
-  const input = $("#entry-sets");
-  document.querySelectorAll("[data-step]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const next = Number(input.value || 0) + Number(button.dataset.step);
-      input.value = String(Math.min(100, Math.max(1, next)));
-    });
-  });
 }
 
 /**
@@ -498,7 +691,21 @@ export async function initLog(initialIso) {
   document.querySelectorAll("[data-tab]").forEach((tab) => {
     tab.addEventListener("click", () => showTab(tab.dataset.tab));
   });
-  initStepper();
+
+  const unitSelect = $("#weight-unit");
+  unitSelect.value = unit;
+  unitSelect.addEventListener("change", () => {
+    unit = unitSelect.value;
+    saveUnit(unit);
+    // Rebuild so placeholders and aria-labels re-read in the new unit. Typed
+    // values are deliberately left alone: they are what the user just entered,
+    // and silently converting them under the cursor is worse than a mixed grid.
+    renderSetGrid();
+  });
+  $("#add-set").addEventListener("click", addSetRow);
+  initRestTimer($("#rest-timer"));
+  renderSetGrid();
+
   retargetLinks([$("#view-summary")], selectedIso);
 
   try {

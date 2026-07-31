@@ -52,6 +52,8 @@ why it is worth having before auth exists.
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
 | `app/views.py` | Page shells and template context. | Contain business rules. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
+| `app/static/js/timer.js` | The rest countdown on `/log`. Pure client state. | Touch the API or persist anything but its own duration. |
+| `app/static/js/plates.js` | Plate arithmetic — a pure function of weight and bar. | Store anything, or fetch. |
 | `app/static/css/input.css` | The design system: theme pair, tokens, and every hand-written rule. | — (`styles.css` beside it is generated; never edit it) |
 
 ## Styling
@@ -267,8 +269,9 @@ Counting secondaries in full would inflate every accessory group — pressing al
 would fill the triceps target twice over — and ignoring them entirely would
 under-report real work. Totals are therefore floats; `format_sets()` in
 `exercises.py` and `formatSets()` in `ui.js` render them (`12.5`, but `12` not
-`12.0`). The schema is untouched: `sets` is still an integer column storing whole
-sets performed, and only the per-muscle aggregate is fractional.
+`12.0`). Only the per-muscle aggregate is fractional — the count feeding it is a
+whole number of sets performed, now derived from the child rows in `workout_set`
+rather than read from a column (see *Data model*).
 
 The page answers "how much work did this muscle get", not "how many sets did I
 perform" — `total_sets` in the weekly payload still answers the latter.
@@ -324,13 +327,37 @@ before there was anything to overlay.
 
 ## Data model
 
-One table, defined in [`app/tables.py`](../app/tables.py). Entries are append-only
+Two tables, defined in [`app/tables.py`](../app/tables.py). Entries are append-only
 rows; there is no per-day "workout" record, which keeps logging a single insert
 and makes range queries trivial.
 
 ```sql
-workout_entry(id, entry_date DATE, exercise_id TEXT, sets INTEGER, created_at TIMESTAMPTZ)
+workout_entry(id, entry_date DATE, exercise_id TEXT, created_at TIMESTAMPTZ)
+workout_set(id UUID, entry_id -> workout_entry ON DELETE CASCADE,
+            set_index INTEGER, weight REAL, reps INTEGER, rpe REAL, set_type TEXT)
 ```
+
+`workout_entry.sets` was an integer column until Phase 4. It is now **derived**:
+`WorkoutEntry.sets` counts child rows whose `set_type` is not `warmup`. A
+denormalised cache was considered and rejected — a cache that can disagree with
+its source is the bug this app's single-source-of-truth design exists to avoid.
+Keeping it an `int` property is what let `services/summary.py` survive the change
+essentially untouched.
+
+**Warm-ups are logged but never counted.** They are excluded from `sets`, from the
+weekly map and from the calendar's per-day totals; counting them would inflate the
+body map the moment anyone logged properly.
+
+**`weight` is kilograms, always** — at rest and over the wire. The kg/lb choice is
+a display preference in `localStorage`, converted only in
+[`ui.js`](../app/static/js/ui.js), so Phase 7's charts aggregate over one unit.
+`weight`, `reps` and `rpe` are nullable: "not recorded" and "zero" are different
+facts, and revision `0004`'s backfill produces rows that know a set happened and
+nothing else.
+
+Set ids are **UUIDs generated server-side**, so Phase 10's offline queue becomes an
+API change rather than a migration. They do not round-trip as strings: SQLAlchemy
+stores 32-character hex and returns the hyphenated 36-character form.
 
 `entry_date` was TEXT until Phase 3. On SQLite the stored form is still
 `'YYYY-MM-DD'` — SQLite has no date type, so a `DATE` column is a declaration over

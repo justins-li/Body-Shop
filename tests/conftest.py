@@ -51,7 +51,9 @@ def app(tmp_path, request):
             engine = get_engine(application)
             with engine.begin() as connection:
                 connection.execute(
-                    sa.text("TRUNCATE TABLE workout_entry RESTART IDENTITY CASCADE")
+                    sa.text(
+                        "TRUNCATE TABLE workout_set, workout_entry RESTART IDENTITY CASCADE"
+                    )
                 )
             yield application
         return
@@ -73,13 +75,20 @@ def client(app):
 
 @pytest.fixture
 def add(client):
-    """Helper that POSTs an entry and returns the parsed JSON response."""
+    """POST an entry and return the raw response.
 
-    def _add(date: str, exercise_id: str, sets: int):
-        response = client.post(
+    ``sets`` may be a list of set dicts, or an integer as shorthand for that
+    many sets with nothing recorded. The shorthand is **test scaffolding only**
+    — the API itself takes the array and nothing else — and it exists so the
+    many tests that only care about a count stay readable.
+    """
+
+    def _add(date: str, exercise_id: str, sets):
+        if isinstance(sets, int):
+            sets = [{} for _ in range(sets)]
+        return client.post(
             "/api/entries",
             json={"date": date, "exercise_id": exercise_id, "sets": sets},
         )
-        return response
 
     return _add

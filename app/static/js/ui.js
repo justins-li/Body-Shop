@@ -47,6 +47,72 @@ export function formatSets(value) {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
+/**
+ * Weight is stored in kilograms and displayed in whichever unit the reader
+ * picked. Conversion happens only here, at the UI boundary — the column, the
+ * API and every Phase 7 aggregate are kilograms throughout.
+ */
+export const WEIGHT_UNITS = ["kg", "lb"];
+
+const LB_PER_KG = 2.2046226218;
+const UNIT_KEY = "bodyshop:weight-unit";
+
+/** The reader's chosen unit, defaulting to kg. */
+export function loadUnit() {
+  const stored = localStorage.getItem(UNIT_KEY);
+  return WEIGHT_UNITS.includes(stored) ? stored : "kg";
+}
+
+/** Remember the reader's unit choice. Ignores anything not in `WEIGHT_UNITS`. */
+export function saveUnit(unit) {
+  if (WEIGHT_UNITS.includes(unit)) localStorage.setItem(UNIT_KEY, unit);
+}
+
+/** A displayed value in `unit` → kilograms, for sending to the API. */
+export function toKg(value, unit) {
+  return unit === "lb" ? value / LB_PER_KG : value;
+}
+
+/** Kilograms → a value in `unit`, for display. */
+export function fromKg(value, unit) {
+  return unit === "lb" ? value * LB_PER_KG : value;
+}
+
+/**
+ * Render a weight for reading: `60`, `62.5`, and `""` when it was not recorded.
+ *
+ * Rounds to one decimal like `formatSets`, which is also what makes the lb
+ * round trip read cleanly — 135 lb stored as 61.23kg comes back as `135`, not
+ * `134.99998`.
+ */
+export function formatWeight(kg, unit = loadUnit()) {
+  if (kg === null || kg === undefined) return "";
+  const value = Math.round(fromKg(kg, unit) * 10) / 10;
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+/**
+ * One set as a short line: `100kg × 5 @8.5`, degrading as fields are missing.
+ * Returns `""` for a set that recorded nothing, so callers can skip it.
+ */
+export function describeSet(set, unit = loadUnit()) {
+  const parts = [];
+  if (set.weight !== null && set.weight !== undefined) {
+    parts.push(`${formatWeight(set.weight, unit)}${unit}`);
+  }
+  if (set.reps !== null && set.reps !== undefined) {
+    parts.push(parts.length ? `× ${set.reps}` : `${set.reps} reps`);
+  }
+  if (set.rpe !== null && set.rpe !== undefined) parts.push(`@${set.rpe}`);
+  // Say which sets the count left out. Without this a warm-up reads as a
+  // working set: an entry of one working set plus one warm-up shows "1 set"
+  // above two identical lines, which looks like a bug in the count.
+  if (parts.length && set.set_type && set.set_type !== "normal") {
+    parts.push(`(${set.set_type})`);
+  }
+  return parts.join(" ");
+}
+
 /** Update `?date=` in the address bar without reloading the page. */
 export function syncUrlDate(isoDate) {
   const url = new URL(window.location.href);
@@ -119,9 +185,19 @@ export function renderEntries(container, entries, opts = {}) {
 
     main.append(name, meta);
 
+    // A line of "100kg × 5" per set, when there is anything to say. Entries
+    // logged as a bare count stay a single line, exactly as before.
+    const detail = entry.sets.map((set) => describeSet(set)).filter(Boolean);
+    if (detail.length) {
+      const performed = document.createElement("div");
+      performed.className = "entry-performed";
+      performed.textContent = detail.join(" · ");
+      main.append(performed);
+    }
+
     const sets = document.createElement("span");
     sets.className = "entry-sets";
-    sets.textContent = `${entry.sets} ${entry.sets === 1 ? "set" : "sets"}`;
+    sets.textContent = `${entry.set_count} ${entry.set_count === 1 ? "set" : "sets"}`;
 
     row.append(main, sets);
 
@@ -130,7 +206,7 @@ export function renderEntries(container, entries, opts = {}) {
       remove.type = "button";
       remove.className = "entry-delete";
       remove.textContent = "×";
-      remove.setAttribute("aria-label", `Delete ${entry.sets} sets of ${entry.exercise_name}`);
+      remove.setAttribute("aria-label", `Delete ${entry.set_count} sets of ${entry.exercise_name}`);
       remove.addEventListener("click", () => onDelete(entry.id));
       row.append(remove);
     }

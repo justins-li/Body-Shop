@@ -15,6 +15,7 @@ from .models import (
     ValidationError,
     add_entry,
     delete_entry,
+    last_sets_for_exercise,
     list_entries,
     parse_date,
     recent_exercise_usage,
@@ -90,6 +91,26 @@ def get_exercise_detail(exercise_id: str):
     return jsonify({"exercise": exercise.to_detail_dict(_image_base())})
 
 
+@bp.get("/exercises/<exercise_id>/last-sets")
+def get_last_sets(exercise_id: str):
+    """The sets from the most recent session of this movement.
+
+    Backs the ``/log`` grid's prefill. Returns ``{"date": null, "sets": []}``
+    when the movement has never been logged, which the page renders as empty
+    placeholders rather than an error.
+    """
+    if get_exercise(exercise_id) is None:
+        return jsonify({"error": f"Unknown exercise: {exercise_id!r}."}), 404
+
+    day, sets = last_sets_for_exercise(exercise_id)
+    return jsonify(
+        {
+            "date": day.isoformat() if day else None,
+            "sets": [row.to_dict() for row in sets],
+        }
+    )
+
+
 @bp.get("/entries")
 def get_entries():
     """List entries, optionally filtered by ``date`` or ``start``/``end``."""
@@ -106,8 +127,17 @@ def get_entries():
 
 @bp.post("/entries")
 def create_entry():
-    """Create a workout entry from a JSON or form-encoded body."""
-    payload = request.get_json(silent=True) or request.form
+    """Create a workout entry and its sets from a JSON body.
+
+    ``sets`` is an **array of set objects**, not a count. Three bare sets are
+    ``[{}, {}, {}]``. The integer form Phase 3 accepted is gone: there were no
+    external consumers before Phase 6 deploys, and this was the last cheap
+    moment to make the break.
+    """
+    payload = request.get_json(silent=True)
+    if payload is None:
+        raise ValidationError("A JSON body is required.")
+
     entry = add_entry(
         payload.get("date"),
         payload.get("exercise_id"),
