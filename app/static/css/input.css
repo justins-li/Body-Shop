@@ -530,51 +530,124 @@
     }
   }
 
-  /* -- Calendar day cells (state toggled by calendar.js) ---------------- */
+  /* -- Month stepper keys ------------------------------------------------ */
+  .step-key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding-inline: 0.65rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 18%, transparent);
+    border-radius: var(--radius-field);
+    background: none;
+    color: var(--color-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .step-key:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+    color: var(--color-base-content);
+  }
+
+  /* -- Calendar day cells (state toggled by calendar.js) ----------------
+     Square-cornered and gapless, so the month reads as one ruled sheet rather
+     than 35 floating tiles. */
+  .month-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 2px;
+  }
+
   .day-cell {
     position: relative;
     aspect-ratio: 1 / 1;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 0.3rem;
+    justify-content: flex-start;
+    padding-top: 0.4rem;
     border: 1px solid color-mix(in srgb, var(--color-base-content) 10%, transparent);
-    border-radius: 0.85rem;
+    border-radius: 2px;
     background-color: var(--color-base-100);
-    font-size: 0.9rem;
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
+    font-size: 0.8125rem;
+    color: var(--color-secondary);
     cursor: pointer;
+    overflow: hidden;
     transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
   }
   .day-cell:hover {
     border-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+    color: var(--color-base-content);
   }
   .day-cell.is-outside {
-    opacity: 0.34;
+    opacity: 0.3;
+  }
+  .day-cell.has-entries {
+    color: var(--color-base-content);
   }
   .day-cell.is-today {
-    border-color: var(--color-base-content);
-    font-weight: 700;
+    border-color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
+    color: var(--color-base-content);
   }
+  /* Selection is a brick outline, not a brick fill — the accent never fills. */
   .day-cell.is-selected {
-    background-color: var(--color-primary);
     border-color: var(--color-primary);
-    color: var(--color-primary-content);
-    font-weight: 700;
+    box-shadow: inset 0 0 0 1px var(--color-primary);
+    color: var(--color-base-content);
   }
 
-  .day-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 9999px;
-    background-color: transparent;
+  /* The day's volume, as a bar rising from the bottom edge. `--volume` is 0–1
+     against a fixed reference set in calendar.js, so the same week is drawn the
+     same height whatever else the month contained.
+
+     Deliberately bone rather than the volume ramp: this is a count of sets
+     performed, not coverage graded against a target, and borrowing the ramp's
+     greens here would imply a judgement the calendar is not making. */
+  .day-bar {
+    --volume: 0;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 0;
+    height: calc(var(--volume) * 58%);
+    background-color: color-mix(in srgb, var(--color-base-content) 26%, transparent);
+    transition: height 0.25s ease;
   }
-  .day-cell.has-entries .day-dot {
-    background-color: var(--color-train-max);
+  .day-cell.is-selected .day-bar {
+    background-color: color-mix(in srgb, var(--color-primary) 55%, transparent);
   }
-  .day-cell.is-selected.has-entries .day-dot {
-    background-color: var(--color-primary-content);
+  /* An absolutely-positioned sibling paints over static inline content, so the
+     date needs its own stacking context to stay legible on a tall bar. */
+  .day-num {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* The legend's miniature of the same mark. */
+  .day-key {
+    position: relative;
+    display: inline-block;
+    width: 1.1rem;
+    height: 1.1rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+    border-radius: 2px;
+  }
+  .day-key-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 55%;
+    background-color: color-mix(in srgb, var(--color-base-content) 26%, transparent);
   }
 
   /* -- Toast (visibility toggled by ui.js) ------------------------------
@@ -978,14 +1051,23 @@
     }
   }
 
-  /* -- Entry rows (built by ui.js) -------------------------------------- */
+  /* -- Entry rows (built by ui.js) --------------------------------------
+     A logged movement, on three pages. Ruled rows on the ground rather than
+     bordered tiles: a day's work should read as a list you can scan down, and
+     at six entries a stack of outlined boxes is mostly outline. */
   .entry {
     display: flex;
-    align-items: center;
+    /* Baseline, not centre: a five-set entry runs to three lines of detail, and
+       centring leaves the set count stranded beside the middle of them. */
+    align-items: baseline;
     gap: 0.85rem;
-    padding: 0.75rem 0.95rem;
-    border: 1px solid color-mix(in srgb, var(--color-base-content) 10%, transparent);
-    border-radius: 0.85rem;
+    padding: 0.7rem 0.75rem;
+    border-left: 2px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    background-color: color-mix(in srgb, var(--color-base-100) 60%, transparent);
+    transition: border-color 0.15s ease;
+  }
+  .entry:hover {
+    border-left-color: var(--color-primary);
   }
   .entry-main {
     flex: 1;
@@ -993,27 +1075,34 @@
   }
   .entry-name {
     font-weight: 600;
-    letter-spacing: -0.015em;
+    font-size: 0.9375rem;
   }
   .entry-meta {
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     color: var(--color-secondary);
+    margin-top: 0.1rem;
   }
   .entry-sets {
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
-    font-weight: 700;
-    font-stretch: 112%;
+    font-size: 0.8125rem;
+    color: var(--color-secondary);
     white-space: nowrap;
   }
   .entry-delete {
+    display: grid;
+    place-items: center;
+    align-self: center;
+    /* 44pt: deleting is destructive and this sits next to a scrolling list. */
+    min-width: 2.75rem;
+    min-height: 2.75rem;
     border: 0;
     background: transparent;
-    color: var(--color-secondary);
+    color: color-mix(in srgb, var(--color-base-content) 40%, transparent);
     cursor: pointer;
     font-size: 1.1rem;
     line-height: 1;
-    padding: 0.25rem 0.4rem;
-    border-radius: 6px;
+    border-radius: var(--radius-field);
   }
   .entry-delete:hover {
     color: var(--color-error);
@@ -1022,8 +1111,8 @@
 
   .empty {
     padding: 1.15rem;
-    border: 1px dashed color-mix(in srgb, var(--color-base-content) 22%, transparent);
-    border-radius: 0.85rem;
+    border: 1px dashed color-mix(in srgb, var(--color-base-content) 18%, transparent);
+    border-radius: 2px;
     text-align: center;
     color: var(--color-secondary);
     font-size: 0.875rem;
@@ -1159,9 +1248,10 @@
   /* ---- Sets on an entry row -------------------------------------------- */
 
   .entry-performed {
-    font-size: 0.75rem;
-    color: var(--color-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
     font-variant-numeric: tabular-nums;
-    margin-top: 0.125rem;
+    margin-top: 0.3rem;
   }
 }
