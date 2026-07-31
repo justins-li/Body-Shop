@@ -26,41 +26,74 @@
   "hamstrings": ("trained", 0.20),
 } %}
 
+{#
+  The five ways into the product, as chapters of a logbook. Numbered because a
+  logbook is read in order and because the sequence is real — you cannot read a
+  week you have not logged into. "How to use" points at the explainer further
+  down this page; the rest are the app's four screens.
+#}
+{% set chapters = [
+  ("01", "How to use", "Purpose, and the idea behind the map", "#how-heading", none),
+  ("02", "Calendar",   "Every day you trained, at a glance",    none, "views.calendar_page"),
+  ("03", "Log workout","Sets, weight, reps and RPE",            none, "views.log_page"),
+  ("04", "Weekly summary", "Coverage across twelve groups",     none, "views.summary_page"),
+  ("05", "Graph",      "The week drawn as a training map",      none, "views.progress_page"),
+] %}
+
 {% block content %}
-{# ---- Hero -------------------------------------------------------------
-     The map is the thesis, so it opens the page rather than illustrating it.
-     On a phone the headline leads and the figures follow immediately; from
-     `lg:` the two sit side by side. #}
-<section class="wrap pt-12 pb-16 lg:pt-20 lg:pb-24">
-  <div class="grid gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:items-center lg:gap-16">
-    <div>
-      <p class="type-label text-secondary mb-6">Workout logging · Muscle coverage</p>
+{# ---- Masthead ---------------------------------------------------------
+     Three columns on a single screen: placeholders on the left, the specimen
+     and the wordmark down the middle, the chapter index on the right. The
+     rails collapse under the centre below `lg:` — mobile refinement is a
+     separate pass. #}
+<section class="home-masthead wrap" aria-labelledby="home-title">
 
-      <h1 class="type-display text-[clamp(3rem,13vw,5.5rem)] mb-6">
-        Every set.<br>Every muscle.<br>Every week.
-      </h1>
-
-      <p class="type-lede mb-9">
-        Log the sets you finished, with the weight and reps if you want them.
-        Body Shop lights each muscle group as it works toward its weekly target,
-        then shifts it to red for every set past it. The point is coverage:
-        nothing skipped long enough to become a weak link, nothing hammered
-        while its neighbours go untouched.
-      </p>
-
-      <div class="flex flex-wrap items-center gap-3">
-        <a class="btn-brick" href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}">
-          Log a workout
-        </a>
-        <a class="btn-ghost-line" href="{{ url_for('views.summary_page', date=selected_date.isoformat()) }}">
-          See this week
-        </a>
-      </div>
+  {# ---- Left rail: what is coming ------------------------------------- #}
+  <aside class="home-rail home-rail-left" aria-labelledby="updates-heading">
+    <div class="home-rail-head">
+      <p class="type-label" id="updates-heading">Updates</p>
     </div>
+
+    {% for heading, note in [
+      ("Marketing", "Announcements and where to find us"),
+      ("Feature updates", "What shipped, and what is next"),
+    ] %}
+      <article class="home-stub">
+        <p class="type-label text-secondary mb-2">{{ heading }}</p>
+        <p class="home-stub-line type-display">More to come!</p>
+        <p class="text-xs text-secondary m-0 leading-relaxed">{{ note }}</p>
+      </article>
+    {% endfor %}
+  </aside>
+
+  {# ---- Centre: the wordmark and the specimen ------------------------- #}
+  <div class="home-centre">
+    {#
+      Rotating kicker. CSS-only — `/` is the one page with no JS module (see
+      ARCHITECTURE.md), and a text cycler is not the reason to break that. The
+      list is stacked in one grid cell and cross-faded; `prefers-reduced-motion`
+      drops it to the first line, which reads correctly on its own.
+    #}
+    <p class="home-kicker type-label" aria-label="Body Shop is a workout logbook, a precise trainer, a weekly coverage map, and a record of every set">
+      <span class="home-rotator" aria-hidden="true">
+        <span>workout logbook</span>
+        <span>your precise trainer</span>
+        <span>weekly coverage map</span>
+        <span>a shop for the body</span>
+        <span>every set, on the record</span>
+      </span>
+    </p>
+
+    <h1 class="home-title type-display" id="home-title">Body Shop</h1>
+
+    <p class="home-tagline">
+      Body Shop logs the sets you finished and lights each muscle group as it
+      works toward its weekly target — so a week reads as coverage, not a list.
+    </p>
 
     {# Illustrative week, not live data. `aria-hidden` because the figures' own
        titles would otherwise announce a fictional workout to a screen reader. #}
-    <figure class="specimen m-0" aria-hidden="true">
+    <figure class="specimen home-specimen m-0" aria-hidden="true">
       <figcaption class="specimen-head">
         <span class="type-label">A week in progress</span>
         <span class="type-label text-secondary">Illustrative</span>
@@ -86,7 +119,49 @@
         {% endfor %}
       </dl>
     </figure>
+
+    <div class="flex flex-wrap items-center justify-center gap-3 mt-9">
+      <a class="btn-brick" href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}">
+        Log a workout
+      </a>
+      <a class="btn-ghost-line" href="{{ url_for('views.summary_page', date=selected_date.isoformat()) }}">
+        See this week
+      </a>
+    </div>
+
+    {# Placeholders until the accounts exist. Buttons rather than links, and
+       `disabled`, so nothing here is a target that goes nowhere. #}
+    <div class="home-follow">
+      <span class="type-label text-secondary">Follow:</span>
+      {% for slot in range(4) %}
+        <button type="button" class="home-follow-slot" disabled
+                aria-label="Social link — coming soon"></button>
+      {% endfor %}
+    </div>
   </div>
+
+  {# ---- Right rail: the chapter index --------------------------------- #}
+  <nav class="home-rail home-rail-right" aria-labelledby="chapters-heading">
+    <div class="home-rail-head">
+      <p class="type-label" id="chapters-heading">Contents</p>
+    </div>
+
+    <ol class="home-chapters list-none m-0 p-0">
+      {% for number, title, blurb, anchor, endpoint in chapters %}
+        <li>
+          <a class="home-chapter"
+             href="{{ anchor if anchor else url_for(endpoint, date=selected_date.isoformat()) }}">
+            <span class="home-chapter-index type-data" aria-hidden="true">{{ number }}</span>
+            <span class="home-chapter-body">
+              <span class="home-chapter-title type-display">{{ title }}</span>
+              <span class="home-chapter-blurb">{{ blurb }}</span>
+            </span>
+            <span class="home-chapter-mark type-label" aria-hidden="true">Chp.</span>
+          </a>
+        </li>
+      {% endfor %}
+    </ol>
+  </nav>
 </section>
 
 {# ---- How it works ----------------------------------------------------- #}

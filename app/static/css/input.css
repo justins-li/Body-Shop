@@ -580,6 +580,188 @@
     border-left: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
   }
 
+  /* -- Home masthead ------------------------------------------------------
+     A single screen in three columns: updates on the left, the wordmark and
+     the specimen down the middle, the contents index on the right. The rails
+     are separated by hairline rules rather than boxes — the same rule the rest
+     of the app follows, which is what stops this reading as three cards.
+
+     Below `lg` the columns stack (centre first, so the specimen still leads).
+     A proper mobile pass comes later. */
+  .home-masthead {
+    display: grid;
+    gap: 2.5rem;
+    padding-block: 2.5rem 4rem;
+  }
+  @media (width >= 64rem) {
+    .home-masthead {
+      grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) minmax(0, 17rem);
+      gap: 0;
+      align-items: start;
+      padding-block: 3.5rem 5rem;
+    }
+    .home-rail-left {
+      padding-right: 2.25rem;
+      border-right: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
+    }
+    .home-rail-right {
+      padding-left: 2.25rem;
+      border-left: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
+    }
+    .home-centre {
+      padding-inline: 3rem;
+    }
+  }
+
+  .home-rail {
+    display: grid;
+    gap: 1.5rem;
+    align-content: start;
+  }
+  .home-rail-head {
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+  }
+  /* Order matters below `lg`, where the grid is one column: the centre leads. */
+  .home-centre { order: -1; }
+  @media (width >= 64rem) {
+    .home-centre { order: 0; }
+  }
+
+  /* Placeholder cards for marketing and feature news. Deliberately quiet — a
+     stub should not out-shout the product it sits beside. */
+  .home-stub {
+    padding-bottom: 1.35rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 10%, transparent);
+  }
+  .home-stub-line {
+    font-size: 1.5rem;
+    line-height: 1.05;
+    margin: 0 0 0.5rem;
+    color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+
+  /* -- Centre column ---------------------------------------------------- */
+  .home-centre {
+    text-align: center;
+  }
+  .home-kicker {
+    display: block;
+    height: 1.4em;
+    margin-bottom: 0.9rem;
+    color: var(--color-secondary);
+  }
+  /* Every line occupies the same grid cell, so the block does not reflow as it
+     cycles and nothing below it moves. */
+  .home-rotator {
+    display: inline-grid;
+    vertical-align: top;
+  }
+  .home-rotator > span {
+    grid-area: 1 / 1;
+    opacity: 0;
+    animation: home-rotate 20s infinite;
+  }
+  .home-rotator > span:nth-child(2) { animation-delay: 4s; }
+  .home-rotator > span:nth-child(3) { animation-delay: 8s; }
+  .home-rotator > span:nth-child(4) { animation-delay: 12s; }
+  .home-rotator > span:nth-child(5) { animation-delay: 16s; }
+
+  @keyframes home-rotate {
+    0%, 2%   { opacity: 0; }
+    4%, 18%  { opacity: 1; }
+    20%, 100% { opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .home-rotator > span { animation: none; opacity: 0; }
+    .home-rotator > span:first-child { opacity: 1; }
+  }
+
+  .home-title {
+    font-size: clamp(3.25rem, 11vw, 6.5rem);
+    line-height: 0.92;
+    margin: 0 0 1.1rem;
+  }
+  .home-tagline {
+    max-width: 44ch;
+    margin: 0 auto 2.25rem;
+    color: var(--color-secondary);
+    line-height: 1.6;
+  }
+  .home-specimen {
+    max-width: 30rem;
+    margin-inline: auto;
+    text-align: left;
+  }
+
+  /* Empty until the accounts exist. Square, hairline, and inert: a slot that
+     is obviously a slot reads better than an icon that goes nowhere. */
+  .home-follow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: 2.75rem;
+    padding-top: 1.75rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+  }
+  .home-follow-slot {
+    width: 2.4rem;
+    height: 2.4rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+    background-color: transparent;
+    cursor: default;
+  }
+
+  /* -- Contents index ---------------------------------------------------
+     The logbook metaphor: numbered chapters, each a hairline row that lifts
+     on hover. The number is the only mono figure, so the column reads as an
+     index rather than a menu. */
+  .home-chapters {
+    display: grid;
+  }
+  .home-chapter {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 0.85rem;
+    /* 44pt target: this is the primary navigation on the landing page. */
+    min-height: 2.75rem;
+    padding: 0.85rem 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 10%, transparent);
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s ease, padding-left 0.15s ease;
+  }
+  .home-chapter:hover,
+  .home-chapter:focus-visible {
+    border-bottom-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+    padding-left: 0.35rem;
+  }
+  .home-chapter-index {
+    font-size: 0.72rem;
+    color: var(--color-secondary);
+  }
+  .home-chapter-body {
+    display: grid;
+    gap: 0.2rem;
+  }
+  .home-chapter-title {
+    font-size: 1.35rem;
+    line-height: 1.05;
+  }
+  .home-chapter-blurb {
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--color-secondary);
+  }
+  .home-chapter-mark {
+    font-size: 0.62rem;
+    color: color-mix(in srgb, var(--color-base-content) 35%, transparent);
+  }
+
   /* -- Home: the three steps -------------------------------------------
      A real sequence, so the numbers carry information. They are set in the
      data voice and kept in brick, so they index the steps without competing

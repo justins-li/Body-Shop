@@ -10,7 +10,9 @@ from app.exercises import DEFAULT_MUSCLE_SCHEME, MUSCLE_GROUPS, MUSCLE_SCHEMES
 @pytest.mark.parametrize(
     ("path", "marker"),
     [
-        ("/", b"Every set."),
+        # The masthead's own class: the landing page's headline is its wordmark,
+        # which appears in every page's header, so structure is the stable marker.
+        ("/", b"home-masthead"),
         ("/calendar", b"What you trained"),
         ("/log", b"New entry"),
         ("/summary", b"Sets by split"),
