@@ -46,7 +46,10 @@
 
       {# Short labels so the three keys stay on one line at phone width — the
          lede above already explains the ramp in full. #}
-      <p class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5
+      {# `justify-start`, not `justify-between`: three keys do not fit on one
+         line at phone width, and spreading them left two on the first row and
+         one stranded on the second. #}
+      <p class="flex flex-wrap items-center gap-x-5 gap-y-2.5
                 border-t hairline mt-6 pt-5 m-0 type-label text-secondary">
         <span class="flex items-center gap-2"><span class="swatch swatch-rest"></span> untrained</span>
         <span class="flex items-center gap-2"><span class="swatch swatch-scale swatch-scale-train"></span> to target</span>

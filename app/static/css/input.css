@@ -119,7 +119,14 @@
      step. Renamed from `--color-train-light/dark`, because after the
      re-derivation "dark" would have named the bright end. */
   --color-rest: #242b36;
-  --color-train-min: #2c5a42;
+  /* `train-min` is lifted off the darkest green it could be. At #2c5a42 a group
+     with one set sat 1.80:1 against untrained, so "barely trained" and "not
+     trained at all" looked the same — which defeats the one thing this map is
+     for. #428262 puts that at 3.12:1 and 4.18:1 against the ground, both over
+     the 3:1 floor for a graphic that carries meaning. It costs some of the
+     green ramp's internal range, and spotting a gap is worth more than
+     resolving the difference between four sets and six. */
+  --color-train-min: #428262;
   --color-train-max: #5fd98a;
   --color-over-min: #f2743f;
   --color-over-max: #f5391f;
@@ -338,8 +345,11 @@
   .field::placeholder {
     color: color-mix(in srgb, var(--color-base-content) 34%, transparent);
   }
+  /* `field-sm` is a *typographic* variant — tighter padding and a smaller face
+     — not a smaller tap target. It keeps the 2.75rem floor, because most of
+     these are the set grid's inputs and that is the one surface someone uses
+     with a barbell in the other hand. */
   .field-sm {
-    min-height: 2.25rem;
     padding: 0.3rem 0.5rem;
     font-size: 0.8125rem;
   }
@@ -395,6 +405,8 @@
   .link-arrow {
     display: inline-flex;
     align-items: center;
+    /* Text-height alone left an 11px tap target. */
+    min-height: 2.75rem;
     gap: 0.4rem;
     color: var(--color-base-content);
     text-decoration: none;
@@ -428,6 +440,17 @@
     text-transform: uppercase;
     letter-spacing: 0.01em;
     line-height: 1;
+  }
+
+  /* The wordmark is the only route home on a phone, so the link around it has
+     to be a real target rather than the height of its own text. */
+  .wordmark-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    text-decoration: none;
+    color: var(--color-base-content);
   }
 
   /* Desktop nav link. Active is a brick underline rather than a filled pill —
@@ -862,9 +885,17 @@
     fill: color-mix(in srgb, var(--color-train-max) calc(var(--level) * 100%), var(--color-train-min));
     stroke: color-mix(in srgb, var(--color-train-max) 45%, transparent);
   }
+  /* Crossing the target is a green-to-red hue flip at close to equal
+     brightness, which is the clearest possible signal to most eyes and close to
+     no signal at all under red-green colour blindness — the two ramps sit
+     1.6:1 apart in luminance. Elsewhere the app says it in words (the row reads
+     "26 / 10", the readout says "1 over"); the map is the one colour-only
+     surface, so an over-target region also takes a heavier bone outline. That
+     is a shape cue, and it does not depend on seeing the hue at all. */
   .muscle.is-over {
     fill: color-mix(in srgb, var(--color-over-max) calc(var(--level) * 100%), var(--color-over-min));
-    stroke: color-mix(in srgb, var(--color-over-max) 55%, transparent);
+    stroke: color-mix(in srgb, var(--color-base-content) 85%, transparent);
+    stroke-width: 2.5;
   }
 
   /* -- Per-muscle breakdown rows ---------------------------------------- */
@@ -1106,7 +1137,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 2.25rem;
+    min-height: 2.75rem;
     padding: 0.4rem 0.85rem;
     border: 1px solid color-mix(in srgb, var(--color-base-content) 14%, transparent);
     border-radius: var(--radius-field);
@@ -1134,7 +1165,7 @@
   /* Search is the same tab, reduced to its glyph: recent and browse are the
      way in, and search is the fallback for a name you already know. */
   .picker-tab-icon {
-    width: 2.25rem;
+    width: 2.75rem;
     padding: 0;
   }
   .picker-tab-icon svg {

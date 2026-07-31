@@ -167,6 +167,16 @@ function draw() {
     } else {
       context.fillStyle = nodeColour(node);
       context.fill();
+
+      // The same redundant cue the body map carries: past-target is a hue flip
+      // at nearly equal brightness, so it also takes a bone outline and does
+      // not rely on telling green from red.
+      const state = graph.coverage[node.primary_muscle];
+      if (state && state.state === "over") {
+        context.strokeStyle = bone;
+        context.lineWidth = 1.75;
+        context.stroke();
+      }
     }
 
     if (node.exercise_id === selectedId) {
