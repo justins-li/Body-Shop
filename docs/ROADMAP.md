@@ -39,8 +39,20 @@ Fix logging edge cases that show the wrong equipment assumption in the workout l
 
 - Cable exercises should not be reported as a 45 lb bar plus added weight.
 - Dumbbells and cables need their own logging/weight wording.
+- For body-only exercises, add a checkbox that lets the user enter any extra weight
+  strapped to their body instead of treating it like a free-weight lift.
 - Add a button that duplicates the set you just entered to make repeat logging faster.
 - Keep this scoped to correction work, not a broader logging redesign.
+
+### 2.7. Phase 6.7 — Altering graph
+
+Rethink the graph so it keeps becoming more useful as training history accumulates.
+
+- Lift the restriction that the graph only appears after 15 unique workouts.
+- Explore a personal-best view that grows denser over time, such as a heat map or
+  node-based graph where larger nodes indicate heavier lifts.
+- Prefer a visual that gets more detailed and more filled in as the user logs more
+  workouts, instead of a static thresholded chart.
 
 ### 3. Phase 7 — Stack decision and deployment
 
@@ -106,7 +118,8 @@ The live chain is simple:
 graph TD
   P5[Phase 5: Secure user login] --> P6[Phase 6: Trainer setups]
   P6 --> P65[Phase 6.5: Logging corrections]
-  P65 --> P7[Phase 7: Stack decision and deployment]
+  P65 --> P67[Phase 6.7: Altering graph]
+  P67 --> P7[Phase 7: Stack decision and deployment]
   P7 --> P8[Phase 8: Training essentials]
   P5 --> P9[Phase 9: AI custom exercises]
   P7 --> P9
@@ -116,5 +129,6 @@ graph TD
 
 Phase 5 gates ownership and account deletion. Phase 6 establishes the trainer presets
 and the weekly-volume sizing model. Phase 6.5 covers logging corrections around cable
-and dumbbell weight display. Phase 7 gates launch. Phase 8 is the competitive parity
-floor. Phase 9 depends on actual usage. Phase 10 depends on all of the above.
+and dumbbell weight display. Phase 6.7 rethinks the graph so it fills out as the log
+grows. Phase 7 gates launch. Phase 8 is the competitive parity floor. Phase 9 depends on
+actual usage. Phase 10 depends on all of the above.
