@@ -125,10 +125,17 @@ def test_summary_page_offers_every_grouping_scheme(client):
 
 
 def test_summary_page_renders_each_muscle_row_once_whatever_the_scheme(client):
-    """Schemes re-head the same twelve rows; duplicating them would double volume."""
+    """Schemes re-head the same twelve rows; duplicating them would double volume.
+
+    Matched on the row's structure rather than its full class attribute: this
+    is an assertion about how many rows exist, and pinning the utility classes
+    beside them made a restyle look like a correctness failure.
+    """
     body = client.get("/summary").data.decode()
     for muscle in MUSCLE_GROUPS:
-        assert body.count(f'class="muscle-row text-sm" data-muscle="{muscle}"') == 1
+        assert len(re.findall(
+            rf'class="muscle-row"\s+data-muscle="{re.escape(muscle)}"', body
+        )) == 1, muscle
 
 
 def test_summary_page_ships_a_region_skeleton_for_the_six_subdivided_groups(client):
