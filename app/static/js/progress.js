@@ -60,22 +60,161 @@ const layouts = new Map();
 const css = (name) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-/** Resolve the ramp to a colour, mirroring `.muscle` in input.css. */
+/**
+ * The theme's colours as numbers, read once per load.
+ *
+ * Parsed to RGB rather than handed to the canvas as `color-mix(...)` strings:
+ * the ramp has to be *interpolated* here to build gradients, and a canvas
+ * cannot mix a colour it was given as text. Doing the arithmetic in JS also
+ * drops a dependency on canvas-side `color-mix` support.
+ */
+let theme = null;
+
+/** `#rgb`, `#rrggbb` or an `rgb()` string → `{r, g, b}`. */
+function parseColour(value) {
+  const text = value.trim();
+  if (text.startsWith("#")) {
+    const hex = text.slice(1);
+    const full = hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex;
+    return {
+      r: parseInt(full.slice(0, 2), 16),
+      g: parseInt(full.slice(2, 4), 16),
+      b: parseInt(full.slice(4, 6), 16),
+    };
+  }
+  const [r, g, b] = text.match(/[\d.]+/g).map(Number);
+  return { r, g, b };
+}
+
+const mix = (a, b, t) => ({
+  r: a.r + (b.r - a.r) * t,
+  g: a.g + (b.g - a.g) * t,
+  b: a.b + (b.b - a.b) * t,
+});
+
+const rgba = (c, alpha = 1) =>
+  `rgba(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)}, ${alpha})`;
+
+function readTheme() {
+  theme = {
+    rest: parseColour(css("--color-rest")),
+    trainMin: parseColour(css("--color-train-min")),
+    trainMax: parseColour(css("--color-train-max")),
+    overMin: parseColour(css("--color-over-min")),
+    overMax: parseColour(css("--color-over-max")),
+    ground: parseColour(css("--color-base-200")),
+    bone: parseColour(css("--color-base-content")),
+    brick: parseColour(css("--color-primary")),
+  };
+}
+
+/** Resolve the ramp to an `{r, g, b}`, mirroring `.muscle` in input.css. */
 function nodeColour(node) {
   const info = graph.coverage[node.primary_muscle];
-  if (!info || info.state === "rest") return css("--color-rest");
+  if (!info || info.state === "rest") return theme.rest;
 
   const level = Math.max(0, Math.min(1, info.intensity));
-  const [min, max] = info.state === "over"
-    ? [css("--color-over-min"), css("--color-over-max")]
-    : [css("--color-train-min"), css("--color-train-max")];
-  return `color-mix(in srgb, ${max} ${level * 100}%, ${min})`;
+  return info.state === "over"
+    ? mix(theme.overMin, theme.overMax, level)
+    : mix(theme.trainMin, theme.trainMax, level);
 }
 
 /** Sets → radius, on a square-root scale so area tracks volume. */
 function nodeRadius(node, maxSets) {
   const share = maxSets > 0 ? Math.sqrt(node.sets / maxSets) : 0;
   return MIN_RADIUS + share * (MAX_RADIUS - MIN_RADIUS);
+}
+
+// ---- The lit field ---------------------------------------------------------
+
+/**
+ * The glow layer: every node casts light in its own ramp colour.
+ *
+ * This is the only "background" the page has, and it is **made of the data**.
+ * A decorative gradient was not an option — the redesign brief rules out
+ * gradient backgrounds and blurred colour blobs outright, and the volume ramp
+ * has to stay the most saturated thing on screen. Light emitted *by* the ramp
+ * does not compete with it; it is the same reading, spread. Where training is
+ * dense the field warms toward that muscle's coverage colour, so a page of
+ * over-target work reads hot before a single node is examined.
+ *
+ * **Rendered once, in world units, then blitted.** Pan and zoom are a transform
+ * over the layout, so the lit field does not change with them — redrawing a few
+ * hundred large radial gradients per frame would not hold 60fps, and one
+ * `drawImage` does. Its softness is why the low resolution costs nothing: there
+ * is no edge in it to look pixelated.
+ */
+let glow = null;
+
+/** Pixels per world unit in the glow layer. Low on purpose — it is all blur. */
+const GLOW_RESOLUTION = 0.75;
+
+/** Cap, so a sprawling all-time graph cannot allocate an enormous bitmap. */
+const GLOW_MAX_PX = 1100;
+
+/** How far a node's light reaches, in world units. */
+const GLOW_MIN_REACH = 34;
+const GLOW_MAX_REACH = 118;
+
+/**
+ * Peak alpha of a single node's light. Additive, so they build where dense.
+ *
+ * Kept low, and with a fast falloff below: at 0.5 with a gentle curve the
+ * field turned milky and the nodes lost contrast against the haze they were
+ * casting, which is the opposite of the point. This should read as atmosphere,
+ * never as fog.
+ */
+const GLOW_ALPHA = 0.36;
+
+function buildGlow() {
+  const box = bounds(positions);
+  const pad = GLOW_MAX_REACH;
+  const worldW = box.maxX - box.minX + pad * 2;
+  const worldH = box.maxY - box.minY + pad * 2;
+
+  const resolution = Math.min(
+    GLOW_RESOLUTION,
+    GLOW_MAX_PX / Math.max(worldW, worldH),
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(worldW * resolution));
+  canvas.height = Math.max(1, Math.round(worldH * resolution));
+
+  const context = canvas.getContext("2d");
+  // Additive: two nearby movements light the space between them more than
+  // either does alone, which is what makes a training block read as a region
+  // rather than as a handful of dots.
+  context.globalCompositeOperation = "lighter";
+  context.scale(resolution, resolution);
+  context.translate(-box.minX + pad, -box.minY + pad);
+
+  const maxSets = graph.nodes.reduce((most, n) => Math.max(most, n.sets), 0);
+
+  for (const node of graph.nodes) {
+    const point = positions.get(node.exercise_id);
+    if (!point) continue;
+
+    const share = maxSets > 0 ? Math.sqrt(node.sets / maxSets) : 0;
+    const reach = GLOW_MIN_REACH + share * (GLOW_MAX_REACH - GLOW_MIN_REACH);
+    // An orphan is not lighting anything — it fell out of the training — so it
+    // casts a cold, faint bone light instead of a coverage colour.
+    const colour = node.orphan ? theme.bone : nodeColour(node);
+    const peak = node.orphan ? GLOW_ALPHA * 0.22 : GLOW_ALPHA;
+
+    const gradient = context.createRadialGradient(
+      point.x, point.y, 0, point.x, point.y, reach,
+    );
+    gradient.addColorStop(0, rgba(colour, peak));
+    gradient.addColorStop(0.3, rgba(colour, peak * 0.22));
+    gradient.addColorStop(1, rgba(colour, 0));
+
+    context.fillStyle = gradient;
+    context.beginPath();
+    context.arc(point.x, point.y, reach, 0, Math.PI * 2);
+    context.fill();
+  }
+
+  glow = { canvas, minX: box.minX - pad, minY: box.minY - pad, worldW, worldH };
 }
 
 // ---- Drawing ---------------------------------------------------------------
@@ -128,10 +267,20 @@ function draw() {
 
   const maxSets = graph.nodes.reduce((most, node) => Math.max(most, node.sets), 0);
   const maxDays = graph.edges.reduce((most, edge) => Math.max(most, edge.days), 1);
-  const brick = css("--color-primary");
-  const bone = css("--color-base-content");
+  const bone = rgba(theme.bone);
 
-  // Edges first, so nodes sit on top of them.
+  // The lit field, underneath everything. One blit of a bitmap built in world
+  // units, so panning costs the same whatever the graph contains.
+  if (glow) {
+    const origin = toScreen({ x: glow.minX, y: glow.minY });
+    context.drawImage(
+      glow.canvas,
+      origin.x, origin.y,
+      glow.worldW * scale, glow.worldH * scale,
+    );
+  }
+
+  // Edges next, so nodes sit on top of them.
   context.lineWidth = 1;
   for (const edge of graph.edges) {
     const a = positions.get(edge.source);
@@ -139,8 +288,13 @@ function draw() {
     if (!a || !b) continue;
     const from = toScreen(a);
     const to = toScreen(b);
-    const strength = 0.12 + 0.5 * (edge.days / maxDays);
-    context.strokeStyle = `color-mix(in srgb, ${brick} ${strength * 100}%, transparent)`;
+    // Opacity is the co-occurrence count; the hue is the two movements it
+    // joins, blended. A uniform brick web said nothing about what it connected,
+    // and at this density that is most of the drawing. Blended once when the
+    // data lands, not per frame — a gradient per edge per frame is what would
+    // cost the frame rate here.
+    const strength = 0.14 + 0.52 * (edge.days / maxDays);
+    context.strokeStyle = rgba(edge._colour || theme.brick, strength);
     context.beginPath();
     context.moveTo(from.x, from.y);
     context.lineTo(to.x, to.y);
@@ -159,13 +313,25 @@ function draw() {
     if (node.orphan) {
       // A hollow ring: logged, but not currently part of the training. Reading
       // it as absence rather than as a quantity is the whole point.
-      context.fillStyle = css("--color-base-200");
+      context.fillStyle = rgba(theme.ground);
       context.fill();
-      context.strokeStyle = `color-mix(in srgb, ${bone} 45%, transparent)`;
+      context.strokeStyle = rgba(theme.bone, 0.45);
       context.lineWidth = 1.25;
       context.stroke();
     } else {
-      context.fillStyle = nodeColour(node);
+      // Lit from up and to the left rather than filled flat, so a node reads as
+      // a body catching light on the field it is casting. The bright stop is
+      // the node's own ramp colour pushed toward white; the far stop is the
+      // colour itself, so the encoding is unchanged — only its shading is.
+      const colour = nodeColour(node);
+      const sphere = context.createRadialGradient(
+        x - radius * 0.38, y - radius * 0.42, radius * 0.12,
+        x, y, radius,
+      );
+      sphere.addColorStop(0, rgba(mix(colour, { r: 255, g: 255, b: 255 }, 0.42)));
+      sphere.addColorStop(0.55, rgba(colour));
+      sphere.addColorStop(1, rgba(mix(colour, theme.ground, 0.3)));
+      context.fillStyle = sphere;
       context.fill();
 
       // The same redundant cue the body map carries: past-target is a hue flip
@@ -416,11 +582,16 @@ async function load() {
   }
 
   renderOrphans();
-  selectNode(null);
+  // Clear the selection *without* drawing. Every draw below reads state
+  // derived from the graph that has just arrived — edge colours, the glow
+  // layer — so nothing may paint until that state has been rebuilt for it.
+  selectedId = null;
+  showPanel(null);
 
   if (!graph.graph_ready) {
     // Degrade honestly rather than drawing a dozen dots and calling it a graph.
     positions = null;
+    glow = null;
     $("#graph-legend").hidden = true;
     setStatus(
       `${graph.nodes.length} of ${graph.min_nodes} movements — the graph draws once `
@@ -434,6 +605,24 @@ async function load() {
   if (!layouts.has(key)) layouts.set(key, simulate(graph));
   positions = layouts.get(key);
 
+  // Each edge takes the blend of the two movements it joins, resolved once
+  // here. Per frame this would be the most expensive thing on the canvas.
+  const colours = new Map(
+    graph.nodes.map((node) => [
+      node.exercise_id,
+      node.orphan ? theme.bone : nodeColour(node),
+    ]),
+  );
+  for (const edge of graph.edges) {
+    edge._colour = mix(
+      colours.get(edge.source) || theme.brick,
+      colours.get(edge.target) || theme.brick,
+      0.5,
+    );
+  }
+
+  buildGlow();
+
   $("#graph-legend").hidden = false;
   setStatus("");
   fitToView();
@@ -446,6 +635,7 @@ async function load() {
  */
 export async function initProgress(initialIso) {
   anchorIso = initialIso;
+  readTheme();
 
   $("#window-select").addEventListener("change", load);
   bindGestures();

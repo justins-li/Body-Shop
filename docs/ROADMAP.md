@@ -606,9 +606,9 @@ half.
 
 ---
 
-## Phase 4.5 — UI revamp *(interstitial, added 2026-07-30)*
+## Phase 4.5 — UI revamp ✅ *done (interstitial, added 2026-07-30)*
 
-**Depends on:** Phase 4 merged. Unplanned, but deliberately slotted here for the same
+**Depended on:** Phase 4 merged. Unplanned, but deliberately slotted here for the same
 reason Tailwind sat at Phase 1: all current surfaces exist and are stable after Phase 4,
 and the biggest UI-adding phases (5's auth pages, 7's routines and charts) come after —
 new surfaces get built once, in the new design.
@@ -619,10 +619,81 @@ still win the eye), which are consciously revised (the achromatic palette), and 
 graph is scoped to data that exists pre-Phase-7 — is
 [redesign-brief.md](redesign-brief.md).
 
-**Presentation layer only**: read-only endpoints at most, no schema changes. Runs on a
-`redesign` branch. Timeboxed — it sits on the critical path to launch, and its claim to
-the slot is that it sharpens the differentiator (the heatmap-first aesthetic), not that
-it delays Phase 5 for polish.
+**Presentation layer only**, as specified: one new read-only endpoint, no schema change,
+no migration, and no change to any existing service.
+
+### What shipped
+
+Six named colour tokens on a near-black blue-black ground, three faces in four named
+type voices, hairline-ruled bands in place of cards, a mobile bottom tab bar, and the
+training graph. The light theme is **retired**, not re-derived. Every screen was
+rebuilt: `/` leads with the body map, `/calendar` became one ruled sheet with a volume
+bar per day, `/log` got a two-tier set row and a docked submit, `/summary` became a
+readout, and `/progress` is new.
+
+### Where it diverged from the brief
+
+**1. The branch is `phase-4.5-frontend-revamp`, not `redesign`.** The brief named a
+branch that did not exist yet; this one was already pushed and matches the phase.
+
+**2. The accent stayed brick red, and the collision was solved with *form* instead.**
+The brief offered two ways out of the accent/over-target clash — re-derive the ramp or
+move the accent's hue. Neither is sufficient alone, because the dim end of a red
+overshoot ramp and a muted brick sit close however they are tuned. The resolution is a
+rule instead: **the accent never fills an area.** Every primary action is a hairline
+outline with brick border and lifted-brick text, and filled saturated colour appears
+only on the body map, the muscle bars and the graph nodes. So red *area* means volume
+past target and red *outline or text* means an action. The app now has no filled button
+anywhere, which suits the instrument direction — real instruments have etched controls.
+
+**3. The ramp's direction inverted, and its tokens were renamed.** It ran light→dark as
+volume climbed, which is correct on cream and backwards on near-black, where a dark
+green is the least-lit thing on screen. `--color-train-light/dark` are now
+`--color-train-min/max`, because after the change "dark" would have named the bright end.
+
+**4. Choosing the hue flip made red-green colour blindness worse, and needed a
+redundant cue.** Both ramps peaking at similar brightness is what makes crossing the
+target unmistakable — and it drops the luminance contrast between them to 1.6:1, which
+is close to no signal at all without hue. No orange out-luminances a bright green while
+staying orange, so over-target regions and graph nodes carry a heavier bone outline
+instead. Worth remembering before anyone "simplifies" that stroke away.
+
+**5. The trained ramp's dim end was too dim to do its job.** At `#2c5a42` a group with
+one set sat 1.80:1 against untrained, so "barely trained" and "untrained" looked alike —
+which defeats the coverage model. Lifted to `#428262` (3.12:1), trading some of the
+green ramp's internal range for the distinction the app actually exists to draw.
+
+**6. The rest timer persists a *deadline*, not a remaining count.** The brief asked for
+`localStorage` so navigation would not kill it. Storing seconds-remaining would also
+have drifted, because browsers throttle `setInterval` in a backgrounded tab; a timestamp
+is correct however long the tab slept.
+
+**7. The first force model was unbounded and drew nothing.** Orphans were pushed outward
+with a negative centering constant, which scales the displacement that produced it —
+positions reached 1e19 inside the loop and the fit-to-view scale collapsed to a blank
+canvas. It is now one radial force with two targets (origin for the core, a ring for the
+orphans), so both are restoring, plus a step clamp and a cooling schedule.
+
+**8. Two regressions the build introduced and the verification pass caught**, both worth
+recording because both looked fine on screen: the date input moved into the page header,
+which put it outside `<form>` so `FormData` dropped it and every submit failed on "Pick
+a date first"; and `field-sm` was a 36px tap target used throughout the set grid. There
+is now a test asserting every submitted field stays inside the form.
+
+**9. `.steps`/`.step` collide with daisyUI**, which ships a component under both names.
+The home page's sequence is `how-*`. Worth checking any new class name against
+`tools/daisyui/` first — `grep -rho "\.name\b" tools/daisyui/` answers it in a second.
+
+### Left for later
+
+- **No JavaScript test runner exists**, so `layout.js` is *written* to be testable —
+  pure, deterministic, no canvas or DOM — but is not covered by an automated test.
+  Adding a runner means adding the first JS dependency, which the brief forbids. It was
+  verified in a browser instead: finite bounds, and identical output across runs.
+- **The graph is not virtualised.** Fine at the few hundred nodes the catalog realistically
+  produces; a quadtree is the optimisation if the simulation ever becomes per-frame.
+- **Node size is set count**, not volume-load — see the Phase 7 note in
+  [ARCHITECTURE.md](ARCHITECTURE.md#the-training-graph).
 
 ---
 

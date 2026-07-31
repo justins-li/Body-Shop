@@ -388,6 +388,39 @@ Three implementation decisions worth keeping:
 Canvas rather than SVG or DOM nodes: at a few hundred movements with every pairing
 drawn, an element per node is hundreds of layout objects re-composited on every pan.
 
+### The lit field
+
+The graph's only "background" is **made of the data**: every node casts light in its own
+ramp colour, so where training is dense the field warms toward that muscle's coverage
+colour and a page of over-target work reads hot before a single node is examined.
+Orphans cast a faint cold bone light instead — they are not feeding anything.
+
+That is the form the depth had to take. A decorative gradient was ruled out twice over:
+[redesign-brief.md](redesign-brief.md) bans gradient backgrounds and blurred colour
+blobs outright, and the volume ramp has to stay the most saturated thing on screen.
+Light *emitted by* the ramp does not compete with the ramp; it is the same reading,
+spread. Edges take the blend of the two movements they join for the same reason — a
+uniform brick web said nothing about what it connected, and at this density the web is
+most of the drawing.
+
+Two performance notes that are the whole reason it is affordable:
+
+- **The glow is rendered once, in world units, and blitted.** Pan and zoom are a
+  transform over the layout, so the lit field does not change with them. Redrawing a few
+  hundred large radial gradients per frame would not hold 60fps; one `drawImage` does.
+  It renders at well under one pixel per world unit, which costs nothing to look at
+  because there is no edge in it to appear pixelated.
+- **Edge colours are blended when the data lands, never per frame.** A gradient per edge
+  per frame is the one thing here that would cost the frame rate.
+
+Measured at the brief's ceiling — 250 nodes, 1,500 edges, 3× device pixel ratio — the
+draw loop runs 0.5 ms median against a 16.7 ms budget.
+
+**Order matters in `load()`.** Everything the draw loop reads is derived from the graph
+that has just arrived, so nothing may paint until that derived state has been rebuilt.
+Clearing the selection used to draw immediately, which threw on every window change
+because the new edges had no colours yet.
+
 ## Data model
 
 Two tables, defined in [`app/tables.py`](../app/tables.py). Entries are append-only
