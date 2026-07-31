@@ -111,8 +111,17 @@ export function createSetGrid(root, { onError = () => {} } = {}) {
 
   // ---- Rows ---------------------------------------------------------------
 
-  /** Whether the weight column exists for the movement in hand. */
-  const weightVisible = () => weightMode !== "bodyweight" || addedWeight;
+  /**
+   * Whether the weight column exists for the movement in hand.
+   *
+   * Three answers, not two. `unweighted` has no weight and no way to acquire
+   * one — a foam roller weighs what it weighs and it is not the point — so
+   * unlike `bodyweight` it is not merely hidden behind a toggle.
+   */
+  const weightVisible = () => {
+    if (weightMode === "unweighted") return false;
+    return weightMode !== "bodyweight" || addedWeight;
+  };
 
   function numberField(className, label, attrs) {
     const field = document.createElement("input");

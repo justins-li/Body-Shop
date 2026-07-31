@@ -211,6 +211,7 @@ WEIGHT_MODES: tuple[str, ...] = (
     "stack",       # A pin in a weight stack, or a plate-loaded machine.
     "bodyweight",  # You and gravity. Weight means *added* weight, and is optional.
     "implement",   # Bands, balls, sleds, odd objects. Weight is whatever fits.
+    "unweighted",  # Nothing to weigh, and no way to add weight. See below.
 )
 
 #: The mode a movement takes when its equipment is not named below.
@@ -235,7 +236,12 @@ EQUIPMENT_WEIGHT_MODES: dict[str, str] = {
     "bands": "implement",
     "medicine ball": "implement",
     "exercise ball": "implement",
-    "foam roll": "implement",
+    # A foam roller has one weight — its own, and it is not the point. Unlike a
+    # band or a ball there is no heavier one to reach for and nothing to strap
+    # on, so the column is not merely usually-blank (that is `bodyweight`); it
+    # is meaningless. Offering it invited a number that could never mean
+    # anything, which is the same class of mistake as the phantom barbell.
+    "foam roll": "unweighted",
     "other": "implement",
 }
 
