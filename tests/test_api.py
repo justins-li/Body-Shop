@@ -341,8 +341,8 @@ def test_progress_graph_endpoint(client, add):
     assert data["edges"] == [
         {"source": "Barbell_Squat", "target": "Romanian_Deadlift", "days": 1}
     ]
-    # Two movements is not a graph; the page says so rather than drawing one.
-    assert data["graph_ready"] is False
+    # Two movements still draw — `sparse` says it is early, it does not gate.
+    assert data["sparse"] is True
     assert data["coverage"]["quads"]["state"] == "trained"
 
 

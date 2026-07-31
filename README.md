@@ -42,7 +42,7 @@ on both, so the two outlines tell you different things.
 | **Calendar** | `/calendar` | Month grid of your training. Each day carries a bar as tall as the sets you logged; tap one to see what you did. |
 | **Log workout** | `/log` | Pick date → exercise → sets, with weight, reps and set type per row (RPE too, on the advanced trainer setup), prefilled from last time. The weight column follows the equipment: a barbell gets a plate breakdown, a dumbbell asks per bell, a cable asks for the pin setting, and a pull-up asks for nothing unless you tick "Added weight". A repeat button copies the set you just entered. The picker has three ways in: recent, browse by muscle, and search (`incl db` finds "Dumbbell Incline Bench Press"). Shows and deletes the entries for that day. |
 | **Weekly summary** | `/summary` | Front/back body map shaded by weekly volume, each group's sets against its target, and where inside six of them the work landed. |
-| **Training graph** | `/progress` | Every movement you have logged, joined to the ones you do on the same day. The movements that have fallen out ring the outside — and are named underneath. |
+| **Training graph** | `/progress` | Every movement you have logged, joined to the ones you do on the same day. It draws from your very first workout and fills in as you train. Node size is either the sets a movement carried or your best lift on it, estimated from your own weight × reps — a movement with no load recorded stays a hollow ring rather than pretending to be small. The movements that have fallen out ring the outside, and are named underneath. |
 
 All five pages share a `?date=YYYY-MM-DD` query parameter, so navigating between
 them keeps the day you were looking at.
@@ -175,6 +175,7 @@ Body-Shop/
 │   ├── services/
 │   │   ├── weeks.py          # week/month boundary maths
 │   │   ├── summary.py        # weekly muscle-coverage aggregation
+│   │   ├── strength.py       # personal bests, estimated from your own sets
 │   │   └── graph.py          # training-graph windows, orphans, node colouring
 │   ├── templates/            # Jinja2: base + one per page + body-map partial
 │   └── static/

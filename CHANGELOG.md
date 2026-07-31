@@ -8,6 +8,41 @@ All notable changes to Body Shop are documented here. This project follows
 
 ### Added
 
+- **The training graph draws from your first workout, and can be sized by what you
+  lift** (Phase 6.7). Two changes, and the first is the one that matters:
+
+  **The fifteen-movement gate is gone.** `/progress` used to refuse to draw below
+  fifteen and show a ranked list with a note about what would unlock the picture — so a
+  new user met an explanation of something they could not see, and the drawing then
+  arrived all at once instead of growing. It now starts as one dot and fills in, and the
+  note under it counts up rather than saying "not yet". The only case with nothing to
+  draw is a window with nothing in it.
+
+  **Node size now answers one of two questions.** "Sets" is the volume reading it always
+  had; "Best lift" sizes each movement by the heaviest single its sets support, estimated
+  with Epley from weight and reps you logged yourself. That is *your own log*, not a
+  strength standard — the app still stores no bodyweight and compares you to nobody, and
+  that stays deliberate. Switching between them is a re-draw, never a refetch and never a
+  re-simulation, so the arrangement holds still while you ask the other question of it.
+
+  The honesty rule `graph.py` wrote down before the data to break it existed is now
+  enforced: **a movement with no recorded load draws as a hollow ring, not a small node.**
+  Sizing an unmeasured lift at zero would claim it is light, which is false rather than
+  merely unknown. Bodyweight work and every pre-Phase-4 row land there, so the payload
+  also reports how many movements *can* be sized — a canvas of rings should explain
+  itself rather than look broken. Sets past twelve reps are ignored rather than
+  extrapolated (Epley on a 20-rep set reports a single 67% above the bar), warm-ups never
+  become a best, and the panel always shows its working: `Est. 1RM 117kg — from 100kg × 5
+  on Jul 24`, never a bare number.
+
+- **One question on first run.** The trainer setup decides every weekly target, and its
+  default is a guess about a stranger — so a new browser is asked once which level it is
+  training at, and how long its week is. Skipping counts as an answer, so it cannot
+  become a nag, and the flag is stored separately from the preferences: sharing one key
+  would re-ask anyone who skipped and never re-ask anyone who cleared their settings. It
+  never opens on `/` or `/how-to-use`, which are static and must render identically for
+  any visitor.
+
 - **Trainer setups, and weekly targets that fit the week you actually have** (Phase 6).
   `/summary` gains three controls — experience level, sessions a week, minutes a session
   — and they decide every muscle group's weekly target. Beginner asks for 0.6 of the

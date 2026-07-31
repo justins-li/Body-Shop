@@ -6,16 +6,23 @@ holds the *rules* — what a window means, what makes a movement an orphan, and
 which colour a node takes — while every SQL statement stays in
 :mod:`app.models` and the HTTP shape stays in :mod:`app.api`.
 
-Two decisions are worth reading before changing anything here.
+Three decisions are worth reading before changing anything here.
 
 **Node colour is the app's own thesis, not an invented benchmark.** A node takes
 the current weekly coverage state of its primary muscle, so the graph answers
 "where does my training live, and what is it feeding" with the same grading the
-body map uses. Colouring by estimated 1RM against a strength standard was
-considered and belongs to Phase 7: the app stores no bodyweight, computes no
-1RM, and pre-Phase-4 history has ``NULL`` weights, so every mark would be a
-guess. When that lands, a lift with no benchmark must render as a hollow ring
-rather than a number nobody measured.
+body map uses. Colouring against a *strength standard* — what someone your
+bodyweight "should" lift — remains out: the app stores no bodyweight and has no
+business ranking anyone against a population.
+
+**Node size is either volume or your own best, and never a standard.** Phase 6.7
+added the second encoding. ``sets`` is cumulative work; ``one_rep_max`` is
+estimated from sets the user actually performed (:mod:`app.services.strength`),
+which is arithmetic on their own log rather than a benchmark imported from
+elsewhere. The honesty rule this module wrote down before the data existed still
+holds and is now enforced: **a movement with no recorded load has no estimate and
+must render as a hollow ring**, not a small circle. That covers bodyweight work
+and every row logged before Phase 4 added the weight column.
 
 **The orphan thresholds are opinion, and are named so they stay visible.** Same
 discipline as ``REGION_NEGLECT_SHARE`` in :mod:`app.services.summary`: no study
@@ -28,8 +35,9 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from ..exercises import get_exercise
-from ..models import exercise_activity, exercise_co_occurrence
+from ..models import exercise_activity, exercise_co_occurrence, loaded_sets
 from ..training import TrainerProfile
+from .strength import best_from_sets
 from .summary import weekly_summary
 
 #: Windows the graph can be drawn over, as a span in days. ``all`` is unbounded.
@@ -58,10 +66,20 @@ ORPHAN_MIN_SESSIONS = 3
 #: shortest view answers "what have I dropped" without arithmetic.
 ORPHAN_STALE_WEEKS = 8
 
-#: Below this many movements a force-directed graph says nothing — a dozen dots
-#: and their edges is a list with extra steps. ``/progress`` shows a ranked list
-#: instead and says what unlocks the graph.
-MIN_GRAPH_NODES = 15
+#: Movements below which the drawing is still worth showing but not yet worth
+#: reading as a *shape*.
+#:
+#: **This is no longer a gate.** Until Phase 6.7 the graph did not render at all
+#: below fifteen movements: the page showed a ranked list and told you what would
+#: unlock the picture. That was the wrong shape for the one visual the app has —
+#: a new user met an explanation of a drawing they could not see, and the drawing
+#: arrived all at once rather than growing. It now draws from the first logged
+#: movement and fills in as history accumulates, which is what makes it worth
+#: returning to.
+#:
+#: The number survives only as a note under the canvas, so a two-node picture
+#: says it is early rather than pretending to be a map.
+SPARSE_GRAPH_NODES = 15
 
 
 def window_bounds(window: str, today: date) -> tuple[date | None, date]:
@@ -113,7 +131,13 @@ def training_graph(
     start, end = window_bounds(resolved, today)
     # `all` still needs a lower bound for the query; the catalog predates no
     # plausible training history, so the epoch is safe and keeps one code path.
-    activity = exercise_activity(start or date(1970, 1, 1), end)
+    floor = start or date(1970, 1, 1)
+    activity = exercise_activity(floor, end)
+    # Personal bests are read over the same window as the nodes, so "your best
+    # in the last 8 weeks" is what the drawing sizes by — a lifetime best would
+    # keep a movement large long after it was dropped, which is exactly the
+    # signal the orphan ring exists to give.
+    bests = best_from_sets(loaded_sets(floor, end))
 
     nodes = []
     for exercise_id, sets, sessions, last_logged in activity:
@@ -122,6 +146,7 @@ def training_graph(
             # A retired id that no migration caught. Dropping it is better than
             # drawing an unlabelled dot nobody can act on.
             continue
+        best = bests.get(exercise_id)
         nodes.append(
             {
                 "exercise_id": exercise_id,
@@ -133,6 +158,11 @@ def training_graph(
                 "sessions": sessions,
                 "last_logged": last_logged.isoformat(),
                 "orphan": is_orphan(sessions, last_logged, today),
+                # `None` when nothing this movement logged can support an
+                # estimate. The client must draw a hollow ring rather than a
+                # small one — an unmeasured lift is not a light lift.
+                "best": best.to_dict() if best else None,
+                "weight_mode": exercise.weight_mode,
             }
         )
 
@@ -158,8 +188,13 @@ def training_graph(
         "nodes": nodes,
         "edges": edges,
         "coverage": coverage,
-        # Said plainly rather than left for the client to infer, so both the
-        # canvas and any later consumer agree on when the graph is meaningful.
-        "graph_ready": len(nodes) >= MIN_GRAPH_NODES,
-        "min_nodes": MIN_GRAPH_NODES,
+        # How much of the drawing can be sized by load. Reported rather than
+        # left to be counted, because it is the honest headline for the
+        # strength view: "6 of 14 movements carry a recorded weight" is the
+        # difference between a sparse picture and a wrong one.
+        "measured": sum(1 for node in nodes if node["best"] is not None),
+        # A note, not a gate. The graph draws from one node now; this only says
+        # whether it is dense enough to read as a shape yet.
+        "sparse": len(nodes) < SPARSE_GRAPH_NODES,
+        "sparse_below": SPARSE_GRAPH_NODES,
     }

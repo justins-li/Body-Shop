@@ -1802,6 +1802,29 @@
     color: var(--color-secondary);
   }
 
+  /* The personal best, and the set it was estimated from — Phase 6.7. It
+     always shows its working, so it needs room for a whole clause. */
+  .graph-panel-best {
+    margin: 0.3rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--color-base-content);
+  }
+  /* "No load recorded" is an absence, not a reading, so it sits back with the
+     other secondary text rather than looking like a number. */
+  .graph-panel-best.is-unmeasured {
+    color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+
+  /* A movement whose sets carry no weight: a ring in its coverage colour, so
+     it still says what it feeds while saying it cannot be sized. Distinct from
+     `.graph-key-orphan`, which is bone and means "fallen out of the training". */
+  .graph-key-unmeasured {
+    width: 0.7rem;
+    height: 0.7rem;
+    border: 1.5px solid color-mix(in srgb, var(--color-train-max) 75%, transparent);
+    border-radius: 9999px;
+  }
+
   /* -- Legend swatches -------------------------------------------------- */
   .swatch {
     display: inline-block;
@@ -2272,6 +2295,108 @@
     height: 1.1rem;
     accent-color: var(--color-primary);
     cursor: pointer;
+  }
+
+  /* -- First run ---------------------------------------------------------
+     One question, once. A `<dialog>` rather than a band because it is a
+     genuine one-time decision and modality is what stops it being scrolled
+     past — but it still obeys the house rules: hairline border, square
+     corners, no shadow, one continuous ground. */
+  .first-run {
+    width: min(34rem, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 22%, transparent);
+    border-radius: 0;
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    overflow: auto;
+  }
+  .first-run::backdrop {
+    /* The page stays legible behind it: this is an introduction, not an
+       interstitial, and hiding what you were about to read is worse. */
+    background-color: color-mix(in srgb, var(--color-base-300) 82%, transparent);
+  }
+  .first-run-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding: 1.6rem 1.5rem 1.35rem;
+  }
+  .first-run-title {
+    margin: 0;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(1.4rem, 5vw, 1.85rem);
+    line-height: 1.12;
+  }
+
+  /* One column on a phone, three across from `sm:` — three squeezed side by
+     side at 360px leaves each blurb four words wide and unreadable. */
+  .first-run-levels {
+    display: grid;
+    gap: 0.5rem;
+  }
+  @media (width >= 34rem) {
+    .first-run-levels {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .first-run-level {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-height: 2.75rem;
+    padding: 0.75rem 0.8rem;
+    text-align: left;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 18%, transparent);
+    border-radius: var(--radius-field);
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .first-run-level:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+  /* The chosen one is marked by an outline, never a fill: a filled accent is
+     reserved for "over target" on the volume ramp, and the two must not be
+     confusable anywhere in the app. */
+  .first-run-level[aria-pressed="true"] {
+    border-color: var(--color-primary);
+    background-color: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  }
+  .first-run-level-blurb {
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    color: var(--color-secondary);
+  }
+  .first-run-level-note {
+    color: var(--color-primary);
+  }
+
+  .first-run-plan {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    padding-top: 0.35rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+    font-size: 0.9375rem;
+  }
+  .first-run-plan .field {
+    width: 4.25rem;
+    text-align: center;
+  }
+
+  .first-run-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.75rem;
+    padding-top: 0.35rem;
   }
 
   /* -- Trainer setup (Phase 6) -------------------------------------------

@@ -13,7 +13,7 @@ from uuid import uuid4
 import sqlalchemy as sa
 
 from app.db import get_db
-from app.models import recent_exercise_ids
+from app.models import loaded_sets, recent_exercise_ids
 from app.tables import workout_entry, workout_set
 
 SQUAT = "Barbell_Squat"
@@ -64,3 +64,44 @@ def test_recent_ids_deduplicate_by_exercise(app):
         log_entry(SQUAT, 4, day="2026-07-28")
 
         assert recent_exercise_ids() == [SQUAT]
+
+
+# ---- loaded_sets: the personal-best query (Phase 6.7) ----------------------
+
+
+def test_loaded_sets_returns_only_rows_that_carry_both_numbers(app, add):
+    """The filter here is about NULL columns, not about training: a set missing
+    either number cannot support a one-rep-max estimate at all."""
+    add("2026-07-28", "Barbell_Squat", [
+        {"weight": 100, "reps": 5},
+        {"weight": 100},           # no reps
+        {"reps": 5},               # no weight
+        {},                        # a bare count
+    ])
+
+    with app.app_context():
+        rows = loaded_sets(date(2026, 7, 1), date(2026, 7, 31))
+
+    assert rows == [("Barbell_Squat", 100.0, 5, date(2026, 7, 28))]
+
+
+def test_loaded_sets_excludes_warm_ups(app, add):
+    add("2026-07-28", "Barbell_Squat", [
+        {"weight": 200, "reps": 1, "set_type": "warmup"},
+        {"weight": 100, "reps": 5},
+    ])
+
+    with app.app_context():
+        rows = loaded_sets(date(2026, 7, 1), date(2026, 7, 31))
+
+    assert [row[1] for row in rows] == [100.0]
+
+
+def test_loaded_sets_respects_the_range(app, add):
+    add("2026-06-01", "Barbell_Squat", [{"weight": 90, "reps": 5}])
+    add("2026-07-28", "Barbell_Squat", [{"weight": 100, "reps": 5}])
+
+    with app.app_context():
+        rows = loaded_sets(date(2026, 7, 1), date(2026, 7, 31))
+
+    assert [row[1] for row in rows] == [100.0]
