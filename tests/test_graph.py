@@ -17,6 +17,7 @@ from datetime import date, timedelta
 import pytest
 
 from app.exercises import MUSCLE_GROUPS
+from conftest import TEST_USER_ID
 from app.services.graph import (
     DEFAULT_WINDOW,
     MIN_GRAPH_NODES,
@@ -74,7 +75,7 @@ def test_nodes_carry_volume_sessions_and_recency(app, add):
     add(iso(3), "Barbell_Squat", 2)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     node = next(n for n in graph["nodes"] if n["exercise_id"] == "Barbell_Squat")
     assert node["sets"] == 5
@@ -89,7 +90,7 @@ def test_warmup_only_entries_never_become_nodes(app, add):
     add(iso(1), "Barbell_Bench_Press_-_Medium_Grip", 3)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     assert [n["exercise_id"] for n in graph["nodes"]] == [
         "Barbell_Bench_Press_-_Medium_Grip"
@@ -107,7 +108,7 @@ def test_edges_only_ever_join_movements_that_are_nodes(app, add):
     add(iso(1), "Barbell_Deadlift", 3)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     known = {n["exercise_id"] for n in graph["nodes"]}
     assert known == {"Barbell_Bench_Press_-_Medium_Grip", "Barbell_Deadlift"}
@@ -123,7 +124,7 @@ def test_an_edge_counts_the_days_two_movements_shared(app, add):
     add(iso(7), "Barbell_Squat", 2)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     edge = next(
         e for e in graph["edges"]
@@ -138,7 +139,7 @@ def test_each_pair_appears_once_and_nothing_links_to_itself(app, add):
     add(iso(1), "Leg_Press", 2)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     pairs = [frozenset((e["source"], e["target"])) for e in graph["edges"]]
     assert len(pairs) == len(set(pairs)) == 3
@@ -150,8 +151,8 @@ def test_the_window_excludes_older_training(app, add):
     add(iso(120), "Barbell_Deadlift", 3)
 
     with app.app_context():
-        recent = training_graph("8w", TODAY)
-        everything = training_graph("all", TODAY)
+        recent = training_graph(TEST_USER_ID, "8w", TODAY)
+        everything = training_graph(TEST_USER_ID, "all", TODAY)
 
     assert {n["exercise_id"] for n in recent["nodes"]} == {"Barbell_Squat"}
     assert {n["exercise_id"] for n in everything["nodes"]} == {
@@ -166,7 +167,7 @@ def test_colour_comes_from_the_current_week_not_the_window(app, add):
     add(iso(1), "Barbell_Squat", 3)
 
     with app.app_context():
-        graph = training_graph("all", TODAY)
+        graph = training_graph(TEST_USER_ID, "all", TODAY)
 
     assert set(graph["coverage"]) == set(MUSCLE_GROUPS)
     assert graph["coverage"]["quads"]["state"] == "trained"
@@ -179,7 +180,7 @@ def test_a_thin_history_reports_that_the_graph_is_not_ready(app, add):
     add(iso(1), "Barbell_Squat", 3)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     assert graph["graph_ready"] is False
     assert graph["min_nodes"] == MIN_GRAPH_NODES
@@ -189,4 +190,4 @@ def test_a_thin_history_reports_that_the_graph_is_not_ready(app, add):
 def test_every_window_is_servable(app, add, window):
     add(iso(1), "Barbell_Squat", 3)
     with app.app_context():
-        assert training_graph(window, TODAY)["window"] == window
+        assert training_graph(TEST_USER_ID, window, TODAY)["window"] == window

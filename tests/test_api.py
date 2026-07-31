@@ -363,3 +363,96 @@ def test_progress_graph_excludes_warmup_only_movements(client, add):
     assert [node["exercise_id"] for node in data["nodes"]] == ["Barbell_Deadlift"]
     # And no edge is left pointing at the movement that dropped out.
     assert data["edges"] == []
+
+
+class TestGatedEndpoints:
+    """Everything reading or writing entries needs a token. The catalog does not."""
+
+    GATED = [
+        ("get", "/api/entries?date=2026-07-28"),
+        ("get", "/api/calendar?year=2026&month=7"),
+        ("get", "/api/summary/week?date=2026-07-28"),
+        ("get", "/api/progress/graph?window=8w"),
+        ("get", "/api/exercises/recent"),
+        ("get", "/api/exercises/Barbell_Squat/last-sets"),
+        ("get", "/api/me"),
+    ]
+
+    PUBLIC = [
+        "/api/exercises",
+        "/api/exercises/Barbell_Squat",
+        "/api/summary/week/bounds?date=2026-07-28",
+    ]
+
+    @pytest.mark.parametrize(("method", "path"), GATED)
+    def test_a_missing_token_is_401(self, app, method, path):
+        anonymous = app.test_client()
+        response = getattr(anonymous, method)(path)
+        assert response.status_code == 401
+        assert response.get_json()["error"] == "Sign in to continue."
+        assert response.headers["WWW-Authenticate"] == "Bearer"
+
+    def test_posting_an_entry_without_a_token_is_401(self, app):
+        anonymous = app.test_client()
+        response = anonymous.post(
+            "/api/entries",
+            json={"date": "2026-07-28", "exercise_id": "Barbell_Squat", "sets": [{}]},
+        )
+        assert response.status_code == 401
+
+    def test_deleting_an_entry_without_a_token_is_401(self, app):
+        anonymous = app.test_client()
+        assert anonymous.delete("/api/entries/1").status_code == 401
+
+    @pytest.mark.parametrize("path", PUBLIC)
+    def test_public_endpoints_need_no_token(self, app, path):
+        """The catalog ships in the repo and week bounds are date arithmetic.
+
+        Gating them would buy nothing and would leave the login page unable to
+        render anything.
+        """
+        anonymous = app.test_client()
+        assert anonymous.get(path).status_code == 200
+
+    def test_a_non_bearer_scheme_is_401(self, app):
+        anonymous = app.test_client()
+        response = anonymous.get(
+            "/api/entries", headers={"Authorization": "Basic abc123"}
+        )
+        assert response.status_code == 401
+
+    def test_a_garbage_token_is_401(self, app):
+        anonymous = app.test_client()
+        response = anonymous.get(
+            "/api/entries", headers={"Authorization": "Bearer not.a.token"}
+        )
+        assert response.status_code == 401
+
+
+class TestMe:
+    def test_me_returns_the_signed_in_user(self, client):
+        from conftest import TEST_USER_EMAIL, TEST_USER_ID
+
+        response = client.get("/api/me")
+        assert response.status_code == 200
+        assert response.get_json()["user"] == {
+            "id": TEST_USER_ID,
+            "email": TEST_USER_EMAIL,
+        }
+
+    def test_a_first_request_provisions_the_mirror_row(self, app):
+        """No signup webhook: the row appears on first authenticated contact."""
+        from app.models import get_user
+        from conftest import make_token
+
+        fresh = "33333333-3333-4333-8333-333333333333"
+        with app.app_context():
+            assert get_user(fresh) is None
+
+        anonymous = app.test_client()
+        token = make_token(app, user_id=fresh, email="fresh@example.com")
+        response = anonymous.get("/api/me", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 200
+
+        with app.app_context():
+            assert get_user(fresh)["email"] == "fresh@example.com"

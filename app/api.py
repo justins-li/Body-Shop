@@ -6,21 +6,25 @@ shape ``{"error": "message"}`` with an appropriate status code.
 
 from __future__ import annotations
 
+import functools
 from datetime import date
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 
 from .exercises import all_exercises, get_exercise
 from .models import (
     ValidationError,
     add_entry,
     delete_entry,
+    ensure_user,
+    get_user,
     last_sets_for_exercise,
     list_entries,
     parse_date,
     recent_exercise_usage,
     sets_by_date,
 )
+from .services.auth import AuthError, decode_token
 from .services.graph import DEFAULT_WINDOW, training_graph
 from .services.summary import weekly_summary
 from .services.weeks import month_bounds, week_bounds
@@ -48,6 +52,55 @@ def _image_base() -> str:
     return str(current_app.config.get("EXERCISE_IMAGE_BASE", ""))
 
 
+def _unauthorised():
+    """The one 401 this app produces.
+
+    ``WWW-Authenticate: Bearer`` is what lets api.js tell this apart from a
+    validation 400 without parsing prose. The body says the same thing for every
+    cause — expired, forged, wrong project — because a 401 that distinguishes
+    them is a small oracle and no client needs the distinction.
+    """
+    response = jsonify({"error": "Sign in to continue."})
+    response.headers["WWW-Authenticate"] = "Bearer"
+    return response, 401
+
+
+def require_user(view):
+    """Verify the bearer token, mirror the user, and set ``g.user_id``.
+
+    The Flask glue for :mod:`app.services.auth`, and it lives here rather than
+    there because it touches ``request``, ``g`` and ``current_app`` — which the
+    layer rule calls HTTP.
+
+    Note that this **writes** on a GET: ``ensure_user`` provisions the mirror row
+    on first contact, since Supabase sends no signup webhook.
+    """
+
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+        if scheme.lower() != "bearer" or not token.strip():
+            return _unauthorised()
+
+        try:
+            claims = decode_token(
+                token.strip(),
+                supabase_url=current_app.config.get("SUPABASE_URL") or "",
+                jwt_secret=current_app.config.get("SUPABASE_JWT_SECRET"),
+            )
+        except AuthError:
+            return _unauthorised()
+
+        ensure_user(claims.sub, claims.email)
+        g.user_id = claims.sub
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+# Public, deliberately. The catalog is public-domain data that ships in the
+# repo and the week-bounds endpoint is arithmetic over a query parameter;
+# gating either would buy nothing and would leave /login unable to render.
 @bp.get("/exercises")
 def get_exercises():
     """The whole catalog, in its light shape.
@@ -60,6 +113,7 @@ def get_exercises():
 
 
 @bp.get("/exercises/recent")
+@require_user
 def get_recent_exercises():
     """Recently logged exercises, most recent first — the picker's default view.
 
@@ -76,7 +130,7 @@ def get_recent_exercises():
         {**exercise.to_dict(), "uses": uses}
         for exercise, uses in (
             (get_exercise(exercise_id), uses)
-            for exercise_id, uses in recent_exercise_usage(limit)
+            for exercise_id, uses in recent_exercise_usage(g.user_id, limit)
         )
         if exercise is not None
     ]
@@ -93,6 +147,7 @@ def get_exercise_detail(exercise_id: str):
 
 
 @bp.get("/exercises/<exercise_id>/last-sets")
+@require_user
 def get_last_sets(exercise_id: str):
     """The sets from the most recent session of this movement.
 
@@ -103,7 +158,7 @@ def get_last_sets(exercise_id: str):
     if get_exercise(exercise_id) is None:
         return jsonify({"error": f"Unknown exercise: {exercise_id!r}."}), 404
 
-    day, sets = last_sets_for_exercise(exercise_id)
+    day, sets = last_sets_for_exercise(g.user_id, exercise_id)
     return jsonify(
         {
             "date": day.isoformat() if day else None,
@@ -113,6 +168,7 @@ def get_last_sets(exercise_id: str):
 
 
 @bp.get("/entries")
+@require_user
 def get_entries():
     """List entries, optionally filtered by ``date`` or ``start``/``end``."""
     if "date" in request.args:
@@ -122,11 +178,12 @@ def get_entries():
         start = parse_date(request.args["start"], field="start") if "start" in request.args else None
         end = parse_date(request.args["end"], field="end") if "end" in request.args else None
 
-    entries = list_entries(start, end)
+    entries = list_entries(g.user_id, start, end)
     return jsonify({"entries": [entry.to_dict() for entry in entries]})
 
 
 @bp.post("/entries")
+@require_user
 def create_entry():
     """Create a workout entry and its sets from a JSON body.
 
@@ -140,6 +197,7 @@ def create_entry():
         raise ValidationError("A JSON body is required.")
 
     entry = add_entry(
+        g.user_id,
         payload.get("date"),
         payload.get("exercise_id"),
         payload.get("sets"),
@@ -148,14 +206,16 @@ def create_entry():
 
 
 @bp.delete("/entries/<int:entry_id>")
+@require_user
 def remove_entry(entry_id: int):
     """Delete a workout entry by id."""
-    if not delete_entry(entry_id):
+    if not delete_entry(g.user_id, entry_id):
         return jsonify({"error": "Entry not found."}), 404
     return jsonify({"deleted": entry_id})
 
 
 @bp.get("/calendar")
+@require_user
 def get_calendar():
     """Return ``{iso_date: total_sets}`` for a month (``year``/``month`` args)."""
     today = date.today()
@@ -165,17 +225,19 @@ def get_calendar():
         return jsonify({"error": "'month' must be between 1 and 12."}), 400
 
     start, end = month_bounds(year, month)
-    return jsonify({"year": year, "month": month, "days": sets_by_date(start, end)})
+    return jsonify({"year": year, "month": month, "days": sets_by_date(g.user_id, start, end)})
 
 
 @bp.get("/summary/week")
+@require_user
 def get_weekly_summary():
     """Weekly muscle-coverage summary for the week containing ``date``."""
     day = _query_date("date")
-    return jsonify(weekly_summary(day, _week_start()))
+    return jsonify(weekly_summary(g.user_id, day, _week_start()))
 
 
 @bp.get("/progress/graph")
+@require_user
 def get_progress_graph():
     """The training graph: movements as nodes, same-day pairings as edges.
 
@@ -186,6 +248,7 @@ def get_progress_graph():
     """
     return jsonify(
         training_graph(
+            g.user_id,
             request.args.get("window", DEFAULT_WINDOW),
             _query_date("date"),
             _week_start(),
@@ -198,3 +261,15 @@ def get_week_bounds():
     """Return the start/end dates of the week containing ``date``."""
     start, end = week_bounds(_query_date("date"), _week_start())
     return jsonify({"week_start": start.isoformat(), "week_end": end.isoformat()})
+
+
+@bp.get("/me")
+@require_user
+def get_me():
+    """The signed-in user.
+
+    Exists so the client can confirm a token server-side rather than trusting
+    its own decode of it. The mirror row is guaranteed present by the time this
+    runs — ``require_user`` provisioned it.
+    """
+    return jsonify({"user": get_user(g.user_id)})

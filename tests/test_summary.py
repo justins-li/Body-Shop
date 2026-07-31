@@ -17,6 +17,7 @@ import pytest
 from app.exercises import LARGE_MUSCLE_TARGET, MUSCLE_GROUPS, SMALL_MUSCLE_TARGET
 from app.models import WorkoutEntry, WorkoutSet, add_entry
 from app.services.summary import grade, summarise_entries, weekly_summary
+from conftest import TEST_USER_ID
 
 BENCH = "Barbell_Bench_Press_-_Medium_Grip"
 PULLUP = "Pullups"
@@ -213,11 +214,11 @@ def test_group_under_its_target_is_not_over():
     assert summary["abs"]["over"] == 0
 
 
-def test_weekly_summary_lists_groups_at_and_over_target(app):
+def test_weekly_summary_lists_groups_at_and_over_target(app, client):
     with app.app_context():
-        add_entry("2026-07-28", SITUP, logged(12))  # abs: small target 10 -> over
-        add_entry("2026-07-28", BENCH, logged(20))  # chest: large target 20 -> exactly at it
-        summary = weekly_summary(date(2026, 7, 28))
+        add_entry(TEST_USER_ID, "2026-07-28", SITUP, logged(12))  # abs: small target 10 -> over
+        add_entry(TEST_USER_ID, "2026-07-28", BENCH, logged(20))  # chest: large target 20 -> exactly at it
+        summary = weekly_summary(TEST_USER_ID, date(2026, 7, 28))
 
     # Bench press gives triceps and shoulders 10 sets each at half weight:
     # triceps (target 10) land exactly on target, shoulders (target 20) do not.
@@ -234,13 +235,13 @@ def test_exercise_names_are_listed_without_duplicates():
     assert summary["chest"]["sets"] == 5
 
 
-def test_weekly_summary_only_includes_the_target_week(app):
+def test_weekly_summary_only_includes_the_target_week(app, client):
     with app.app_context():
-        add_entry("2026-07-27", SITUP, logged(5))  # Monday, in week
-        add_entry("2026-08-02", PULLUP, logged(2))  # Sunday, in week
-        add_entry("2026-08-03", BENCH, logged(3))  # next Monday, out of week
+        add_entry(TEST_USER_ID, "2026-07-27", SITUP, logged(5))  # Monday, in week
+        add_entry(TEST_USER_ID, "2026-08-02", PULLUP, logged(2))  # Sunday, in week
+        add_entry(TEST_USER_ID, "2026-08-03", BENCH, logged(3))  # next Monday, out of week
 
-        summary = weekly_summary(date(2026, 7, 28))
+        summary = weekly_summary(TEST_USER_ID, date(2026, 7, 28))
 
     assert summary["week_start"] == "2026-07-27"
     assert summary["week_end"] == "2026-08-02"
@@ -333,10 +334,10 @@ def test_untrained_groups_have_zero_shares_and_no_flags():
     assert all(r["share"] == 0.0 and not r["neglected"] for r in chest["regions"])
 
 
-def test_weekly_summary_lists_every_neglected_region(app):
+def test_weekly_summary_lists_every_neglected_region(app, client):
     with app.app_context():
-        add_entry("2026-07-28", BENCH, logged(10))
-        summary = weekly_summary(date(2026, 7, 28))
+        add_entry(TEST_USER_ID, "2026-07-28", BENCH, logged(10))
+        summary = weekly_summary(TEST_USER_ID, date(2026, 7, 28))
 
     flagged = {(r["muscle"], r["region"]) for r in summary["regions_neglected"]}
     assert ("shoulders", "delt_side") in flagged
