@@ -202,6 +202,12 @@ Body Shop is not a hypertrophy calculator and must not read like one.
   delts". A range is a research finding, not an instruction, and printing one invites the
   user to treat the widest number as the goal. One target per group; the colour ramp says
   the rest.
+
+  **The exception, and why it is one:** a routine's `4 × 6-8` is a rep prescription
+  *inside a session someone else wrote*, labelled as a suggestion and shown next to that
+  session. It is not a claim about how much weekly volume a muscle needs, which is the
+  object this rule is about — and it is what every routine anywhere is written in. What
+  a routine may still never do is print a weekly set target, or a range of one.
 - **The purpose is coverage, not maximisation.** What the app is *for* is keeping every
   muscle — and every region of the ones we can subdivide — inside a productive range: no
   gaps that leave weak links, and no runaway volume on one group while its neighbours are
