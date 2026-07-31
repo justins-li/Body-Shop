@@ -70,6 +70,13 @@ function paintBody(muscles) {
     const title = region.querySelector("title");
     if (title) title.textContent = describe(info, region.dataset.muscle);
   });
+
+  // Arms the staggered head-to-toe sweep in CSS. Set after the grades so the
+  // delays apply to this transition rather than to the page's first paint,
+  // which would hold an already-grey map grey for another half second.
+  document.querySelectorAll(".body-muscles").forEach((group) => {
+    group.classList.add("is-graded");
+  });
 }
 
 /** Fill the breakdown list, each bar scaled against its target. */
@@ -232,6 +239,31 @@ function renderRegions(muscles) {
   });
 }
 
+/**
+ * One readout cell: a figure over the thing it counts.
+ *
+ * `over` marks the only cell allowed the ramp's colour — it reports the same
+ * fact the map is already showing in red, so tinting it agrees with the map
+ * rather than inventing a second scale.
+ */
+function readoutCell(value, label, { over = false } = {}) {
+  const cell = document.createElement("div");
+  cell.className = `readout-cell${over ? " is-over" : ""}`;
+
+  const figure = document.createElement("dd");
+  figure.className = "readout-value";
+  figure.textContent = value;
+
+  const name = document.createElement("dt");
+  name.className = "readout-label type-label";
+  name.textContent = label;
+
+  // <dt> before <dd> in the DOM, so the pair reads correctly; CSS puts the
+  // figure on top.
+  cell.append(name, figure);
+  return cell;
+}
+
 function renderHeader(summary) {
   const start = formatDate(summary.week_start, { month: "short", day: "numeric" });
   const end = formatDate(summary.week_end, { month: "short", day: "numeric", year: "numeric" });
@@ -239,19 +271,18 @@ function renderHeader(summary) {
 
   const worked = summary.muscles_worked.length;
   const total = Object.keys(summary.muscles).length;
-  const parts = [
-    `${summary.total_sets} sets`,
-    `${worked} of ${total} muscle groups trained`,
-    `${summary.muscles_at_target.length} at target`,
-  ];
-  if (summary.muscles_over.length) {
-    parts.push(`${summary.muscles_over.length} over`);
-  }
-  if (summary.regions_neglected.length) {
-    const count = summary.regions_neglected.length;
-    parts.push(`${count} region${count === 1 ? "" : "s"} left thin`);
-  }
-  $("#week-meta").textContent = parts.join(" · ");
+  const thin = summary.regions_neglected.length;
+
+  const meta = $("#week-meta");
+  meta.textContent = "";
+  meta.append(
+    readoutCell(summary.total_sets, "Sets"),
+    readoutCell(`${worked}/${total}`, "Trained"),
+    readoutCell(summary.muscles_at_target.length, "At target"),
+    summary.muscles_over.length
+      ? readoutCell(summary.muscles_over.length, "Over", { over: true })
+      : readoutCell(thin, thin === 1 ? "Region thin" : "Regions thin"),
+  );
 }
 
 async function load() {

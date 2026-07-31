@@ -8,6 +8,53 @@ All notable changes to Body Shop are documented here. This project follows
 
 ### Added
 
+- **A dark, instrument-like interface (Phase 4.5).** The cream palette is gone and the
+  light theme is retired rather than re-derived. Six colour tokens on a near-black
+  blue-black ground, warm bone for data marks, cold slate for structure, and an oxidised
+  brick red as the only accent. Three typefaces in four named voices — Big Shoulders
+  Display for headings, IBM Plex Sans for copy, IBM Plex Mono for micro-labels and, new,
+  for **every number in the app**, with tabular figures so digits don't shift width as
+  they change. Cards give way to hairline-ruled bands on one continuous ground.
+- **`/progress`, the training graph.** Every movement logged in a window drawn as a node
+  on a canvas, joined to the movements done on the same day. Size is sets, colour is the
+  current weekly coverage of its main muscle, and movements that have fallen out —
+  logged under three times, or not in eight weeks — ring the outside as hollow circles
+  and are listed by name beneath. Nothing is strength-relative: no bodyweight is stored
+  and no 1RM computed, so a strength-standard colouring would be a guess (Phase 7). Time
+  window switches between 8 weeks, 6 months and all time. Backed by one new read-only
+  endpoint, `GET /api/progress/graph`.
+- **A mobile bottom tab bar**, so the app is reachable one-handed. Logging a set is two
+  taps from opening the app, and `/log`'s submit is docked in the thumb zone.
+
+### Changed
+
+- **The volume ramp climbs in luminance rather than darkening.** It ran pale-to-dark as
+  volume rose, which reads correctly on cream and backwards on near-black, where a dark
+  green is the least-lit thing on screen. `--color-train-light/dark` are now
+  `--color-train-min/max`, since "dark" would otherwise name the bright end.
+- **The rest timer survives navigation.** It lives in the shared header and persists a
+  deadline rather than a remaining count, so rest keeps running while you look at the
+  calendar and does not drift when the tab is backgrounded.
+- **`/log`'s set row is two tiers.** Weight and reps lead at full tap size; RPE and set
+  type sit on a quieter second tier with their own labels. Numeric fields raise the
+  numeric keypad and select on focus, so overwriting a prefilled weight is one tap.
+- **The calendar's day dot became a bar** whose height is the sets logged that day,
+  against a fixed reference so two months can be compared.
+- **The weekly summary leads with the body map**, and the week's figures became readout
+  cells instead of a dot-separated sentence that wrapped to five lines on a phone.
+
+### Fixed
+
+- **The home page no longer claims an entry is "no weight, no reps"**, which Phase 4 made
+  false, and the colour-scale legend no longer describes the ramp running the wrong way.
+- **A group with one set is now distinguishable from an untrained one.** The trained
+  ramp's dim end sat 1.80:1 against untrained, so "barely trained" and "not trained at
+  all" looked alike — which defeats the coverage model the app is built on.
+- **Crossing the target no longer depends on telling green from red.** The two ramps peak
+  at similar brightness, which is what makes the crossing unmistakable to most eyes and
+  nearly invisible under red-green colour blindness; over-target regions and graph nodes
+  now also carry a heavier bone outline.
+
 - **Alembic migrations.** `app/tables.py` describes the schema as SQLAlchemy metadata and
   `migrations/versions/` is how a database reaches it; `app/schema.sql` is gone. Three
   revisions: `0001` reproduces the old hand-written schema so an existing database can be

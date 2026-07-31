@@ -2,56 +2,58 @@
 {% block title %}Calendar · Body Shop{% endblock %}
 
 {% block content %}
-<div class="wrap pt-16 pb-4">
-  <p class="type-label text-secondary mb-5">Calendar</p>
-  <h1 class="type-display text-[clamp(2rem,5vw,3.25rem)] mb-5">What you trained</h1>
+<div class="wrap pt-10 pb-2">
+  <p class="type-label text-secondary mb-4">Calendar</p>
+  <h1 class="type-display text-[clamp(2rem,9vw,3.25rem)] mb-4">What you trained</h1>
   <p class="type-lede">Pick a day to see the sets you logged, or jump straight to logging it.</p>
 </div>
 
-<div class="wrap grid items-start gap-6 pb-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-  <section class="card bg-base-100 border hairline" aria-labelledby="calendar-heading">
-    <div class="card-body gap-5 sm:p-7">
-      <header class="flex items-center justify-between gap-3">
-        <button class="btn btn-circle btn-outline border-base-content/25 text-base" id="prev-month" type="button"
-                aria-label="Previous month">‹</button>
-        <h2 id="calendar-heading" class="type-display text-lg m-0" aria-live="polite">&nbsp;</h2>
-        <button class="btn btn-circle btn-outline border-base-content/25 text-base" id="next-month" type="button"
-                aria-label="Next month">›</button>
-      </header>
-
-      <div class="grid grid-cols-7 gap-1.5" aria-hidden="true">
-        {% for name in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] %}
-          <span class="type-label text-secondary text-center py-1">{{ name }}</span>
-        {% endfor %}
+<div class="wrap">
+  <section class="band" aria-labelledby="calendar-heading">
+    <header class="band-head">
+      <h2 id="calendar-heading" class="type-label text-base-content" aria-live="polite">&nbsp;</h2>
+      <div class="flex items-center gap-1.5">
+        <button class="step-key" id="prev-month" type="button" aria-label="Previous month">‹</button>
+        <button class="step-key" id="today-btn" type="button">Today</button>
+        <button class="step-key" id="next-month" type="button" aria-label="Next month">›</button>
       </div>
+    </header>
 
-      <div class="grid grid-cols-7 gap-1.5" id="calendar-days" role="grid"
-           aria-labelledby="calendar-heading"></div>
-
-      <footer class="flex flex-wrap items-center justify-between gap-3 border-t hairline pt-5">
-        <button class="btn btn-outline btn-sm rounded-full px-5 hairline" id="today-btn" type="button">
-          Jump to today
-        </button>
-        <p class="type-label text-secondary m-0 flex items-center gap-2">
-          <span class="inline-block size-1.5 rounded-full bg-train-dark"></span>
-          day with logged sets
-        </p>
-      </footer>
+    <div class="month-grid mb-1.5" aria-hidden="true">
+      {% for name in ["M", "T", "W", "T", "F", "S", "S"] %}
+        <span class="type-label text-secondary text-center py-1">{{ name }}</span>
+      {% endfor %}
     </div>
+
+    <div class="month-grid" id="calendar-days" role="grid"
+         aria-labelledby="calendar-heading"></div>
+
+    {# The bar's height is set-count against a fixed reference, not against the
+       month's own busiest day — a per-month scale would silently re-draw the
+       same week differently depending on what else was in the month. #}
+    <p class="type-label text-secondary mt-5 flex items-center gap-2.5 m-0">
+      <span class="day-key" aria-hidden="true"><span class="day-key-bar"></span></span>
+      bar height is sets logged
+    </p>
   </section>
 
-  <aside class="card bg-base-100 border hairline" aria-labelledby="day-heading">
-    <div class="card-body gap-5 sm:p-7">
-      <h2 id="day-heading" class="type-display text-lg m-0">&nbsp;</h2>
-      <div id="day-entries" class="grid gap-2"><p class="text-sm text-secondary m-0">Loading…</p></div>
-      <div class="flex flex-wrap gap-2.5 border-t hairline pt-5">
-        <a class="btn btn-primary btn-sm rounded-full px-5 border-0" id="log-for-day"
-           href="{{ url_for('views.log_page') }}">Log a workout</a>
-        <a class="btn btn-outline btn-sm rounded-full px-5 hairline" id="week-for-day"
-           href="{{ url_for('views.summary_page') }}">See the week</a>
-      </div>
+  <section class="band" aria-labelledby="day-heading">
+    <header class="band-head">
+      <h2 id="day-heading" class="type-label text-base-content">&nbsp;</h2>
+      <span class="type-data text-sm text-secondary" id="day-total"></span>
+    </header>
+
+    <div id="day-entries" class="grid gap-1.5">
+      <p class="text-sm text-secondary m-0">Loading…</p>
     </div>
-  </aside>
+
+    <div class="flex flex-wrap gap-2.5 mt-6">
+      <a class="btn-brick" id="log-for-day"
+         href="{{ url_for('views.log_page') }}">Log a workout</a>
+      <a class="btn-ghost-line" id="week-for-day"
+         href="{{ url_for('views.summary_page') }}">See the week</a>
+    </div>
+  </section>
 </div>
 {% endblock %}
 

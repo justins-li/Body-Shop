@@ -2,10 +2,10 @@
 
 > Log your workouts on a calendar and see, at a glance, which muscle groups you actually trained this week.
 
-Body Shop is a small Flask + vanilla JS web app. You pick a date, log how many sets
-of an exercise you did, and the weekly summary paints a body outline: each muscle
-group deepens from **light green** at one set to **dark green** at its weekly set
-target, then runs **light to dark red** for every set past it.
+Body Shop is a small Flask + vanilla JS web app. You pick a date, log the sets you
+finished — with weight, reps and RPE if you want them — and the weekly summary paints a
+body outline: each muscle group **brightens toward green** as it works toward its weekly
+set target, then turns **red** for every set past it.
 
 Targets are 20 sets a week for the large groups (chest, back, shoulders, quads,
 hamstrings, glutes) and 10 for the small ones (abs, biceps, triceps, forearms,
@@ -35,12 +35,16 @@ on both, so the two outlines tell you different things.
 | Page | Route | What it does |
 | --- | --- | --- |
 | **Home** | `/` | What the app does, and the way in. Static — no API calls. |
-| **Calendar** | `/calendar` | Month grid of your training. Days with logged sets are dotted; click one to see what you did. |
-| **Log workout** | `/log` | Pick date → exercise → sets. The picker has three ways in: recent, search (`incl db` finds "Dumbbell Incline Bench Press") and browse by muscle. Shows and deletes the entries for that day. |
-| **Weekly summary** | `/summary` | Front/back body map shaded by weekly volume, plus each group's sets against its target. |
+| **Calendar** | `/calendar` | Month grid of your training. Each day carries a bar as tall as the sets you logged; tap one to see what you did. |
+| **Log workout** | `/log` | Pick date → exercise → sets, with weight, reps, RPE and set type per row, prefilled from last time. The picker has three ways in: recent, browse by muscle, and search (`incl db` finds "Dumbbell Incline Bench Press"). Shows and deletes the entries for that day. |
+| **Weekly summary** | `/summary` | Front/back body map shaded by weekly volume, each group's sets against its target, and where inside six of them the work landed. |
+| **Training graph** | `/progress` | Every movement you have logged, joined to the ones you do on the same day. The movements that have fallen out ring the outside — and are named underneath. |
 
-All four pages share a `?date=YYYY-MM-DD` query parameter, so navigating between
+All five pages share a `?date=YYYY-MM-DD` query parameter, so navigating between
 them keeps the day you were looking at.
+
+The interface is dark and dense by design — it is read on a phone, mid-session, with a
+barbell in the other hand. The volume ramp is the only saturated colour in it.
 
 ## Quick start
 
@@ -165,12 +169,13 @@ Body-Shop/
 │   ├── api.py                # /api JSON endpoints
 │   ├── services/
 │   │   ├── weeks.py          # week/month boundary maths
-│   │   └── summary.py        # weekly muscle-coverage aggregation
+│   │   ├── summary.py        # weekly muscle-coverage aggregation
+│   │   └── graph.py          # training-graph windows, orphans, node colouring
 │   ├── templates/            # Jinja2: base + one per page + body-map partial
 │   └── static/
 │       ├── css/input.css     # design system — the file you edit
 │       ├── css/styles.css    # compiled output — generated, committed
-│       └── js/               # api.js, ui.js, and one module per page
+│       └── js/               # api.js, ui.js, one module per page, + layout.js
 ├── migrations/               # Alembic: env.py + versions/
 ├── alembic.ini
 ├── tools/                    # fetch_css_toolchain.py, build_exercise_catalog.py

@@ -1,11 +1,12 @@
 """HTML page routes.
 
-Four pages:
+Five pages:
 
 * ``/``         — home: what the app is, and the way in
 * ``/calendar`` — month calendar of logged workouts
 * ``/log``      — input form for date / exercise / sets
 * ``/summary``  — weekly summary with the muscle-coverage body map
+* ``/progress`` — the training graph (Phase 4.5)
 
 Pages are server-rendered shells; the dynamic parts are filled in by the
 JavaScript modules in ``app/static/js`` talking to the JSON API. ``/`` is the
@@ -33,6 +34,8 @@ from .exercises import (
     scheme_map,
 )
 from .models import parse_date
+from .services.graph import DEFAULT_WINDOW as DEFAULT_GRAPH_WINDOW
+from .services.graph import WINDOW_LABELS as GRAPH_WINDOW_LABELS
 from .services.weeks import week_bounds
 
 bp = Blueprint("views", __name__)
@@ -102,6 +105,24 @@ def log_page():
         page="log",
         selected_date=day,
         exercise_count=len(all_exercises()),
+    )
+
+
+@bp.get("/progress")
+def progress_page():
+    """The training graph.
+
+    A shell only: ``progress.js`` fetches ``/api/progress/graph`` and draws to a
+    canvas. Nothing here is server-rendered, because there is nothing to render
+    without the data — and the page says so rather than showing an empty frame.
+    """
+    day = _requested_date()
+    return render_template(
+        "progress.html",
+        page="progress",
+        selected_date=day,
+        windows=GRAPH_WINDOW_LABELS,
+        default_window=DEFAULT_GRAPH_WINDOW,
     )
 
 

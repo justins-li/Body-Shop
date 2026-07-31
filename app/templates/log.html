@@ -2,161 +2,164 @@
 {% block title %}Log a workout · Body Shop{% endblock %}
 
 {% block content %}
-<div class="wrap pt-16 pb-4">
-  <p class="type-label text-secondary mb-5">New entry</p>
-  <h1 class="type-display text-[clamp(2rem,5vw,3.25rem)] mb-5">Log a workout</h1>
-  <p class="type-lede">Pick a date, choose a movement, and record how many sets you finished.</p>
+{#
+  The hot path. This page is a tool rather than a document, so its header is one
+  compact row — a full-height hero would push the picker below the fold on the
+  screen someone opens mid-set.
+#}
+<div class="wrap pt-8 pb-1">
+  <p class="type-label text-secondary mb-3">New entry</p>
+  <h1 class="type-display text-[clamp(1.75rem,7vw,2.5rem)] m-0">Log a workout</h1>
 </div>
 
-<div class="wrap grid items-start gap-6 pb-8 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-  <section class="card bg-base-100 border hairline" aria-labelledby="form-heading">
-    <div class="card-body gap-7 sm:p-7">
-      <h2 id="form-heading" class="type-display text-lg m-0">Entry details</h2>
-
-      <form id="entry-form" novalidate class="grid gap-7">
-        <div>
-          <label class="type-label text-secondary block mb-2.5" for="entry-date">Date</label>
-          <input type="date" id="entry-date" name="date" required
-                 value="{{ selected_date.isoformat() }}"
-                 class="input w-full bg-base-200 border hairline">
-        </div>
-
-        {#
-          The picker is a shell. At 873 movements a server-rendered radio list
-          is neither renderable nor usable, so `log.js` fetches the catalog
-          once and fills these three panels client-side. The selected id lives
-          in the hidden input so the form still submits like any other form.
-        #}
-        <fieldset class="border-0 p-0 m-0" id="exercise-picker">
-          <legend class="type-label text-secondary mb-2.5 p-0">Exercise</legend>
-          <input type="hidden" name="exercise_id" id="exercise-id" value="">
-
-          <div id="exercise-chosen" class="mb-3" hidden></div>
-
-          {#
-            Recent and Browse are the two ways in and carry full-width tabs.
-            Search is a third tab wearing an icon: it is the fallback for when
-            you already know the name, not the way you shop for a movement.
-          #}
-          <div role="tablist" class="flex items-center gap-1.5 mb-3">
-            {% for tab, label in [("recent", "Recent"), ("browse", "Browse")] %}
-              <button type="button" role="tab" class="picker-tab" data-tab="{{ tab }}"
-                      aria-selected="{{ 'true' if loop.first else 'false' }}">{{ label }}</button>
-            {% endfor %}
-            <button type="button" role="tab" class="picker-tab picker-tab-icon ms-auto"
-                    data-tab="search" aria-selected="false"
-                    title="Search all {{ exercise_count }} movements">
-              <svg viewBox="0 0 20 20" aria-hidden="true" fill="none"
-                   stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-                <circle cx="8.5" cy="8.5" r="5.25"></circle>
-                <path d="M12.5 12.5 17 17"></path>
-              </svg>
-              <span class="sr-only">Search all {{ exercise_count }} movements</span>
-            </button>
-          </div>
-
-          <div class="picker-panel" data-panel="recent">
-            <div id="recent-results" class="picker-results"></div>
-          </div>
-
-          <div class="picker-panel" data-panel="browse" hidden>
-            <div class="grid gap-2.5 sm:grid-cols-2 mb-2.5">
-              <div>
-                <label class="type-label text-secondary block mb-1.5" for="browse-muscle">Muscle group</label>
-                <select id="browse-muscle" class="select w-full bg-base-200 border hairline">
-                  {% for muscle in muscle_groups %}
-                    <option value="{{ muscle }}">{{ muscle_labels[muscle] }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-              <div>
-                <label class="type-label text-secondary block mb-1.5" for="browse-equipment">Equipment</label>
-                <select id="browse-equipment" class="select w-full bg-base-200 border hairline">
-                  <option value="">Any</option>
-                </select>
-              </div>
-            </div>
-            <div id="browse-results" class="picker-results"></div>
-            {# Filled by log.js: how much of the list is showing, and the way to the rest. #}
-            <p class="picker-note" id="browse-note" hidden></p>
-          </div>
-
-          <div class="picker-panel" data-panel="search" hidden>
-            <label class="sr-only" for="exercise-search">Search exercises</label>
-            <input type="search" id="exercise-search" autocomplete="off"
-                   placeholder="Search {{ exercise_count }} movements — name, equipment or muscle"
-                   class="input w-full bg-base-200 border hairline mb-2.5">
-            <div id="search-results" class="picker-results"></div>
-          </div>
-        </fieldset>
-
-        <div>
-          <div class="flex items-baseline justify-between mb-2.5 gap-3">
-            <span class="type-label text-secondary">Sets</span>
-            <div class="flex items-center gap-1.5">
-              <label class="sr-only" for="weight-unit">Weight unit</label>
-              <select id="weight-unit" class="select select-sm bg-base-200 border hairline">
-                <option value="kg">kg</option>
-                <option value="lb">lb</option>
-              </select>
-            </div>
-          </div>
-
-          {#
-            One row per set, built by log.js. The header is here rather than in
-            JS so the column names survive with no script, and because Tailwind
-            only sees classes it can read as literal text in a template.
-          #}
-          <div class="set-grid-head type-label text-secondary" aria-hidden="true">
-            <span>#</span><span>Weight</span><span>Reps</span><span>RPE</span><span>Type</span><span></span>
-          </div>
-          <div id="set-grid" class="grid gap-1.5"></div>
-
-          <div class="flex flex-wrap items-center gap-2.5 mt-2.5">
-            <button type="button" id="add-set"
-                    class="btn btn-sm btn-outline rounded-full hairline">Add set</button>
-            <p class="picker-note m-0" id="prefill-note" hidden></p>
-          </div>
-        </div>
-
-        {#
-          The timer runs entirely in the browser — no schema, no endpoint. The
-          page ships its controls; `timer.js` owns the count. Phase 10 moves the
-          alert to a watch, where you can see it without unlocking a phone.
-        #}
-        <div class="rest-timer flex flex-wrap items-center gap-2.5" id="rest-timer">
-          <span class="type-label text-secondary">Rest</span>
-          <span class="rest-timer-readout tabular-nums" data-timer-readout>2:00</span>
-          <label class="sr-only" for="rest-duration">Rest length</label>
-          <select id="rest-duration" data-timer-duration
-                  class="select select-sm bg-base-200 border hairline">
-            <option value="60">1:00</option>
-            <option value="90">1:30</option>
-            <option value="120">2:00</option>
-            <option value="180">3:00</option>
-          </select>
-          <button type="button" data-timer-toggle
-                  class="btn btn-sm btn-outline rounded-full hairline">Start / stop</button>
-        </div>
-
-        <p class="alert alert-error text-sm py-2.5 px-4 rounded-xl m-0"
-           id="form-error" role="alert" hidden></p>
-
-        <div class="flex flex-wrap gap-2.5">
-          <button type="submit" class="btn btn-primary rounded-full h-11 px-6 border-0">Add entry</button>
-          <a class="btn btn-outline rounded-full h-11 px-6 hairline" id="view-summary"
-             href="{{ url_for('views.summary_page') }}">Weekly summary</a>
-        </div>
-      </form>
+<div class="wrap grid items-start gap-x-10 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+  <form id="entry-form" class="has-action-bar" novalidate>
+    {# The date belongs *inside* the form: `onSubmit` reads the entry off a
+       `FormData`, so a date input sitting in the page header would submit
+       nothing and fail on "Pick a date first". #}
+    <div class="band flex items-center justify-between gap-3">
+      <label class="type-label text-secondary" for="entry-date">Date</label>
+      <input type="date" id="entry-date" name="date" required
+             value="{{ selected_date.isoformat() }}"
+             class="field field-sm type-data">
     </div>
-  </section>
 
-  <aside class="card bg-base-100 border hairline" aria-labelledby="entries-heading">
-    <div class="card-body gap-5 sm:p-7">
-      <h2 id="entries-heading" class="type-display text-lg m-0">
+    {#
+      The picker is a shell. At 873 movements a server-rendered radio list is
+      neither renderable nor usable, so `log.js` fetches the catalog once and
+      fills these three panels client-side. The selected id lives in the hidden
+      input so the form still submits like any other form.
+    #}
+    <fieldset class="band border-0 p-0 m-0" id="exercise-picker">
+      <legend class="sr-only">Exercise</legend>
+      <input type="hidden" name="exercise_id" id="exercise-id" value="">
+
+      <div class="band-head">
+        <span class="type-label">Exercise</span>
+        {#
+          Recent and Browse are the two ways in and carry full-width tabs.
+          Search is a third tab wearing an icon: it is the fallback for when
+          you already know the name, not the way you shop for a movement.
+        #}
+        <div role="tablist" class="flex items-center gap-1.5">
+          {% for tab, label in [("recent", "Recent"), ("browse", "Browse")] %}
+            <button type="button" role="tab" class="picker-tab" data-tab="{{ tab }}"
+                    aria-selected="{{ 'true' if loop.first else 'false' }}">{{ label }}</button>
+          {% endfor %}
+          <button type="button" role="tab" class="picker-tab picker-tab-icon"
+                  data-tab="search" aria-selected="false"
+                  title="Search all {{ exercise_count }} movements">
+            <svg viewBox="0 0 20 20" aria-hidden="true" fill="none"
+                 stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <circle cx="8.5" cy="8.5" r="5.25"></circle>
+              <path d="M12.5 12.5 17 17"></path>
+            </svg>
+            <span class="sr-only">Search all {{ exercise_count }} movements</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="exercise-chosen" class="mb-3" hidden></div>
+
+      <div class="picker-panel" data-panel="recent">
+        <div id="recent-results" class="picker-results"></div>
+      </div>
+
+      <div class="picker-panel" data-panel="browse" hidden>
+        <div class="grid gap-2 sm:grid-cols-2 mb-2.5">
+          <div>
+            <label class="type-label text-secondary block mb-1.5" for="browse-muscle">Muscle group</label>
+            <select id="browse-muscle" class="field w-full">
+              {% for muscle in muscle_groups %}
+                <option value="{{ muscle }}">{{ muscle_labels[muscle] }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="type-label text-secondary block mb-1.5" for="browse-equipment">Equipment</label>
+            <select id="browse-equipment" class="field w-full">
+              <option value="">Any</option>
+            </select>
+          </div>
+        </div>
+        <div id="browse-results" class="picker-results"></div>
+        {# Filled by log.js: how much of the list is showing, and the way to the rest. #}
+        <p class="picker-note" id="browse-note" hidden></p>
+      </div>
+
+      <div class="picker-panel" data-panel="search" hidden>
+        <label class="sr-only" for="exercise-search">Search exercises</label>
+        <input type="search" id="exercise-search" autocomplete="off"
+               placeholder="Name, equipment or muscle"
+               class="field w-full mb-2.5">
+        <div id="search-results" class="picker-results"></div>
+      </div>
+    </fieldset>
+
+    <div class="band">
+      <div class="band-head">
+        <span class="type-label">Sets</span>
+        <div class="flex items-center gap-2">
+          <label class="sr-only" for="weight-unit">Weight unit</label>
+          <select id="weight-unit" class="field field-sm type-data">
+            <option value="kg">kg</option>
+            <option value="lb">lb</option>
+          </select>
+        </div>
+      </div>
+
+      {#
+        One row per set, built by log.js. The header names only the first tier's
+        columns — weight and reps are what you type every time, so they lead;
+        RPE and set type sit on a second tier that labels itself. The header is
+        here rather than in JS so the column names survive with no script, and
+        because Tailwind only sees classes it can read as literal text.
+      #}
+      <div class="set-grid-head type-label text-secondary" aria-hidden="true">
+        <span>#</span><span>Weight</span><span>Reps</span><span></span>
+      </div>
+      <div id="set-grid" class="grid gap-2"></div>
+
+      <div class="flex flex-wrap items-center gap-3 mt-3">
+        <button type="button" id="add-set" class="step-key">+ Add set</button>
+        <p class="picker-note m-0" id="prefill-note" hidden></p>
+      </div>
+    </div>
+
+    {#
+      The countdown itself lives in the shared header (see base.html), so it
+      survives navigating to the calendar mid-rest. What stays here is the one
+      part that belongs beside the sets: how long a rest runs for. `timer.js`
+      finds this select wherever it sits.
+    #}
+    <div class="band flex items-center justify-between gap-3">
+      <label class="type-label text-secondary" for="rest-duration">Rest length</label>
+      <select id="rest-duration" data-timer-duration class="field field-sm type-data">
+        <option value="60">1:00</option>
+        <option value="90">1:30</option>
+        <option value="120">2:00</option>
+        <option value="180">3:00</option>
+      </select>
+    </div>
+
+    <p class="form-error" id="form-error" role="alert" hidden></p>
+
+    {# Pinned to the bottom third, above the tab bar: the hot path has to be
+       completable with one thumb without scrolling back up to a button. #}
+    <div class="action-bar">
+      <button type="submit" class="btn-brick w-full sm:w-auto">Add entry</button>
+    </div>
+  </form>
+
+  <aside class="band lg:border-t-0 lg:pt-0" aria-labelledby="entries-heading">
+    <div class="band-head">
+      <h2 id="entries-heading" class="type-label text-base-content">
         Logged on <span id="entries-date"></span>
       </h2>
-      <div id="day-entries" class="grid gap-2"><p class="text-sm text-secondary m-0">Loading…</p></div>
+      <span class="type-data text-sm text-secondary" id="entries-total"></span>
+    </div>
+    <div id="day-entries" class="grid gap-1.5">
+      <p class="text-sm text-secondary m-0">Loading…</p>
     </div>
   </aside>
 </div>

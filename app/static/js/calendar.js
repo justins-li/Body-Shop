@@ -15,6 +15,17 @@ let monthTotals = {};
 let selectedIso;
 let cursor; // Date positioned on the 1st of the visible month.
 
+/**
+ * Sets that fill a day cell's bar to full height.
+ *
+ * A **fixed** reference rather than the month's own busiest day: scaling to the
+ * maximum in view would redraw the same week at a different height depending on
+ * what else happened that month, so two months could not be compared. Days past
+ * it clamp, which costs nothing — the reading is "how big was this session",
+ * and everything above a very hard one reads the same anyway.
+ */
+const FULL_DAY_SETS = 24;
+
 /** Build the weeks (Monday-first) covering the month containing `date`. */
 function monthGrid(date) {
   const first = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -63,12 +74,14 @@ function renderGrid() {
     if (total > 0) cell.classList.add("has-entries");
 
     const number = document.createElement("span");
+    number.className = "day-num";
     number.textContent = String(day.getDate());
 
-    const dot = document.createElement("span");
-    dot.className = "day-dot";
+    const bar = document.createElement("span");
+    bar.className = "day-bar";
+    bar.style.setProperty("--volume", Math.min(1, total / FULL_DAY_SETS));
 
-    cell.append(number, dot);
+    cell.append(bar, number);
     cell.setAttribute(
       "aria-label",
       `${formatDate(iso)}${total ? `, ${total} sets logged` : ", nothing logged"}`
@@ -92,10 +105,15 @@ async function loadMonth() {
 async function loadDay() {
   const heading = $("#day-heading");
   const panel = $("#day-entries");
+  const total = $("#day-total");
   heading.textContent = formatDate(selectedIso);
+  total.textContent = "";
 
   try {
     const entries = await fetchEntriesForDate(selectedIso);
+    // Warm-ups are already out of `set_count`, so this matches the bar above.
+    const sets = entries.reduce((sum, entry) => sum + entry.set_count, 0);
+    total.textContent = sets ? `${sets} ${sets === 1 ? "set" : "sets"}` : "";
     renderEntries(panel, entries, {
       emptyMessage: "No workouts logged on this day yet.",
     });

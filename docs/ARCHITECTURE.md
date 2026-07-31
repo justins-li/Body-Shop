@@ -28,7 +28,7 @@ Which backend is in use is decided entirely by `DATABASE_URL`, and nothing above
 `lastrowid` versus `RETURNING`, `AUTOINCREMENT` versus `IDENTITY`, and how a
 `DATE` is stored, so `models.py` expresses queries once.
 
-`app/views.py` renders four server-side shells; everything dynamic is fetched by
+`app/views.py` renders five server-side shells; everything dynamic is fetched by
 the page's JavaScript module from the same `/api` the tests exercise. That means the
 HTML never diverges from the API, and the API is testable without a browser.
 
@@ -49,11 +49,14 @@ why it is worth having before auth exists.
 | `app/models.py` | Every SQL statement, plus input validation. | Know about HTTP or Jinja, or know which dialect it is on. |
 | `app/services/weeks.py` | Week/month boundary maths. | Query the database. |
 | `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses. |
+| `app/services/graph.py` | The training graph's rules: what a window means, what makes a movement an orphan, and joining this week's coverage onto the nodes. | Query the database, or invent a strength benchmark (see below). |
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
 | `app/views.py` | Page shells and template context. | Contain business rules. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
-| `app/static/js/timer.js` | The rest countdown on `/log`. Pure client state. | Touch the API or persist anything but its own duration. |
+| `app/static/js/timer.js` | The rest countdown, booted from `base.html` on every page. Pure client state, persisted as a *deadline* so it survives navigation and tab throttling. | Touch the API, or persist anything but its duration and that deadline. |
 | `app/static/js/plates.js` | Plate arithmetic — a pure function of weight and bar. | Store anything, or fetch. |
+| `app/static/js/layout.js` | The force-directed layout — a pure, deterministic function of the graph. | Touch the canvas, the DOM, or `Math.random`. |
+| `app/static/js/progress.js` | The canvas, the gestures and the detail panel on `/progress`. | Contain layout maths, or re-simulate on a render. |
 | `app/static/css/input.css` | The design system: theme pair, tokens, and every hand-written rule. | — (`styles.css` beside it is generated; never edit it) |
 
 ## Styling
@@ -65,8 +68,14 @@ written — there is no bundler. The compiled `styles.css` is committed, so runn
 app or CI never needs the toolchain; only editing `input.css` does.
 
 Configuration is CSS-first (Tailwind v4): no `tailwind.config.js`. `@theme` holds the
-tokens, two `@plugin "daisyui/theme"` blocks define the `bodyshop` / `bodyshop-dark`
-pair, and `@source` directives list the content globs.
+tokens, a single `@plugin "daisyui/theme"` block defines the one `bodyshop` theme, and
+`@source` directives list the content globs.
+
+That theme is **dark, and the only one**. Phase 4.5 retired the light half of the pair
+rather than re-deriving it: the volume ramp now climbs in luminance (dim → lit), which
+is how "more volume" reads on a near-black ground and exactly backwards on a light one.
+Maintaining both would have meant two ramps whose colours mean opposite things — the
+kind of disagreement this codebase's single-source-of-truth design exists to prevent.
 
 The division of labour is the part worth internalising:
 
@@ -253,7 +262,14 @@ The front-end does no grading of its own: `summary.js` writes `intensity` to a
 `--level` custom property and toggles `.is-worked` / `.is-over` on every element with
 the matching `data-muscle` attribute — SVG regions and breakdown rows alike. Colour
 still lives entirely in CSS, which mixes between the ramp endpoints
-(`--train-light`/`--train-dark`, `--over-light`/`--over-dark`) with `color-mix`.
+(`--train-min`/`--train-max`, `--over-min`/`--over-max`) with `color-mix`.
+
+**The ramp climbs in luminance.** Phase 4.5 re-derived it for the dark ground and
+renamed the tokens with it: a dark green against near-black is the *least*-lit thing on
+screen, so the old light→dark direction said "less" where it meant "more", and "dark"
+would now have named the bright end. Both ramps peak at similar brightness, so crossing
+the target reads as a hue flip rather than a fade — which is what keeps one set past
+target a visible step on either scale.
 
 ### Weighted sets
 
@@ -324,6 +340,86 @@ Adding a muscle group means adding a path with the right `data-muscle` slug to t
 appropriate view; no JavaScript changes are needed. `shoulders` was the exception —
 the torso met the upper arms at a bare corner, so `.body-base` needed deltoid caps
 before there was anything to overlay.
+
+## The training graph
+
+`/progress` draws every movement logged in a window as a node, joined to the
+movements performed on the same day. Added in Phase 4.5 as the redesign's signature
+element, and scoped hard to data that already exists.
+
+**The encodings are the app's own thesis, not a borrowed one.** Node size is
+cumulative non-warmup sets. Node colour is the *current* weekly coverage state of the
+movement's primary muscle — the same `state`/`intensity` pair the body map uses, so
+the two pages cannot disagree about a week. Edge opacity is how many days two
+movements were logged together. Nothing here is strength-relative: the app stores no
+bodyweight, computes no 1RM, and pre-Phase-4 history has `NULL` weights, so a
+strength-standard colouring would be a fabricated number wearing the same clothes as
+the sourced ones. That is [Phase 7](ROADMAP.md) work, and when it lands a lift with no
+benchmark must render as a hollow ring rather than a guess.
+
+**Orphans are the point.** Movements logged fewer than `ORPHAN_MIN_SESSIONS` times, or
+not inside `ORPHAN_STALE_WEEKS`, are pushed to a ring outside the core and drawn as
+hollow rings. Both thresholds are opinion, so they are named constants with docstrings
+— the same discipline `REGION_NEGLECT_SHARE` follows. They are also listed in words
+below the canvas, because a force-directed graph that is only a hairball is
+decoration; the written list is the finding, and it is the whole page below
+`MIN_GRAPH_NODES` movements, where the drawing would be a list with extra steps.
+
+Three implementation decisions worth keeping:
+
+- **Nodes and edges are filtered by one shared subquery** (`_counted_sessions` in
+  `models.py`). Warm-ups are excluded from both in the same place, so a warm-up-only
+  entry cannot become an edge pointing at a node that does not exist. Filtering them
+  separately is the obvious way to write it and the bug is invisible until you look at
+  the drawing.
+- **The layout is pure and deterministic.** `layout.js` seeds positions from a hash of
+  each exercise id rather than `Math.random`, so the same training draws the same
+  picture every time — a graph that rearranges itself on each visit cannot become a
+  mental map, which is the only reason to draw one. It runs to completion once and is
+  cached against a fingerprint of the nodes and edges; panning and zooming are
+  transforms over the result, never a re-simulation. The fingerprint deliberately
+  ignores colour, so logging a workout does not rearrange the drawing.
+- **The radial force is one force with two targets.** Core nodes target radius 0,
+  orphans target `ORPHAN_RADIUS`; both are restoring forces and therefore bounded. The
+  first implementation pushed orphans outward with a negative centering constant,
+  which is unbounded — each step scaled the displacement that produced it, positions
+  reached 1e19 within the loop, and the fit-to-view scale collapsed to a blank canvas.
+
+Canvas rather than SVG or DOM nodes: at a few hundred movements with every pairing
+drawn, an element per node is hundreds of layout objects re-composited on every pan.
+
+### The lit field
+
+The graph's only "background" is **made of the data**: every node casts light in its own
+ramp colour, so where training is dense the field warms toward that muscle's coverage
+colour and a page of over-target work reads hot before a single node is examined.
+Orphans cast a faint cold bone light instead — they are not feeding anything.
+
+That is the form the depth had to take. A decorative gradient was ruled out twice over:
+[redesign-brief.md](redesign-brief.md) bans gradient backgrounds and blurred colour
+blobs outright, and the volume ramp has to stay the most saturated thing on screen.
+Light *emitted by* the ramp does not compete with the ramp; it is the same reading,
+spread. Edges take the blend of the two movements they join for the same reason — a
+uniform brick web said nothing about what it connected, and at this density the web is
+most of the drawing.
+
+Two performance notes that are the whole reason it is affordable:
+
+- **The glow is rendered once, in world units, and blitted.** Pan and zoom are a
+  transform over the layout, so the lit field does not change with them. Redrawing a few
+  hundred large radial gradients per frame would not hold 60fps; one `drawImage` does.
+  It renders at well under one pixel per world unit, which costs nothing to look at
+  because there is no edge in it to appear pixelated.
+- **Edge colours are blended when the data lands, never per frame.** A gradient per edge
+  per frame is the one thing here that would cost the frame rate.
+
+Measured at the brief's ceiling — 250 nodes, 1,500 edges, 3× device pixel ratio — the
+draw loop runs 0.5 ms median against a 16.7 ms budget.
+
+**Order matters in `load()`.** Everything the draw loop reads is derived from the graph
+that has just arrived, so nothing may paint until that derived state has been rebuilt.
+Clearing the selection used to draw immediately, which threw on every window change
+because the new edges had no colours yet.
 
 ## Data model
 
@@ -410,7 +506,11 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
 - `tests/test_models.py` — the data layer's non-API surface: the retired-id remap and
   the recent-exercise query.
 - `tests/test_api.py` — every endpoint, including the validation failure modes.
-- `tests/test_pages.py` — the four pages render and contain every muscle region, and
+- `tests/test_graph.py` — the training graph's rules: the warm-up exclusion reaching
+  both nodes and edges, that no edge survives pointing at a movement that is not a
+  node, the co-occurrence count, and the orphan thresholds asserted directly so
+  changing one is a deliberate edit.
+- `tests/test_pages.py` — the five pages render and contain every muscle region, and
   `/log` ships a picker shell rather than the catalog. Page markers are chosen to be
   unique to their page, since the nav links appear on all four.
 - `tests/test_migrations.py` — that the migration chain builds exactly what

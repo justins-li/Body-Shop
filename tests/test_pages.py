@@ -14,6 +14,7 @@ from app.exercises import DEFAULT_MUSCLE_SCHEME, MUSCLE_GROUPS, MUSCLE_SCHEMES
         ("/calendar", b"What you trained"),
         ("/log", b"New entry"),
         ("/summary", b"Sets by split"),
+        ("/progress", b"Where your training lives"),
     ],
 )
 def test_pages_render(client, path, marker):
@@ -68,6 +69,21 @@ def test_log_page_renders_a_set_grid_shell(client):
     assert 'data-step="-1"' not in body
 
 
+def test_log_page_keeps_every_submitted_field_inside_the_form(client):
+    """`onSubmit` builds the entry from a `FormData`, so a control outside the
+    form submits nothing.
+
+    Phase 4.5 moved the date into the page header for density and broke every
+    submit with "Pick a date first" — the field was still on screen and still
+    filled in, which is what made it hard to see.
+    """
+    body = client.get("/log").data.decode()
+    start = body.index('<form id="entry-form"')
+    end = body.index("</form>", start)
+    for field in ('id="entry-date"', 'id="exercise-id"', 'id="set-grid"'):
+        assert start < body.index(field) < end, field
+
+
 def test_log_page_leads_with_recent_and_browse_and_demotes_search(client):
     """Browse is a way in; search is a fallback, so it is only an icon."""
     body = client.get("/log").data.decode()
@@ -110,10 +126,17 @@ def test_summary_page_offers_every_grouping_scheme(client):
 
 
 def test_summary_page_renders_each_muscle_row_once_whatever_the_scheme(client):
-    """Schemes re-head the same twelve rows; duplicating them would double volume."""
+    """Schemes re-head the same twelve rows; duplicating them would double volume.
+
+    Matched on the row's structure rather than its full class attribute: this
+    is an assertion about how many rows exist, and pinning the utility classes
+    beside them made a restyle look like a correctness failure.
+    """
     body = client.get("/summary").data.decode()
     for muscle in MUSCLE_GROUPS:
-        assert body.count(f'class="muscle-row text-sm" data-muscle="{muscle}"') == 1
+        assert len(re.findall(
+            rf'class="muscle-row"\s+data-muscle="{re.escape(muscle)}"', body
+        )) == 1, muscle
 
 
 def test_summary_page_ships_a_region_skeleton_for_the_six_subdivided_groups(client):
@@ -166,8 +189,36 @@ def test_bad_date_falls_back_to_today(client):
     assert client.get("/summary?date=nonsense").status_code == 200
 
 
-def test_log_page_ships_the_rest_timer_shell(client):
-    """The timer is client-side; the page only provides its controls."""
-    body = client.get("/log").data.decode()
+def test_progress_page_ships_a_canvas_and_a_written_fallback(client):
+    """The graph is drawn to a canvas, so the finding it exists to show is also
+    written out — that list is the whole page before there is enough history."""
+    body = client.get("/progress").data.decode()
+    for marker in ('id="graph-canvas"', 'id="orphan-list"', 'id="window-select"'):
+        assert marker in body
+
+    # Nothing about the graph is server-rendered; progress.js owns all of it.
+    assert "Barbell Squat" not in body
+
+
+@pytest.mark.parametrize("path", ["/", "/calendar", "/log", "/summary", "/progress"])
+def test_every_page_ships_the_rest_timer_strip(client, path):
+    """The countdown moved into `base.html` in Phase 4.5.
+
+    It used to live on `/log` alone, which killed a rest the moment you looked
+    at the calendar. The strip is now shared, and `timer.js` persists a deadline
+    so the count survives the navigation.
+    """
+    body = client.get(path).data.decode()
     for marker in ('id="rest-timer"', "data-timer-readout", "data-timer-toggle"):
         assert marker in body
+
+
+def test_only_log_ships_the_rest_duration_select(client):
+    """Choosing a rest length is a setup decision, so it stays beside the sets.
+
+    It also has to appear exactly once: `timer.js` binds the first one it finds
+    in the document, so a second copy would be silently dead.
+    """
+    assert client.get("/log").data.decode().count("data-timer-duration") == 1
+    for path in ("/", "/calendar", "/summary"):
+        assert "data-timer-duration" not in client.get(path).data.decode()

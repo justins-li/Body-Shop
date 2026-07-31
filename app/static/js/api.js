@@ -120,3 +120,13 @@ export async function fetchMonth(year, month) {
 export async function fetchWeeklySummary(isoDate) {
   return request(`/summary/week?date=${encodeURIComponent(isoDate)}`);
 }
+
+/**
+ * The training graph: movements as nodes, same-day pairings as edges.
+ * @param {"8w"|"6m"|"all"} window
+ * @param {string} isoDate - Anchors both the window and the colouring week.
+ */
+export async function fetchTrainingGraph(window, isoDate) {
+  const query = `window=${encodeURIComponent(window)}&date=${encodeURIComponent(isoDate)}`;
+  return request(`/progress/graph?${query}`);
+}

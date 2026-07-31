@@ -425,6 +425,80 @@ of every flagged region, in group then region order.
 
 ---
 
+## `GET /api/progress/graph`
+
+The training graph behind `/progress`: every movement logged in a window, joined to
+the movements performed on the same day. Read-only, and the only endpoint Phase 4.5
+added.
+
+| Query param | Default | Values |
+| --- | --- | --- |
+| `window` | `8w` | `8w`, `6m`, `all` |
+| `date` | Today | Anchors both ends of the window *and* the colouring week |
+
+```json
+{
+  "window": "8w",
+  "start": "2026-06-05",
+  "end": "2026-07-30",
+  "nodes": [
+    {
+      "exercise_id": "Barbell_Squat",
+      "name": "Barbell Squat",
+      "primary_muscle": "quads",
+      "sets": 24,
+      "sessions": 6,
+      "last_logged": "2026-07-28",
+      "orphan": false
+    }
+  ],
+  "edges": [
+    { "source": "Barbell_Squat", "target": "Romanian_Deadlift", "days": 6 }
+  ],
+  "coverage": {
+    "quads": { "state": "trained", "intensity": 0.6 }
+  },
+  "graph_ready": true,
+  "min_nodes": 15
+}
+```
+
+**An unrecognised `window` falls back to `8w` rather than returning 400.** It arrives
+from a view control, and the honest response to a bad view preference is the usual
+view.
+
+`sets` and `sessions` **exclude warm-ups**, the same rule as everywhere else. A
+movement logged only as a warm-up therefore does not appear as a node at all — and
+because nodes and edges are filtered by one shared subquery, it cannot leave an edge
+pointing at a node that is not in the response either.
+
+`edges` is undirected and deduplicated: each pair appears once, with `source` sorting
+before `target`, and nothing links to itself. `days` counts the days the two movements
+were logged together, not the sets.
+
+`coverage` is the **current week's** grading — the same `state`/`intensity` pair
+`GET /api/summary/week` returns, for every one of the twelve groups. It colours the
+nodes, so the graph and the body map cannot say different things about the same week.
+Note it is the week containing `date`, *not* the whole window: the question the page
+answers is what this training is feeding now.
+
+`orphan` marks a movement that has fallen out of the training — logged fewer than
+three times, or nothing in eight weeks. Both thresholds are **judgement, not
+evidence**, and live as named constants in `app/services/graph.py` for the same reason
+`REGION_NEGLECT_SHARE` does.
+
+`graph_ready` is false below `min_nodes` movements, where a force-directed graph is a
+list with extra steps. `/progress` shows the neglected-movement list alone and says
+what unlocks the drawing.
+
+**Not here, and deliberately:** nothing strength-relative. Node size is set count, not
+volume-load or estimated 1RM, because the app stores no bodyweight, computes no 1RM,
+and pre-Phase-4 history has `NULL` weights — any such mark would be a guess. That is a
+Phase 7 addition, and when it lands a lift with no benchmark must render as a hollow
+ring rather than a fabricated number.
+
+---
+
 ## `GET /api/summary/week/bounds`
 
 The start and end of the week containing `date`. Useful for building links without

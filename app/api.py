@@ -21,6 +21,7 @@ from .models import (
     recent_exercise_usage,
     sets_by_date,
 )
+from .services.graph import DEFAULT_WINDOW, training_graph
 from .services.summary import weekly_summary
 from .services.weeks import month_bounds, week_bounds
 
@@ -172,6 +173,24 @@ def get_weekly_summary():
     """Weekly muscle-coverage summary for the week containing ``date``."""
     day = _query_date("date")
     return jsonify(weekly_summary(day, _week_start()))
+
+
+@bp.get("/progress/graph")
+def get_progress_graph():
+    """The training graph: movements as nodes, same-day pairings as edges.
+
+    ``window`` is ``8w`` (default), ``6m`` or ``all``. An unrecognised value
+    falls back to the default rather than 400-ing — it arrives from a view
+    control, and the honest response to a bad view preference is the usual view.
+    Read-only, and the one endpoint Phase 4.5 added.
+    """
+    return jsonify(
+        training_graph(
+            request.args.get("window", DEFAULT_WINDOW),
+            _query_date("date"),
+            _week_start(),
+        )
+    )
 
 
 @bp.get("/summary/week/bounds")

@@ -383,6 +383,94 @@ def last_sets_for_exercise(exercise_id: str) -> tuple[date | None, list[WorkoutS
     return row.entry_date, _sets_for([row.id]).get(row.id, [])
 
 
+def _counted_sessions(start: date, end: date):
+    """Distinct ``(entry_date, exercise_id)`` pairs that carry real volume.
+
+    The building block both graph queries share, and the reason they cannot
+    disagree: an entry of nothing but warm-ups is excluded here once, so it can
+    neither become a node nor pull an edge toward a node that does not exist.
+    """
+    return (
+        sa.select(workout_entry.c.entry_date, workout_entry.c.exercise_id)
+        .select_from(
+            workout_entry.join(
+                workout_set, workout_set.c.entry_id == workout_entry.c.id
+            )
+        )
+        .where(
+            workout_entry.c.entry_date.between(start, end),
+            workout_set.c.set_type != "warmup",
+        )
+        .distinct()
+        .subquery()
+    )
+
+
+def exercise_activity(start: date, end: date) -> list[tuple[str, int, int, date]]:
+    """Return ``(exercise_id, sets, sessions, last_logged)`` over a date range.
+
+    Backs the nodes of the training graph on ``/progress``. Warm-ups are
+    excluded exactly as they are everywhere else, so a movement logged only as
+    a warm-up does not appear at all.
+    """
+    sets_logged = sa.func.count(workout_set.c.id).label("sets")
+    sessions = sa.func.count(sa.distinct(workout_entry.c.entry_date)).label("sessions")
+    last_logged = sa.func.max(workout_entry.c.entry_date).label("last_logged")
+
+    rows = (
+        get_db()
+        .execute(
+            sa.select(
+                workout_entry.c.exercise_id, sets_logged, sessions, last_logged
+            )
+            .select_from(
+                workout_entry.join(
+                    workout_set, workout_set.c.entry_id == workout_entry.c.id
+                )
+            )
+            .where(
+                workout_entry.c.entry_date.between(start, end),
+                workout_set.c.set_type != "warmup",
+            )
+            .group_by(workout_entry.c.exercise_id)
+            .order_by(sets_logged.desc(), workout_entry.c.exercise_id)
+        )
+        .all()
+    )
+    return [
+        (row.exercise_id, int(row.sets), int(row.sessions), row.last_logged)
+        for row in rows
+    ]
+
+
+def exercise_co_occurrence(start: date, end: date) -> list[tuple[str, str, int]]:
+    """Return ``(a, b, days)`` for movements logged on the same day.
+
+    The graph's edges. A self-join on ``entry_date`` over the distinct
+    ``(date, exercise)`` pairs above; ``a < b`` keeps each unordered pair once
+    and drops the self-pair, so the result is an undirected edge list with no
+    duplicates and no loops.
+    """
+    left = _counted_sessions(start, end).alias("a")
+    right = _counted_sessions(start, end).alias("b")
+    days = sa.func.count().label("days")
+
+    rows = (
+        get_db()
+        .execute(
+            sa.select(left.c.exercise_id, right.c.exercise_id, days)
+            .select_from(
+                left.join(right, left.c.entry_date == right.c.entry_date)
+            )
+            .where(left.c.exercise_id < right.c.exercise_id)
+            .group_by(left.c.exercise_id, right.c.exercise_id)
+            .order_by(days.desc())
+        )
+        .all()
+    )
+    return [(row[0], row[1], int(row.days)) for row in rows]
+
+
 def sets_by_date(start: date, end: date) -> dict[str, int]:
     """Return ``{iso_date: total_sets}`` for the inclusive range (calendar dots).
 
