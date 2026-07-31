@@ -68,6 +68,21 @@ def test_log_page_renders_a_set_grid_shell(client):
     assert 'data-step="-1"' not in body
 
 
+def test_log_page_keeps_every_submitted_field_inside_the_form(client):
+    """`onSubmit` builds the entry from a `FormData`, so a control outside the
+    form submits nothing.
+
+    Phase 4.5 moved the date into the page header for density and broke every
+    submit with "Pick a date first" — the field was still on screen and still
+    filled in, which is what made it hard to see.
+    """
+    body = client.get("/log").data.decode()
+    start = body.index('<form id="entry-form"')
+    end = body.index("</form>", start)
+    for field in ('id="entry-date"', 'id="exercise-id"', 'id="set-grid"'):
+        assert start < body.index(field) < end, field
+
+
 def test_log_page_leads_with_recent_and_browse_and_demotes_search(client):
     """Browse is a way in; search is a fallback, so it is only an icon."""
     body = client.get("/log").data.decode()

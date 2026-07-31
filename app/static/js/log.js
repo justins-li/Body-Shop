@@ -354,6 +354,43 @@ async function loadPreviousSets(id) {
 // ---- The set grid -----------------------------------------------------
 
 /**
+ * A numeric field for the set grid.
+ *
+ * `inputmode` rather than `type="number"` alone is what raises the numeric
+ * keypad on a phone, and selecting on focus means overwriting a prefilled
+ * weight is one tap instead of a tap plus a careful drag over three digits —
+ * the difference matters when this is done between sets.
+ *
+ * @param {string} className - The field's role class, e.g. `set-weight`.
+ * @param {string} label - Accessible name; the grid header is `aria-hidden`.
+ * @param {{step?: string, min?: string, max?: string, inputmode: string}} attrs
+ */
+function numberField(className, label, attrs) {
+  const field = document.createElement("input");
+  field.type = "number";
+  field.className = `field field-sm type-data ${className}`;
+  field.setAttribute("aria-label", label);
+  field.inputMode = attrs.inputmode;
+  if (attrs.step) field.step = attrs.step;
+  if (attrs.min) field.min = attrs.min;
+  if (attrs.max) field.max = attrs.max;
+  field.addEventListener("focus", () => field.select());
+  return field;
+}
+
+/** A second-tier control with its own mono micro-label welded to it. */
+function subField(areaClass, label, control) {
+  const wrap = document.createElement("span");
+  wrap.className = `set-sub ${areaClass}`;
+  const tag = document.createElement("span");
+  tag.className = "type-label text-secondary";
+  tag.setAttribute("aria-hidden", "true");
+  tag.textContent = label;
+  wrap.append(tag, control);
+  return wrap;
+}
+
+/**
  * Build one row of the grid.
  *
  * `previous` is last session's set at this position, if there was one. It is
@@ -370,36 +407,26 @@ function setRow(index, previous) {
   number.className = "set-row-index";
   number.textContent = String(index);
 
-  const weight = document.createElement("input");
-  weight.type = "number";
-  weight.step = "any";
-  weight.min = "0";
-  weight.className = "input input-sm bg-base-200 border hairline set-weight tabular-nums";
-  weight.setAttribute("aria-label", `Set ${index} weight in ${unit}`);
+  const weight = numberField("set-weight", `Set ${index} weight in ${unit}`, {
+    step: "any", min: "0", inputmode: "decimal",
+  });
   if (previous && previous.weight !== null && previous.weight !== undefined) {
     weight.placeholder = formatWeight(previous.weight, unit);
   }
 
-  const reps = document.createElement("input");
-  reps.type = "number";
-  reps.min = "1";
-  reps.max = "1000";
-  reps.className = "input input-sm bg-base-200 border hairline set-reps tabular-nums";
-  reps.setAttribute("aria-label", `Set ${index} reps`);
+  const reps = numberField("set-reps", `Set ${index} reps`, {
+    min: "1", max: "1000", inputmode: "numeric",
+  });
   if (previous && previous.reps !== null && previous.reps !== undefined) {
     reps.placeholder = String(previous.reps);
   }
 
-  const rpe = document.createElement("input");
-  rpe.type = "number";
-  rpe.min = "1";
-  rpe.max = "10";
-  rpe.step = "0.5";
-  rpe.className = "input input-sm bg-base-200 border hairline set-rpe tabular-nums";
-  rpe.setAttribute("aria-label", `Set ${index} RPE`);
+  const rpe = numberField("set-rpe", `Set ${index} RPE`, {
+    min: "1", max: "10", step: "0.5", inputmode: "decimal",
+  });
 
   const type = document.createElement("select");
-  type.className = "select select-sm bg-base-200 border hairline set-type";
+  type.className = "field field-sm set-type";
   type.setAttribute("aria-label", `Set ${index} type`);
   SET_TYPES.forEach((value) => type.append(new Option(SET_TYPE_LABELS[value], value)));
   if (previous && previous.set_type) type.value = previous.set_type;
@@ -439,7 +466,12 @@ function setRow(index, previous) {
     if (rowHasData(row)) startRestTimer();
   });
 
-  row.append(number, weight, reps, rpe, type, remove, hint);
+  row.append(
+    number, weight, reps, remove,
+    subField("set-sub-rpe", "RPE", rpe),
+    subField("set-sub-type", "Type", type),
+    hint,
+  );
   return row;
 }
 
@@ -611,6 +643,7 @@ function onSearchInput(event) {
 
 async function refreshDay() {
   const panel = $("#day-entries");
+  const total = $("#entries-total");
   $("#entries-date").textContent = formatDate(selectedIso, {
     month: "short",
     day: "numeric",
@@ -618,6 +651,9 @@ async function refreshDay() {
 
   try {
     const entries = await fetchEntriesForDate(selectedIso);
+    // Warm-ups are already out of `set_count`, so this is the week's reading.
+    const sets = entries.reduce((sum, entry) => sum + entry.set_count, 0);
+    total.textContent = sets ? `${sets} ${sets === 1 ? "set" : "sets"}` : "";
     renderEntries(panel, entries, {
       emptyMessage: "Nothing logged for this day yet — add your first set.",
       onDelete: removeEntry,
@@ -643,11 +679,18 @@ function showError(message) {
   box.hidden = !message;
 }
 
+/** Every page honours `?date=`, so navigating away keeps the day being edited. */
+function retargetNav(iso) {
+  retargetLinks(
+    Array.from(document.querySelectorAll(".nav-link, .tab-link")), iso,
+  );
+}
+
 function onDateChange(event) {
   selectedIso = event.target.value;
   if (!selectedIso) return;
   syncUrlDate(selectedIso);
-  retargetLinks([$("#view-summary")], selectedIso);
+  retargetNav(selectedIso);
   refreshDay();
 }
 
@@ -707,7 +750,7 @@ export async function initLog(initialIso) {
   // it again here would double up its listeners.
   renderSetGrid();
 
-  retargetLinks([$("#view-summary")], selectedIso);
+  retargetNav(selectedIso);
 
   try {
     catalog = await fetchExercises();
