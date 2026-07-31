@@ -196,6 +196,91 @@ error.
 
 ---
 
+## `GET /api/routines`
+
+The suggested sessions — Phase 8.1. The **light** shape: no exercises, for the same
+reason `GET /api/exercises` omits images. Five routines' worth of photographs to render
+five cards is most of a megabyte nobody looked at.
+
+```json
+{
+  "routines": [
+    {
+      "key": "push",
+      "name": "Push day",
+      "focus": "Chest, shoulders, triceps",
+      "blurb": "Everything that presses. …",
+      "level": "intermediate",
+      "total_sets": 19,
+      "minutes": 75
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `key` | Stable id, used by `GET /api/routines/<key>`. |
+| `focus` | What the session trains, in the words someone would use to choose it. |
+| `total_sets` | Sum of the prescribed sets. |
+| `minutes` | **Derived** from `total_sets`, never typed — see `estimate_minutes` in `app/routines.py`. Rounded to five, because it is not known better than that. |
+
+---
+
+## `GET /api/routines/<key>`
+
+One routine with its exercises hydrated — the catalog joined on, plus images and
+instructions. One request rather than one per movement: the page shows every exercise at
+once, so six round trips would be six chances to render half a routine.
+
+```json
+{
+  "routine": {
+    "key": "push",
+    "name": "Push day",
+    "focus": "Chest, shoulders, triceps",
+    "blurb": "Everything that presses. …",
+    "level": "intermediate",
+    "total_sets": 19,
+    "minutes": 75,
+    "exercises": [
+      {
+        "exercise_id": "Barbell_Bench_Press_-_Medium_Grip",
+        "name": "Barbell Bench Press - Medium Grip",
+        "sets": 4,
+        "reps": "6-8",
+        "note": "Flat, heaviest first.",
+        "primary": ["Chest"],
+        "secondary": ["Shoulders", "Triceps"],
+        "weight_mode": "barbell",
+        "counts_toward_volume": true,
+        "images": ["https://cdn.jsdelivr.net/…/0.jpg", "https://cdn.jsdelivr.net/…/1.jpg"],
+        "instructions": ["Lie back on a flat bench. …"]
+      }
+    ]
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `sets` | Working sets prescribed. A whole number, and what `minutes` is built from. |
+| `reps` | Rep guidance **as written** — a string, because `"8-10"`, `"max"` and `"30-40 m"` are all things a routine legitimately says and none of them are arithmetic. |
+| `note` | Why this movement is in this routine, in one line. |
+| `primary` / `secondary` | Display labels (`"Chest"`), not slugs — this payload is for rendering a card. |
+| `weight_mode` | So the quick log can head its weight column correctly. See [Weight modes](#weight-modes). |
+
+**404** with `{"error": "Unknown routine: …"}` if the key is not one of the routines.
+
+**Logging from a routine uses `POST /api/entries` like anything else.** There is no
+routine-specific write endpoint, and deliberately: a set recorded while following a
+routine is the same object as one typed on `/log`, and it reaches the weekly summary the
+same way. The prescription is a *suggestion* — clients must render `sets` and `reps` as
+placeholders, never as values, or the log records what the routine said instead of what
+happened.
+
+---
+
 ## `GET /api/entries`
 
 List workout entries, newest first.
