@@ -195,8 +195,15 @@
     <span class="type-label" data-theme-label>Light</span>
   </button>
 
-  {# Shown while a shelf navigation is in flight. Pages are server-rendered, so
-     this covers the request, not a client-side route change. #}
+  {#
+    The page being turned. Pages are server-rendered, so this covers a real
+    request — but they render in milliseconds, so covering only the request made
+    it a flicker rather than a sense of having moved.
+
+    `pageturn.js` now holds the navigation until a leaf has fallen across the
+    screen, hinged on the side the chapter you clicked was standing on. The leaf
+    itself is `::before`; this element is the stage it rotates in.
+  #}
   <div class="page-veil" id="page-veil" aria-hidden="true">
     <span class="page-veil-mark type-label">Body Shop</span>
   </div>
@@ -271,37 +278,31 @@
 
   <div id="toast" class="toast-bar" role="status" aria-live="polite"></div>
 
-  {# All three of these are on every page, so they boot from here rather than
+  {# All four of these are on every page, so they boot from here rather than
      per-page. `initOnboarding` takes the page key and declines to open on the
      two static chapters. #}
   <script type="module">
     import { initRestTimer } from "{{ url_for('static', filename='js/timer.js') }}";
     import { initThemeToggle } from "{{ url_for('static', filename='js/theme.js') }}";
     import { initOnboarding } from "{{ url_for('static', filename='js/onboarding.js') }}";
+    import { initPageTurn } from "{{ url_for('static', filename='js/pageturn.js') }}";
     initRestTimer(document.getElementById("rest-timer"));
     initThemeToggle(document.getElementById("theme-toggle"));
     initOnboarding(document.getElementById("first-run"), {{ page | tojson }});
+    initPageTurn(document.getElementById("page-veil"));
   </script>
 
   {#
-    Reveal the veil while a shelf request is in flight. Deliberately tiny and
-    inline: it is three lines, it must run before any page module, and a page
-    with JS disabled simply navigates without it.
+    This used to be three lines of inline script that raised the veil on a shelf
+    click. It moved into `pageturn.js` (booted above) when the transition became
+    timed rather than measured — holding the navigation, hinging the leaf, and
+    reading the direction off which stack was clicked is more than belongs in a
+    template, and it must not be bound twice.
+
+    The trade that came with the move: until that module loads, a shelf click is
+    an ordinary link and navigates with no turn. That is the whole fallback, and
+    it is the same one a page with JavaScript disabled gets.
   #}
-  <script>
-    (function () {
-      var veil = document.getElementById("page-veil");
-      document.querySelectorAll("a[data-nav]").forEach(function (link) {
-        link.addEventListener("click", function () {
-          veil.classList.add("is-visible");
-        });
-      });
-      // Coming back via the bfcache must not leave the veil down.
-      window.addEventListener("pageshow", function () {
-        veil.classList.remove("is-visible");
-      });
-    })();
-  </script>
 
   {% block scripts %}{% endblock %}
 </body>

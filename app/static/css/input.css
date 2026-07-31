@@ -965,30 +965,133 @@
 
   /* Shown while a shelf request is in flight. Pages are server-rendered, so
      this covers a real round trip rather than decorating a client-side one. */
+  /* -- Turning a page ----------------------------------------------------
+     The app is arranged as a book, and navigation was the one place that did
+     not say so: the veil covered a server round trip that finishes in
+     milliseconds, so it read as a flicker rather than as having moved.
+
+     It is now timed rather than measured. A leaf falls across the screen and
+     the navigation waits for it (see pageturn.js) — the app is slower by
+     exactly this long, deliberately, because "imperceptible" and "you turned a
+     page" are different things and this one is a book.
+
+     Kept honest against the house rules: the leaf is a flat fill with a
+     hairline at its spine, not a shadow and not a gradient wash. What sells it
+     is the rotation, which is the only thing here depicting a physical object. */
+
   .page-veil {
+    /* Must match `TURN_MS` in pageturn.js — the script waits for this, and the
+       mark's entrance below is timed as a fraction of it. */
+    --page-turn-ms: 460ms;
+
     position: fixed;
     inset: 0;
     z-index: 80;
     display: grid;
     place-items: center;
-    background-color: var(--color-base-200);
+    /* The leaf does the covering, so the veil itself only catches the edge of
+       the screen the leaf has not reached yet. */
+    background-color: transparent;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.18s ease;
+    /* A page has thickness only because you are looking at it from somewhere.
+       Without a perspective the rotation below is a horizontal squash. */
+    perspective: 1600px;
+    perspective-origin: center;
+    transition: opacity 0.12s ease;
   }
   .page-veil.is-visible {
     opacity: 1;
     pointer-events: auto;
   }
+
+  /* The leaf. Edge-on to flat, hinged on the spine — a page falling closed
+     rather than a panel sliding in. `[data-turn]` is set by pageturn.js from
+     which shelf stack was clicked, so the fall agrees with where the chapter
+     you asked for was standing. */
+  .page-veil::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-color: var(--color-base-200);
+    backface-visibility: hidden;
+    transform-origin: right center;
+    transform: rotateY(-92deg);
+  }
+  .page-veil.is-visible::before {
+    animation: page-turn-forward var(--page-turn-ms) cubic-bezier(0.32, 0, 0.24, 1) both;
+  }
+  .page-veil[data-turn="back"]::before {
+    transform-origin: left center;
+  }
+  .page-veil[data-turn="back"].is-visible::before {
+    animation-name: page-turn-back;
+  }
+
+  /* Forward: the leaf comes over from the right, where the later chapters
+     stand. It starts edge-on (invisible) and lands flat. The hairline is the
+     paper's own edge catching the light as it falls, and fades once it is
+     lying flat and there is no edge left to see. */
+  @keyframes page-turn-forward {
+    from {
+      transform: rotateY(-92deg);
+      border-left: 1px solid color-mix(in srgb, var(--color-base-content) 30%, transparent);
+    }
+    to {
+      transform: rotateY(0deg);
+      border-left: 1px solid transparent;
+    }
+  }
+  @keyframes page-turn-back {
+    from {
+      transform: rotateY(92deg);
+      border-right: 1px solid color-mix(in srgb, var(--color-base-content) 30%, transparent);
+    }
+    to {
+      transform: rotateY(0deg);
+      border-right: 1px solid transparent;
+    }
+  }
+
+  /* The wordmark rides on top of the leaf, and arrives with it rather than
+     pulsing: the old pulse was a loading spinner's idea, and there is nothing
+     to wait for any more. */
   .page-veil-mark {
-    animation: veil-pulse 1.1s ease-in-out infinite;
+    position: relative;
+    z-index: 1;
+    animation: veil-mark-in calc(var(--page-turn-ms) * 0.8) ease-out both;
+    animation-delay: calc(var(--page-turn-ms) * 0.35);
   }
-  @keyframes veil-pulse {
-    0%, 100% { opacity: 0.35; }
-    50%      { opacity: 1; }
+  @keyframes veil-mark-in {
+    from { opacity: 0; }
+    to   { opacity: 0.55; }
   }
+
+  /* The other half of the turn: the chapter you landed on settling onto the
+     page. Transform-only, so it cannot change layout height — `/` is pinned to
+     exactly one screen and a margin here would break that. */
+  .shell-main {
+    animation: page-settle 320ms cubic-bezier(0.22, 0.68, 0.35, 1) both;
+  }
+  @keyframes page-settle {
+    from { opacity: 0; transform: translate3d(0, 0.5rem, 0); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* Someone who asked for less movement has not asked to be kept waiting for
+     it: the rotation goes, the hold shortens (pageturn.js), and the leaf just
+     appears. */
   @media (prefers-reduced-motion: reduce) {
-    .page-veil-mark { animation: none; }
+    .page-veil.is-visible::before,
+    .page-veil[data-turn="back"].is-visible::before {
+      animation: none;
+      transform: none;
+    }
+    .page-veil-mark {
+      animation: none;
+      opacity: 0.55;
+    }
+    .shell-main { animation: none; }
   }
 
   /* -- Chapter pages -----------------------------------------------------
