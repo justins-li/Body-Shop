@@ -726,35 +726,39 @@
   }
 
   /* -- The shell: thin vertical shelves ---------------------------------
-     There is no top header. Navigation is a set of narrow vertical shelves
-     down the sides, taken straight from the reference: hairline-separated
-     columns with the section name set sideways, a bracketed index at the top
-     and an "01 Chp." mark at the foot.
+     There is no top header. Navigation is narrow vertical shelves down both
+     sides, taken from the reference: hairline-separated columns with an icon at
+     the head, the chapter mark directly above a sideways name, and "01 Chp." at
+     the foot.
 
-     Leftmost is always Home; the right stack is every section except the one
-     being read, so the current page never appears as a shelf beside itself.
-     Below `lg` the shelves are hidden and the bottom tab bar takes over. */
+     **A chapter keeps its side.** The stack splits around whichever chapter is
+     open — everything numbered before it on the left, everything after on the
+     right, each still in chapter order — so the shelves do not reshuffle
+     themselves around the page you turned to. Below `lg` they are hidden and
+     the bottom tab bar takes over. */
   .shell {
     display: flex;
     min-height: 100vh;
-    align-items: stretch;
+    align-items: flex-start;
   }
   .shell-main {
     flex: 1 1 auto;
     min-width: 0;
   }
 
-  .shelf-stack {
-    display: none;
-  }
-  .shelf {
-    display: none;
-  }
+  .shelf-stack { display: none; }
+  .shelf { display: none; }
 
   @media (width >= 64rem) {
     .shelf-stack {
       display: flex;
       flex: none;
+      /* The stack is as tall as the window and stays there while the centre
+         column scrolls, which is what keeps the names on the middle of the
+         *screen* rather than the middle of a long page. */
+      position: sticky;
+      top: 0;
+      height: 100vh;
     }
     .shelf {
       display: flex;
@@ -764,14 +768,18 @@
       flex: none;
       width: 4.2vw;
       min-width: 3.5rem;
-      padding: 1.5vw 0 1.75vw;
+      height: 100%;
+      padding: 1.4vw 0 1.6vw;
       border-left: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
       text-decoration: none;
       color: inherit;
       background-color: transparent;
       transition: background-color 0.2s ease, color 0.2s ease;
     }
-    .shelf-home {
+    .shelf-stack-left .shelf:first-child {
+      border-left: 0;
+    }
+    .shelf-stack-left .shelf {
       border-left: 0;
       border-right: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
     }
@@ -779,6 +787,33 @@
     .shelf:focus-visible {
       background-color: color-mix(in srgb, var(--color-base-content) 5%, transparent);
     }
+  }
+
+  /* Head mark. A glyph is what makes the stack scannable before you read any
+     of the sideways names. */
+  .shelf-mark {
+    display: block;
+    color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
+  }
+  .shelf-mark svg {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+  .shelf:hover .shelf-mark {
+    color: var(--color-base-content);
+  }
+
+  /* The chapter mark sits directly above its name, and the pair is centred in
+     the window — this group is what the eye tracks down the page. */
+  .shelf-mid {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .shelf-index {
+    font-size: 0.6rem;
+    color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
   }
 
   /* The name, set sideways and reading bottom-to-top — the reference's
@@ -791,10 +826,6 @@
     white-space: nowrap;
     writing-mode: vertical-rl;
     transform: rotate(180deg);
-  }
-  .shelf-top {
-    font-size: 0.62rem;
-    color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
   }
   .shelf-foot {
     font-size: 0.62rem;

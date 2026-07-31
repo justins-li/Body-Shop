@@ -260,3 +260,37 @@ def test_there_is_no_top_header(client):
     body = client.get("/").data.decode()
     assert "app-header" not in body
     assert 'class="shelf' in body
+
+
+def _shelf_names(body, side):
+    """Section names on one side, in the order they are rendered."""
+    if side == "left":
+        chunk = body.split("shelf-stack-left")[1].split("</nav>")[0]
+    else:
+        chunk = body.split('aria-label="Later sections"')[1].split("</nav>")[0]
+    return re.findall(r'shelf-name">([^<]+)<', chunk)
+
+
+def test_chapters_split_around_the_open_one_and_keep_their_side(client):
+    """Earlier chapters stack left, later ones right — never reshuffled."""
+    order = ["Home", "How to use", "Calendar", "Log workout", "Weekly summary", "Graph"]
+    for path, name in [("/", "Home"), ("/how-to-use", "How to use"),
+                       ("/calendar", "Calendar"), ("/log", "Log workout"),
+                       ("/summary", "Weekly summary"), ("/progress", "Graph")]:
+        body = client.get(path).data.decode()
+        cut = order.index(name)
+        assert _shelf_names(body, "left") == order[:cut], path
+        assert _shelf_names(body, "right") == order[cut + 1:], path
+
+
+def test_every_shelf_carries_a_symbol(client):
+    body = client.get("/log").data.decode()
+    # Five shelves on /log, each with one drawn mark above its name.
+    assert body.count('class="shelf-mark"') == 5
+    assert body.count("<path d=") >= 5
+
+
+def test_the_chapter_mark_sits_directly_above_its_name(client):
+    body = client.get("/log").data.decode()
+    first = body.split('class="shelf-mid"')[1]
+    assert first.index("shelf-index") < first.index("shelf-name")

@@ -27,6 +27,13 @@ All notable changes to Body Shop are documented here. This project follows
   - **`/how-to-use` is a new chapter** holding the explainer that used to sit below the
     landing page — the sequence, the colour scale and the closing prompt. It became a
     shelf rather than a scroll nobody reached.
+  - **The shelves split around the open chapter**: everything numbered before it stacks on
+    the left, everything after on the right, each still in chapter order. Open chapter 03
+    and Home, How to use and Calendar sit to the left, Weekly summary and Graph to the
+    right — where they were before you opened anything.
+  - **Every shelf carries a drawn mark**, and the chapter index sits directly above its
+    sideways name. The stack is sticky at full window height, so the names track the middle
+    of the screen while a long page scrolls past them.
   - **Chapter numbers are fixed to the section**, not to a shelf's position in the stack:
     Calendar is `02` whether it is the first shelf on screen or the third. A mark that
     renumbers itself by where you happen to be reading from is not one you can navigate by.

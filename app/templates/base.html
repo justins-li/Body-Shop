@@ -52,34 +52,76 @@
     ('views.summary_page',  'summary',  'Weekly summary', '04', 'Coverage, twelve groups'),
     ('views.progress_page', 'progress', 'Graph',          '05', 'The week, drawn'),
   ] %}
+
+  {#
+    **A chapter keeps its side.** The shelves split around whichever chapter is
+    open: everything numbered before it stacks on the left, everything after on
+    the right, each still in chapter order. Open chapter 03 and Home, How to use
+    and Calendar are to your left, Weekly summary and Graph to your right —
+    which is where they were before you opened anything. The book does not
+    reshuffle itself around the page you turned to.
+  #}
+  {% set current = sections | selectattr('1', 'equalto', page) | list | first %}
+  {% set here = current[3] if current else '00' %}
+  {% set left_shelves  = sections | rejectattr('1', 'equalto', page)
+                                  | selectattr('3', 'lt', here) | list %}
   {% set right_shelves = sections | rejectattr('1', 'equalto', page)
-                                  | rejectattr('1', 'equalto', 'home') | list %}
+                                  | selectattr('3', 'gt', here) | list %}
+
+  {#
+    One mark per chapter, drawn rather than lettered: at 4vw wide a shelf has
+    room for a glyph, and a glyph is what makes the stack scannable before you
+    read any of the sideways names.
+  #}
+  {% set marks = {
+    'home':     'M2 7.6 8 2.8l6 4.8V13a.9.9 0 0 1-.9.9h-3.2v-4H7.1v4H3.9A.9.9 0 0 1 3 13z',
+    'how':      'M8 4.6S6.6 3.1 3.1 3.1v9c3.5 0 4.9 1.5 4.9 1.5s1.4-1.5 4.9-1.5v-9C9.4 3.1 8 4.6 8 4.6zm0 0v9',
+    'calendar': 'M2.6 4.4h10.8v9.2H2.6zm0 2.7h10.8M5.6 2.6v3M10.4 2.6v3',
+    'log':      'M8 3.2v9.6M3.2 8h9.6',
+    'summary':  'M3.2 13.2V7.4M6.4 13.2V3.4M9.6 13.2V9.2M12.8 13.2V5.4',
+    'progress': 'M4 11.6 7 6.8l3 2.6 2.4-4.6M4 11.6h.01M7 6.8h.01M10 9.4h.01M12.4 4.8h.01',
+  } %}
+
+  {#
+    One shelf. Icon at the head, then the chapter mark sitting *directly above*
+    its sideways name, then "N Chp." at the foot — the reference's own order.
+    The middle group is what the eye tracks, so it is the part that stays
+    centred in the window while a long page scrolls past it.
+  #}
+  {% macro shelf(endpoint, key, label, chapter, blurb, home=false) %}
+    <a class="shelf{{ ' shelf-home' if home else '' }}" data-nav
+       href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
+       title="{{ blurb }}">
+      <span class="shelf-mark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
+             stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round">
+          <path d="{{ marks[key] }}"></path>
+        </svg>
+      </span>
+      <span class="shelf-mid">
+        <span class="shelf-index type-label" aria-hidden="true">[{{ chapter }}]</span>
+        <span class="shelf-name">{{ label }}</span>
+      </span>
+      <span class="shelf-foot type-data" aria-hidden="true">{{ chapter }}<br>Chp.</span>
+    </a>
+  {% endmacro %}
 
   <div class="shell">
-    {# ---- Left shelf: Home, unless you are already on it ------------------ #}
-    {% if page != 'home' %}
-      <a class="shelf shelf-home" data-nav
-         href="{{ url_for('views.home_page', date=selected_date.isoformat()) }}">
-        <span class="shelf-top type-label" aria-hidden="true">◈</span>
-        <span class="shelf-name">Home</span>
-        <span class="shelf-foot type-data" aria-hidden="true">00<br>Chp.</span>
-      </a>
-    {% endif %}
+    {# ---- Left: the chapters before this one, in order -------------------- #}
+    <nav class="shelf-stack shelf-stack-left" aria-label="Earlier sections">
+      {% for endpoint, key, label, chapter, blurb in left_shelves %}
+        {{ shelf(endpoint, key, label, chapter, blurb, home=(key == 'home')) }}
+      {% endfor %}
+    </nav>
 
     <main id="main" class="shell-main">
       {% block content %}{% endblock %}
     </main>
 
-    {# ---- Right shelves: every other section ----------------------------- #}
-    <nav class="shelf-stack" aria-label="Sections">
+    {# ---- Right: the chapters after it ------------------------------------ #}
+    <nav class="shelf-stack" aria-label="Later sections">
       {% for endpoint, key, label, chapter, blurb in right_shelves %}
-        <a class="shelf" data-nav
-           href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
-           title="{{ blurb }}">
-          <span class="shelf-top type-label" aria-hidden="true">[{{ chapter }}]</span>
-          <span class="shelf-name">{{ label }}</span>
-          <span class="shelf-foot type-data" aria-hidden="true">{{ chapter }}<br>Chp.</span>
-        </a>
+        {{ shelf(endpoint, key, label, chapter, blurb) }}
       {% endfor %}
     </nav>
   </div>
