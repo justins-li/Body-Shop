@@ -58,6 +58,17 @@ export async function fetchRecentExercises(limit = 12) {
   return data.exercises;
 }
 
+/**
+ * One routine with its exercises hydrated — images, instructions and all.
+ *
+ * One request rather than one per movement: the page shows every exercise at
+ * once, so six round trips would be six chances to render half a routine.
+ */
+export async function fetchRoutine(key) {
+  const data = await request(`/routines/${encodeURIComponent(key)}`);
+  return data.routine;
+}
+
 /** One exercise in full: instructions and absolute image URLs. */
 export async function fetchExerciseDetail(id) {
   const data = await request(`/exercises/${encodeURIComponent(id)}`);

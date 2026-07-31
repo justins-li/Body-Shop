@@ -162,6 +162,26 @@ REFERENCE_MINUTES = 75
 MIN_SESSIONS, MAX_SESSIONS = 1, 14
 MIN_MINUTES, MAX_MINUTES = 15, 240
 
+#: How long one working set takes, including the rest after it.
+#:
+#: **Judgement.** Phase 6 deliberately needed no such constant: scaling targets is
+#: a *ratio* against :data:`REFERENCE_PLAN`, and a per-set cost appears in both
+#: halves and cancels. Phase 8's routines need an absolute answer — "about 50
+#: minutes" — where nothing cancels, so the number has to be stated rather than
+#: implied.
+#:
+#: It is the same figure the reference plan's arithmetic assumes, and it is the
+#: one place it is written down. Compound work with three minutes' rest runs
+#: longer and isolation work shorter; three and a half is the middle, and the
+#: estimate is rounded to five minutes downstream precisely because it is not
+#: known better than that.
+MINUTES_PER_WORKING_SET = 3.5
+
+
+def minutes_for_sets(sets: int) -> float:
+    """Minutes of working time ``sets`` sets take, excluding session overhead."""
+    return max(0, sets) * MINUTES_PER_WORKING_SET
+
 
 def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))

@@ -30,6 +30,36 @@
       `summary.js` fills these.
     #}
     <dl class="readout" id="week-meta"></dl>
+
+    {#
+      Phase 8.3 — the calendar, folded in. `/calendar` was a whole chapter for a
+      month grid, and it answered "what did I do that day", which the entry list
+      further down already answers for the week being read. What was worth
+      keeping is the shape of a month at a glance, so it collapses: seven boxes
+      by default, costing one row, expanding to the surrounding month on request.
+
+      Both states are the same cell against the same fixed reference — expanding
+      changes how many are drawn, never what one means.
+    #}
+    <div class="calendar-strip">
+      <div class="calendar-strip-head">
+        <span class="type-label text-secondary" id="calendar-heading">This week</span>
+        <button type="button" class="step-key" id="calendar-toggle"
+                aria-controls="calendar-grid" aria-expanded="false">Show the month</button>
+      </div>
+      <div class="month-grid" id="calendar-grid" role="grid"
+           aria-labelledby="calendar-heading"></div>
+      {# The double-click is an accelerator, not the only route to `/log` — but
+         a gesture nobody is told about is a gesture nobody uses, so it is named
+         here as well as on each cell's own label. #}
+      <p class="calendar-caption type-label text-secondary mt-3 m-0">
+        <span class="flex items-center gap-2.5">
+          <span class="day-key" aria-hidden="true"><span class="day-key-bar"></span></span>
+          bar height is sets logged
+        </span>
+        <span>double-click a day to log it</span>
+      </p>
+    </div>
   </section>
 
   {#

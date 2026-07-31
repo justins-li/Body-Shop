@@ -462,3 +462,57 @@ def test_entries_carry_the_weight_mode(client, add):
     add("2026-07-28", PULLUP, sets=3)
     entries = client.get("/api/entries?date=2026-07-28").get_json()["entries"]
     assert entries[0]["weight_mode"] == "bodyweight"
+
+
+# ---- Routines on the wire (Phase 8.1) --------------------------------------
+
+
+def test_routine_list_is_the_light_shape(client):
+    """Five routines' worth of photographs to render five cards is most of a
+    megabyte nobody looked at."""
+    routines = client.get("/api/routines").get_json()["routines"]
+    assert routines
+    assert all("exercises" not in r for r in routines)
+    assert all({"key", "name", "focus", "minutes", "total_sets"} <= set(r) for r in routines)
+
+
+def test_routine_detail_hydrates_every_exercise(client):
+    """One request rather than one per movement: the page shows them all at
+    once, so six round trips would be six chances to render half a routine."""
+    routine = client.get("/api/routines/push").get_json()["routine"]
+    assert routine["key"] == "push"
+    for item in routine["exercises"]:
+        assert item["name"]
+        assert len(item["images"]) == 2
+        assert item["instructions"]
+        # The quick log needs this to head its weight column correctly.
+        assert item["weight_mode"]
+
+
+def test_routine_images_are_absolute(client):
+    routine = client.get("/api/routines/push").get_json()["routine"]
+    assert routine["exercises"][0]["images"][0].startswith("http")
+
+
+def test_unknown_routine_is_a_404(client):
+    response = client.get("/api/routines/nope")
+    assert response.status_code == 404
+    assert "Unknown routine" in response.get_json()["error"]
+
+
+def test_a_routine_logs_through_the_same_endpoint_as_the_log_page(client):
+    """The quick log is not a lesser log — it is the same POST, so a set
+    recorded from a routine reaches the weekly summary identically."""
+    routine = client.get("/api/routines/push").get_json()["routine"]
+    first = routine["exercises"][0]
+
+    created = client.post("/api/entries", json={
+        "date": "2026-07-28",
+        "exercise_id": first["exercise_id"],
+        "sets": [{"weight": 80, "reps": 8}, {"weight": 80, "reps": 8}],
+    })
+    assert created.status_code == 201
+
+    summary = client.get("/api/summary/week?date=2026-07-28").get_json()
+    assert summary["muscles"]["chest"]["sets"] == 2.0
+    assert summary["muscles"]["chest"]["worked"] is True

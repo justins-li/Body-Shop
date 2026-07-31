@@ -20,6 +20,7 @@ import {
   $, addDays, formatDate, formatSets, loadProfile, renderEntries, retargetLinks,
   saveProfile, syncUrlDate, toast,
 } from "./ui.js";
+import { initWeekStrip, setWeekStripDate } from "./weekstrip.js";
 
 let anchorIso; // Any date inside the week being displayed.
 
@@ -376,11 +377,42 @@ async function load() {
   }
 }
 
-function shiftWeek(days) {
-  anchorIso = addDays(anchorIso, days);
+/**
+ * Move the page to `iso` — the one place the anchor date changes.
+ *
+ * Stepping a week and clicking a day in the calendar strip are the same act,
+ * so they go through here: `?date=` is shared state every page honours, and the
+ * strip has to re-anchor with the summary or the two disagree about which week
+ * is on screen.
+ */
+async function goToDate(iso) {
+  anchorIso = iso;
   syncUrlDate(anchorIso);
-  retargetLinks(Array.from(document.querySelectorAll(".nav-link")), anchorIso);
-  load();
+  retargetLinks(
+    Array.from(document.querySelectorAll(".nav-link, .tab-link, .shelf")), anchorIso,
+  );
+  await Promise.all([load(), setWeekStripDate(anchorIso)]);
+}
+
+function shiftWeek(days) {
+  goToDate(addDays(anchorIso, days));
+}
+
+/**
+ * Leave for `/log`, on the day that was double-clicked in the calendar strip.
+ *
+ * `?date=` rather than anything log-specific: it is the parameter every page
+ * already honours, so `/log` opens on that day by the same mechanism a shelf
+ * click would have used.
+ *
+ * The veil goes up by hand here. `base.html` raises it for `a[data-nav]`
+ * clicks, and this is a scripted navigation to a server-rendered page — the
+ * same round trip, so it should look like one rather than like a frozen page.
+ */
+function openLogFor(iso) {
+  const veil = document.getElementById("page-veil");
+  if (veil) veil.classList.add("is-visible");
+  window.location.assign(`/log?date=${encodeURIComponent(iso)}`);
 }
 
 /** The stored split, if it is still one the server offers. */
@@ -416,4 +448,7 @@ export async function initSummary(initialIso, buckets = {}) {
 
   applyScheme(storedScheme() || $("#scheme-select").value);
   await load();
+  // After the week, not before: the strip is a supporting reading and the body
+  // map is what the page is for, so it does not delay the thing being read.
+  await initWeekStrip(anchorIso, goToDate, openLogFor);
 }

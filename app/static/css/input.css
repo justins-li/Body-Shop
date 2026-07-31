@@ -2399,6 +2399,222 @@
     padding-top: 0.35rem;
   }
 
+  /* -- The date input's own picker ---------------------------------------
+     Left alone, Chrome renders the calendar button as a faint glyph the same
+     weight as the digits beside it, so the one control on the row that opens
+     something did not read as a control. Given a border and the accent's ink
+     it becomes a target — outlined rather than filled, since a filled accent
+     means "over target" on the volume ramp and nothing else may claim it. */
+  .field-date {
+    padding-right: 0.45rem;
+  }
+  .field-date::-webkit-calendar-picker-indicator {
+    padding: 0.24rem;
+    margin-left: 0.4rem;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+    border-radius: var(--radius-field);
+    cursor: pointer;
+    opacity: 1;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .field-date::-webkit-calendar-picker-indicator:hover {
+    border-color: var(--color-primary);
+    background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  }
+  /* The stock glyph is near-black and vanishes on the dark theme. */
+  [data-theme="bodyshop-dark"] .field-date::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+
+  /* -- The calendar, folded into /summary (Phase 8.3) --------------------
+     Seven boxes by default, the surrounding month on request. Both states are
+     the same `.day-cell` against the same fixed reference, so expanding
+     changes how many are drawn and never what one means. */
+  .calendar-strip {
+    margin-top: 1.25rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+  }
+  .calendar-strip-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.6rem;
+  }
+  /* Collapsed, the seven days are one row; the month keeps the seven-column
+     grid the cells were designed against. */
+  #calendar-grid:not(.is-month) {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+  /* Two readings under the grid — what the bars mean, and the double-click.
+     They wrap onto separate lines at phone width rather than stranding one
+     word of the second on a line of its own. */
+  .calendar-caption {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem 1.25rem;
+  }
+
+  /* -- Routines (Phase 8.1) ----------------------------------------------- */
+  .routine-list {
+    display: grid;
+    gap: 0.5rem;
+  }
+  @media (width >= 48rem) {
+    .routine-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .routine-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    width: 100%;
+    height: 100%;
+    min-height: 2.75rem;
+    padding: 0.9rem 1rem;
+    text-align: left;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    border-radius: var(--radius-field);
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .routine-card:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+  /* Outlined, never filled — see the accent rule above. */
+  .routine-card[aria-pressed="true"] {
+    border-color: var(--color-primary);
+    background-color: color-mix(in srgb, var(--color-primary) 7%, transparent);
+  }
+  .routine-card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .routine-card-name {
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: 1.25rem;
+    line-height: 1.15;
+  }
+  .routine-card-time {
+    flex: none;
+    font-size: 0.8125rem;
+    color: var(--color-primary);
+  }
+  .routine-card-blurb {
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--color-secondary);
+  }
+
+  /* One movement in a routine: its frames beside what to do about it. */
+  .routine-exercise {
+    display: grid;
+    gap: 0.9rem;
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: 1.1rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+  }
+  .routine-exercise:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+  @media (width >= 40rem) {
+    .routine-exercise {
+      grid-template-columns: 11rem minmax(0, 1fr);
+      align-items: start;
+    }
+  }
+  .routine-exercise-frames {
+    width: 100%;
+    max-width: 11rem;
+  }
+  .routine-exercise-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+  .routine-exercise-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    margin: 0;
+  }
+  .routine-exercise-order {
+    color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+    font-size: 0.8125rem;
+  }
+  .routine-exercise-name {
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: 1.15rem;
+    line-height: 1.15;
+  }
+  .routine-exercise-dose {
+    margin: 0;
+    font-size: 0.9375rem;
+    color: var(--color-base-content);
+  }
+  .routine-exercise-note {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--color-secondary);
+  }
+  .routine-how > summary {
+    cursor: pointer;
+    color: var(--color-secondary);
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+  }
+  .routine-log {
+    align-self: flex-start;
+    margin-top: 0.2rem;
+  }
+
+  /* -- Quick log ----------------------------------------------------------
+     The dialog is only a frame: the grid inside is the component /log mounts,
+     so a set logged from a routine obeys every rule a set logged there does. */
+  .quick-log {
+    width: min(32rem, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 22%, transparent);
+    border-radius: 0;
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    overflow: auto;
+  }
+  .quick-log::backdrop {
+    background-color: color-mix(in srgb, var(--color-base-300) 82%, transparent);
+  }
+  .quick-log-body {
+    padding: 1.2rem 1.25rem 1.1rem;
+  }
+  .quick-log-name {
+    margin: 0 0 0.9rem;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: 1.35rem;
+    line-height: 1.15;
+  }
+  .quick-log-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1rem;
+  }
+
   /* -- Trainer setup (Phase 6) -------------------------------------------
      Three controls on /summary, beside the targets they decide. Two columns
      at phone width would strand the minutes field, so the experience select

@@ -1,6 +1,6 @@
 # Body Shop
 
-> Log your workouts on a calendar and see, at a glance, which muscle groups you actually trained this week.
+> Follow a routine or log your own sets, and see at a glance which muscle groups you actually trained this week.
 
 Body Shop is a small Flask + vanilla JS web app. You pick a date, log the sets you
 finished — with weight, reps and RPE if you want them — and the weekly summary paints a
@@ -39,13 +39,18 @@ on both, so the two outlines tell you different things.
 | Page | Route | What it does |
 | --- | --- | --- |
 | **Home** | `/` | What the app does, and the way in. Static — no API calls. |
-| **Calendar** | `/calendar` | Month grid of your training. Each day carries a bar as tall as the sets you logged; tap one to see what you did. |
+| **Routines** | `/routines` | Five sessions worth following — push, pull, legs, a beginner full body, an athletic whole-body day. Each says how long it takes (derived from its sets, not typed), shows every movement's photographs and how to do it, and puts a **log button** beside each one that writes straight into the week. |
 | **Log workout** | `/log` | Pick date → exercise → sets, with weight, reps and set type per row (RPE too, on the advanced trainer setup), prefilled from last time. The weight column follows the equipment: a barbell gets a plate breakdown, a dumbbell asks per bell, a cable asks for the pin setting, and a pull-up asks for nothing unless you tick "Added weight". A repeat button copies the set you just entered. The picker has three ways in: recent, browse by muscle, and search (`incl db` finds "Dumbbell Incline Bench Press"). Shows and deletes the entries for that day. |
-| **Weekly summary** | `/summary` | Front/back body map shaded by weekly volume, each group's sets against its target, and where inside six of them the work landed. |
+| **Weekly summary** | `/summary` | Front/back body map shaded by weekly volume, each group's sets against its target, and where inside six of them the work landed. Also the trainer setup, and the calendar: seven boxes for this week, expanding to the month when you want it. |
 | **Training graph** | `/progress` | Every movement you have logged, joined to the ones you do on the same day. It draws from your very first workout and fills in as you train. Node size is either the sets a movement carried or your best lift on it, estimated from your own weight × reps — a movement with no load recorded stays a hollow ring rather than pretending to be small. The movements that have fallen out ring the outside, and are named underneath. |
 
-All five pages share a `?date=YYYY-MM-DD` query parameter, so navigating between
-them keeps the day you were looking at.
+Every page shares a `?date=YYYY-MM-DD` query parameter, so navigating between them
+keeps the day you were looking at. `/calendar` was its own page until the month grid
+folded into the weekly summary; it still redirects, so old links land on the right week.
+
+Logging from a routine and logging on `/log` are **the same grid** — the weight column
+follows the equipment, bodyweight movements ask for nothing unless you tick "Added
+weight", and a set recorded either way reaches the summary identically.
 
 The interface is dark and dense by design — it is read on a phone, mid-session, with a
 barbell in the other hand. The volume ramp is the only saturated colour in it.
@@ -167,6 +172,7 @@ Body-Shop/
 │   ├── db.py                 # engine, request-scoped connection, migration CLI
 │   ├── tables.py             # the schema, as SQLAlchemy metadata
 │   ├── exercises.py          # catalog loader, muscle groups, baseline targets, weight modes
+│   ├── routines.py           # suggested sessions, with derived time estimates
 │   ├── training.py           # trainer setups: how experience and time scale the targets
 │   ├── data/exercises.json   # 873 vendored movements — generated, never hand-edited
 │   ├── models.py             # all SQL lives here: validation + queries
@@ -181,7 +187,7 @@ Body-Shop/
 │   └── static/
 │       ├── css/input.css     # design system — the file you edit
 │       ├── css/styles.css    # compiled output — generated, committed
-│       └── js/               # api.js, ui.js, one module per page, + layout.js
+│       └── js/               # api.js, ui.js, setgrid.js, one module per page, + layout.js
 ├── migrations/               # Alembic: env.py + versions/
 ├── alembic.ini
 ├── tools/                    # fetch_css_toolchain.py, build_exercise_catalog.py

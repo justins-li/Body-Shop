@@ -8,6 +8,32 @@ All notable changes to Body Shop are documented here. This project follows
 
 ### Added
 
+- **Routines: something to follow, instead of a blank log** (Phase 8.1). Five sessions,
+  each built around one thing — push, pull, legs, a beginner full body, an athletic
+  whole-body day. Each shows every movement's photographs and how to do it, and puts a
+  **log button** beside it that writes straight into the week.
+
+  The time estimate is **derived from the prescribed sets, never typed** beside them: a
+  hand-written "45 min" drifts the first time anyone edits the list above it. It comes
+  out at one session of Phase 6's reference week, which is not a coincidence — both are
+  the same arithmetic, and `MINUTES_PER_WORKING_SET` is now stated in one place rather
+  than implied. (Phase 6 pointedly needed no such constant, because scaling targets is a
+  ratio and a per-set cost cancels. An estimate is absolute, where nothing cancels.)
+
+  Routines are **editorial content in code**, the same status as `STAPLE_EXERCISE_IDS`,
+  validated against the catalog at import: an id that stopped resolving would render a
+  card with a blank name and a dead log button. And a routine's prescription is a
+  **placeholder, not a value** — an untouched row still saves as "not recorded", because
+  logging what a routine *told you to do* as though it happened is the one thing a
+  training log must never do.
+
+- **One set grid, two entrances** (Phase 8.2). The quick log on a routine is not a
+  lesser cousin of `/log` — it is the same component. Weight modes and their plate hints,
+  the added-weight toggle, the RPE gate, warm-ups, the kg/lb preference, repeat and the
+  rest timer all came out of `log.js` into `setgrid.js`, because a second, simpler grid
+  would have been a second set of rules about every one of them. The two entrances differ
+  in what they are *for*, not in what a set is.
+
 - **The training graph draws from your first workout, and can be sized by what you
   lift** (Phase 6.7). Two changes, and the first is the one that matters:
 
@@ -88,35 +114,45 @@ All notable changes to Body Shop are documented here. This project follows
   against untrained). The choice is remembered per browser, the system preference decides
   until you make one, and the theme is applied before first paint so neither flashes.
 
-### Fixed
-
-- **Logging no longer assumes every movement is a loaded barbell** (Phase 6.5). The set
-  grid had one column called "Weight" and printed a plate breakdown — "20kg bar + 25 / 5
-  per side" — under whatever was typed. That is right for a squat and wrong for a cable
-  pushdown, a dumbbell press and a pull-up, in three different ways. A `weight_mode` is
-  now derived from each movement's equipment and decides what the column is called, what
-  the number means, and whether a plate breakdown is offered **at all**:
-
-  - `barbell` and `ez_bar` are the only modes with a bar, and the EZ bar is 10 kg / 25 lb
-    rather than 20 / 45. Everything else gets no plate line, because telling someone
-    their 45 kg pulldown is a bar plus plates is arithmetic about equipment that is not
-    in the room.
-  - `dumbbell` says per bell rather than the pair's total; `stack` says the pin setting.
-  - `bodyweight` — pull-ups, dips, push-ups — asks for no weight at all. A checkbox
-    reveals a field for weight actually strapped on, and that reads back as `+20kg × 8`
-    so it can never be mistaken for the load itself.
-
-  An equipment value with no mode raises `CatalogError` at import rather than falling
-  through to a default, since the fallback's failure is exactly the bug being fixed. A
-  field the mode does not call for is removed from the DOM rather than hidden — a hidden
-  input still submits, so a weight typed before the checkbox was unticked would have been
-  logged anyway.
-
-- **Three stale claims in `docs/ARCHITECTURE.md`**: that there is one dark theme (there
-  are two themes and a toggle), that entries store a bare set count with no weight or
-  reps (Phase 4 ended that), and that `views.py` renders five pages (six).
+- **A dark, instrument-like interface (Phase 4.5).** The cream palette is gone and the
+  light theme is retired rather than re-derived. Six colour tokens on a near-black
+  blue-black ground, warm bone for data marks, cold slate for structure, and an oxidised
+  brick red as the only accent. Three typefaces in four named voices — Big Shoulders
+  Display for headings, IBM Plex Sans for copy, IBM Plex Mono for micro-labels and, new,
+  for **every number in the app**, with tabular figures so digits don't shift width as
+  they change. Cards give way to hairline-ruled bands on one continuous ground.
+- **`/progress`, the training graph.** Every movement logged in a window drawn as a node
+  on a canvas, joined to the movements done on the same day. Size is sets, colour is the
+  current weekly coverage of its main muscle, and movements that have fallen out —
+  logged under three times, or not in eight weeks — ring the outside as hollow circles
+  and are listed by name beneath. Nothing is strength-relative: no bodyweight is stored
+  and no 1RM computed, so a strength-standard colouring would be a guess (Phase 7). Time
+  window switches between 8 weeks, 6 months and all time. Backed by one new read-only
+  endpoint, `GET /api/progress/graph`.
+- **A mobile bottom tab bar**, so the app is reachable one-handed. Logging a set is two
+  taps from opening the app, and `/log`'s submit is docked in the thumb zone.
 
 ### Changed
+
+- **The calendar folded into the weekly summary, and `/calendar` retired** (Phase 8.3).
+  A whole chapter for a month grid was more room than it earned: it answered "what did I
+  do that day", which the summary's own entry list already answers for the week being
+  read. What was worth keeping — the shape of a month, at a glance — is now a strip above
+  the body map: **seven boxes for this week, expanding to the month on request** and
+  remembering which you prefer. Both states are the same cell against the same fixed
+  reference, so expanding changes how many are drawn and never what one means.
+
+  **Double-clicking a day opens `/log` for it** — reading the week and adding to it are
+  the two things anyone does on this page, and the second used to mean finding the day,
+  then the shelf, then the date field again. The single click still does the cheap,
+  reversible thing and the second commits. It is an accelerator rather than the only
+  route, and it is named in the caption and on every cell's label, because a gesture
+  nobody is told about is a gesture nobody uses.
+
+  The shelf it vacated became **Routines, keeping chapter 02**, so Log, Weekly summary
+  and Graph did not renumber around the change — a chapter mark you can navigate by is
+  one that stays put. `/calendar` is a 301 rather than a 404, because `?date=` links to
+  it are the app's own shared state and an old one should still land on the right week.
 
 - **The whole front end is rebuilt against a reference design** (glukhovsky.com), and it
   is a deliberate reversal of Phase 4.5 rather than a restyle:
@@ -157,28 +193,6 @@ All notable changes to Body Shop are documented here. This project follows
   - The rest timer moved from the header to a bottom-left dock. Same contract: every
     page, a persisted deadline rather than a count.
 
-### Added
-
-- **A dark, instrument-like interface (Phase 4.5).** The cream palette is gone and the
-  light theme is retired rather than re-derived. Six colour tokens on a near-black
-  blue-black ground, warm bone for data marks, cold slate for structure, and an oxidised
-  brick red as the only accent. Three typefaces in four named voices — Big Shoulders
-  Display for headings, IBM Plex Sans for copy, IBM Plex Mono for micro-labels and, new,
-  for **every number in the app**, with tabular figures so digits don't shift width as
-  they change. Cards give way to hairline-ruled bands on one continuous ground.
-- **`/progress`, the training graph.** Every movement logged in a window drawn as a node
-  on a canvas, joined to the movements done on the same day. Size is sets, colour is the
-  current weekly coverage of its main muscle, and movements that have fallen out —
-  logged under three times, or not in eight weeks — ring the outside as hollow circles
-  and are listed by name beneath. Nothing is strength-relative: no bodyweight is stored
-  and no 1RM computed, so a strength-standard colouring would be a guess (Phase 7). Time
-  window switches between 8 weeks, 6 months and all time. Backed by one new read-only
-  endpoint, `GET /api/progress/graph`.
-- **A mobile bottom tab bar**, so the app is reachable one-handed. Logging a set is two
-  taps from opening the app, and `/log`'s submit is docked in the thumb zone.
-
-### Changed
-
 - **The volume ramp climbs in luminance rather than darkening.** It ran pale-to-dark as
   volume rose, which reads correctly on cream and backwards on near-black, where a dark
   green is the least-lit thing on screen. `--color-train-light/dark` are now
@@ -194,7 +208,107 @@ All notable changes to Body Shop are documented here. This project follows
 - **The weekly summary leads with the body map**, and the week's figures became readout
   cells instead of a dot-separated sentence that wrapped to five lines on a phone.
 
+- **Home and summary copy now lead with coverage rather than volume.** The app's purpose
+  is keeping every group — and every region of the six that subdivide — inside a
+  productive range: nothing skipped long enough to become a weak link, nothing hammered
+  while its neighbours idle. The home page's third stat is the region count in place of
+  the raw targets, and step 02 explains the half-weight for assisting muscles.
+- **The `/log` picker leads with Recent and Browse; search is now an icon.** Three equal
+  tabs implied search was the way in, but searching a catalog nobody has memorised only
+  works if you already know the name. Browse is how you shop for a movement and the only
+  path a first-time user can succeed on, so it keeps a labelled tab and search collapses
+  to a magnifier. With nothing logged yet, the picker opens on Browse.
+- **Browse is ordered by usefulness instead of the alphabet.** It sorted alphabetically
+  and truncated at 40 rows, so chest opened with "Alternating Floor Press" and pushups —
+  70th of 147 — could not be reached by browsing at all. Order is now primary muscle,
+  then your own logging history, then `rank`, with name only as a tiebreak. Search takes
+  the same keys after its name-match tiers, so "press" leads with the bench press.
+- **Browse is indexed by muscle once at load** rather than re-scanning all 873 rows (and
+  rebuilding the equipment dropdown from them) on every filter change.
+- **Exercise ids are now free-exercise-db's** (`Barbell_Squat`, `Sit-Up`) and are
+  case-sensitive. The four hand-written ids are gone; migrating carries an existing
+  database across (Alembic revision `0002`).
+- **`entry_date` is a real `DATE` column** rather than TEXT, and `created_at` a real
+  timestamp. Nothing changes at the API, which still speaks ISO-8601 strings in both
+  directions, and SQLite's stored form is unchanged so range queries behave identically.
+- **`create_app` no longer creates the schema or touches the filesystem** except to make
+  `instance/` for the SQLite development default. `python run.py` migrates before serving,
+  so local use is still zero-setup; `wsgi.py` does not, so importing the app can never
+  change a schema. Deployments run `upgrade-db` as an explicit step.
+- **`init-db` is a development convenience** and refuses to run under production config.
+- **`BODYSHOP_DATABASE` (a SQLite path) is replaced by `DATABASE_URL`** (a SQLAlchemy URL).
+- **`GET /api/exercises` returns a lighter shape** — `primary`/`secondary` instead of a
+  flat `muscles` list (which is still present, as their concatenation), plus `equipment`,
+  `category`, `level`, `force`, `mechanic` and `counts_toward_volume`. Instructions and
+  images moved to `GET /api/exercises/<id>`, since the picker fetches the whole catalog
+  and they quadruple the payload.
+- **`sets` in the weekly summary payload is a float**, and `over` with it.
+- **Stretching, cardio and plyometrics grade as zero volume.** They are loggable and
+  appear in history, but add no sets and never mark a group as worked — a hamstring
+  stretch shading the hamstrings green would misreport the week. `/log` labels them on
+  selection rather than letting the omission be silent.
+- **`traps` is its own group**, no longer folded into `back`. Historical `back` counts
+  are not comparable across this change.
+- **`glutes`, `calves` and `forearms` are tracked**, reversing their previous status as
+  deliberate silhouette gaps.
+- **`/log` no longer renders the catalog server-side.** The view passes only a count;
+  `log.js` fetches `/api/exercises` and drives the picker.
+- **The calendar moved from `/` to `/calendar`** to make room for the home page. All four
+  pages still share `?date=YYYY-MM-DD`.
+- Every page was redesigned against a warm, achromatic palette — cream `#fff8ed`, warm
+  ink `#312726` — with hairline borders instead of shadows and one variable typeface
+  (Archivo) whose width axis carries the display voice. The palette has no accent hue on
+  purpose: the muscle heatmap is the only saturated colour in the app.
+- The body-map partial now holds its region geometry as data and renders it in a single
+  loop, rather than repeating one `<path>` block per region.
+- The body map is now shaded by volume rather than filled a single red: light
+  green at one set, deepening to dark green at the group's weekly target, then
+  light-to-dark red across the next `target / 2` sets of overshoot.
+- The breakdown bars scale against each group's target instead of the busiest
+  group, read `12 / 20` rather than `12 sets`, and take the same colour as the
+  body map.
+- The front and back body maps now show disjoint muscle groups instead of mirroring
+  the same regions. Regions within a view must not overlap — they paint in order, so an
+  overlap hides one group's colour behind another's.
+- The chest is drawn as two pectorals split at the sternum, and the back as a tapering
+  lat sheet with the trapezius yoke above it.
+- `legs` is replaced by `quads`, `hamstrings`, `glutes` and `calves`.
+- `.body-base` draws a full silhouette beneath the muscle overlays, so untracked
+  anatomy (sternum, obliques, lower back, shins) shows through as gaps.
+
 ### Fixed
+
+- **Logging no longer assumes every movement is a loaded barbell** (Phase 6.5). The set
+  grid had one column called "Weight" and printed a plate breakdown — "20kg bar + 25 / 5
+  per side" — under whatever was typed. That is right for a squat and wrong for a cable
+  pushdown, a dumbbell press and a pull-up, in three different ways. A `weight_mode` is
+  now derived from each movement's equipment and decides what the column is called, what
+  the number means, and whether a plate breakdown is offered **at all**:
+
+  - `barbell` and `ez_bar` are the only modes with a bar, and the EZ bar is 10 kg / 25 lb
+    rather than 20 / 45. Everything else gets no plate line, because telling someone
+    their 45 kg pulldown is a bar plus plates is arithmetic about equipment that is not
+    in the room.
+  - `dumbbell` says per bell rather than the pair's total; `stack` says the pin setting.
+  - `bodyweight` — pull-ups, dips, push-ups — asks for no weight at all. A checkbox
+    reveals a field for weight actually strapped on, and that reads back as `+20kg × 8`
+    so it can never be mistaken for the load itself.
+
+  An equipment value with no mode raises `CatalogError` at import rather than falling
+  through to a default, since the fallback's failure is exactly the bug being fixed. A
+  field the mode does not call for is removed from the DOM rather than hidden — a hidden
+  input still submits, so a weight typed before the checkbox was unticked would have been
+  logged anyway.
+
+- **Three stale claims in `docs/ARCHITECTURE.md`**: that there is one dark theme (there
+  are two themes and a toggle), that entries store a bare set count with no weight or
+  reps (Phase 4 ended that), and that `views.py` renders five pages (six).
+
+- **The date field's calendar button on `/log` now looks like a button.** Left to itself
+  the browser renders it as a faint glyph the same weight as the digits beside it, so the
+  one control on that row that opens something did not read as a control. It is outlined
+  in the accent rather than filled, since a filled accent means "over target" on the
+  volume ramp and nothing else may claim it.
 
 - **The home page no longer claims an entry is "no weight, no reps"**, which Phase 4 made
   false, and the colour-scale legend no longer describes the ramp running the wrong way.
@@ -313,78 +427,6 @@ All notable changes to Body Shop are documented here. This project follows
   payload, plus `muscles_at_target` and `muscles_over` lists.
 - `abs` as a tracked muscle group, drawn on the front figure as upper and lower
   abdominal blocks.
-
-### Changed
-
-- **Home and summary copy now lead with coverage rather than volume.** The app's purpose
-  is keeping every group — and every region of the six that subdivide — inside a
-  productive range: nothing skipped long enough to become a weak link, nothing hammered
-  while its neighbours idle. The home page's third stat is the region count in place of
-  the raw targets, and step 02 explains the half-weight for assisting muscles.
-- **The `/log` picker leads with Recent and Browse; search is now an icon.** Three equal
-  tabs implied search was the way in, but searching a catalog nobody has memorised only
-  works if you already know the name. Browse is how you shop for a movement and the only
-  path a first-time user can succeed on, so it keeps a labelled tab and search collapses
-  to a magnifier. With nothing logged yet, the picker opens on Browse.
-- **Browse is ordered by usefulness instead of the alphabet.** It sorted alphabetically
-  and truncated at 40 rows, so chest opened with "Alternating Floor Press" and pushups —
-  70th of 147 — could not be reached by browsing at all. Order is now primary muscle,
-  then your own logging history, then `rank`, with name only as a tiebreak. Search takes
-  the same keys after its name-match tiers, so "press" leads with the bench press.
-- **Browse is indexed by muscle once at load** rather than re-scanning all 873 rows (and
-  rebuilding the equipment dropdown from them) on every filter change.
-- **Exercise ids are now free-exercise-db's** (`Barbell_Squat`, `Sit-Up`) and are
-  case-sensitive. The four hand-written ids are gone; migrating carries an existing
-  database across (Alembic revision `0002`).
-- **`entry_date` is a real `DATE` column** rather than TEXT, and `created_at` a real
-  timestamp. Nothing changes at the API, which still speaks ISO-8601 strings in both
-  directions, and SQLite's stored form is unchanged so range queries behave identically.
-- **`create_app` no longer creates the schema or touches the filesystem** except to make
-  `instance/` for the SQLite development default. `python run.py` migrates before serving,
-  so local use is still zero-setup; `wsgi.py` does not, so importing the app can never
-  change a schema. Deployments run `upgrade-db` as an explicit step.
-- **`init-db` is a development convenience** and refuses to run under production config.
-- **`BODYSHOP_DATABASE` (a SQLite path) is replaced by `DATABASE_URL`** (a SQLAlchemy URL).
-- **`GET /api/exercises` returns a lighter shape** — `primary`/`secondary` instead of a
-  flat `muscles` list (which is still present, as their concatenation), plus `equipment`,
-  `category`, `level`, `force`, `mechanic` and `counts_toward_volume`. Instructions and
-  images moved to `GET /api/exercises/<id>`, since the picker fetches the whole catalog
-  and they quadruple the payload.
-- **`sets` in the weekly summary payload is a float**, and `over` with it.
-- **Stretching, cardio and plyometrics grade as zero volume.** They are loggable and
-  appear in history, but add no sets and never mark a group as worked — a hamstring
-  stretch shading the hamstrings green would misreport the week. `/log` labels them on
-  selection rather than letting the omission be silent.
-- **`traps` is its own group**, no longer folded into `back`. Historical `back` counts
-  are not comparable across this change.
-- **`glutes`, `calves` and `forearms` are tracked**, reversing their previous status as
-  deliberate silhouette gaps.
-- **`/log` no longer renders the catalog server-side.** The view passes only a count;
-  `log.js` fetches `/api/exercises` and drives the picker.
-- **The calendar moved from `/` to `/calendar`** to make room for the home page. All four
-  pages still share `?date=YYYY-MM-DD`.
-- Every page was redesigned against a warm, achromatic palette — cream `#fff8ed`, warm
-  ink `#312726` — with hairline borders instead of shadows and one variable typeface
-  (Archivo) whose width axis carries the display voice. The palette has no accent hue on
-  purpose: the muscle heatmap is the only saturated colour in the app.
-- The body-map partial now holds its region geometry as data and renders it in a single
-  loop, rather than repeating one `<path>` block per region.
-- The body map is now shaded by volume rather than filled a single red: light
-  green at one set, deepening to dark green at the group's weekly target, then
-  light-to-dark red across the next `target / 2` sets of overshoot.
-- The breakdown bars scale against each group's target instead of the busiest
-  group, read `12 / 20` rather than `12 sets`, and take the same colour as the
-  body map.
-- The front and back body maps now show disjoint muscle groups instead of mirroring
-  the same regions. Regions within a view must not overlap — they paint in order, so an
-  overlap hides one group's colour behind another's.
-- The chest is drawn as two pectorals split at the sternum, and the back as a tapering
-  lat sheet with the trapezius yoke above it.
-- `legs` is replaced by `quads`, `hamstrings`, `glutes` and `calves`.
-- `.body-base` draws a full silhouette beneath the muscle overlays, so untracked
-  anatomy (sternum, obliques, lower back, shins) shows through as gaps.
-
-### Fixed
 
 - CI, which had failed on every run since the workflow was added. `pytest` aborted
   during collection with `ModuleNotFoundError: No module named 'app'` because

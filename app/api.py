@@ -11,6 +11,7 @@ from datetime import date
 from flask import Blueprint, current_app, jsonify, request
 
 from .exercises import all_exercises, get_exercise
+from .routines import all_routines, get_routine
 from .models import (
     ValidationError,
     add_entry,
@@ -127,6 +128,50 @@ def get_last_sets(exercise_id: str):
             "sets": [row.to_dict() for row in sets],
         }
     )
+
+
+@bp.get("/routines")
+def get_routines():
+    """Every suggested routine, without its exercises' images or instructions.
+
+    The **light** shape, for the same reason ``/api/exercises`` has one: the
+    listing needs a name, a focus and a time estimate, and hydrating five
+    routines' worth of photographs to render five cards is most of a megabyte
+    nobody looked at.
+    """
+    return jsonify(
+        {
+            "routines": [
+                {
+                    key: value
+                    for key, value in routine.to_dict().items()
+                    if key != "exercises"
+                }
+                for routine in all_routines()
+            ]
+        }
+    )
+
+
+@bp.get("/routines/<key>")
+def get_routine_detail(key: str):
+    """One routine with its exercises hydrated — images, instructions and all.
+
+    One request rather than one per movement: the page shows every exercise at
+    once, so six round trips would be six chances to render half a routine.
+    """
+    routine = get_routine(key)
+    if routine is None:
+        return jsonify({"error": f"Unknown routine: {key!r}."}), 404
+
+    base = _image_base()
+    payload = routine.to_dict()
+    for item in payload["exercises"]:
+        exercise = get_exercise(item["exercise_id"])
+        detail = exercise.to_detail_dict(base)
+        item["images"] = detail["images"]
+        item["instructions"] = detail["instructions"]
+    return jsonify({"routine": payload})
 
 
 @bp.get("/entries")

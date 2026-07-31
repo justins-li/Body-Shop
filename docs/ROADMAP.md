@@ -46,14 +46,61 @@ Deploy the current Flask app before adding more product surface.
 ### 3. Phase 8 — Training essentials
 
 This is the parity phase. It should make the app feel complete next to mature trackers.
+Broken into steps that can each ship on their own, roughly in dependency order.
 
-- Add PR *detection* — Phase 6.7 estimates a best per window, but nothing records or
-  announces one when it happens.
-- Add per-exercise progress graphs and body metrics. Bodyweight is the missing column
-  that a strength standard would need, if the product ever wants one.
-- Add entry and set editing.
-- Add routines and templates; this is the expensive core of the phase.
-- Keep the volume-coverage model intact while adding the parity features.
+**8.1 — Suggested routines. ✅ shipped.**
+A curated set of routines someone can follow, rather than a blank log.
+
+- Each routine focuses on one thing and says so: a push day, a pull day, legs, a
+  beginner full body, an athletic whole-body session.
+- Each carries a **time estimate** derived from its prescribed sets, not typed in by
+  hand, so it cannot drift from the exercises listed.
+- Each exercise shows its photographs and how to do it, next to a **log button** that
+  writes straight into the week.
+- Routines are *editorial content in code*, validated at import against the catalog —
+  the same contract `STAPLE_EXERCISE_IDS` has. They are not user data and not a
+  schema change.
+
+**8.2 — One set grid, two entrances. ✅ shipped.**
+The quick-log on a routine must be the *same* thing as `/log`, not a lesser cousin.
+
+- Extract the set grid out of `log.js` into a component both pages mount.
+- Weight modes, added weight, the RPE gate, plate hints, the repeat button and the
+  rest timer all come along, because they are the grid rather than the page.
+
+**8.3 — The calendar folds into the weekly summary. ✅ shipped.**
+A whole chapter for a month grid was more room than the feature earned.
+
+- `/summary` gains a week strip that expands to the month and collapses again.
+- `/calendar` retires and redirects; the shelf it occupied becomes Routines.
+
+**8.4 — Entry and set editing.**
+Currently append-only: a mistake is deleted and re-logged.
+
+- `PATCH /api/entries/<id>` and per-set edits, reusing `validate_sets`.
+- The set grid already renders values rather than placeholders when asked, so the
+  editing surface is the component from 8.2 mounted against an existing entry.
+
+**8.5 — PR detection.**
+6.7 estimates a best per *window*; nothing records one when it happens.
+
+- Store a best per exercise, or derive it over all time and diff on write.
+- Announce it in the log flow, once, without turning the app into a slot machine.
+
+**8.6 — Body metrics.**
+Bodyweight is the column a strength standard would need, if the product ever wants
+one — and the one that makes a bodyweight lift measurable.
+
+- A `body_metric` table plus a migration; weight and date, nothing more to start.
+- It would let `/progress` size bodyweight movements instead of ringing them.
+
+**8.7 — Per-exercise progress graphs.**
+One movement over time, rather than the whole constellation.
+
+- Estimated 1RM and volume per session, from data that already exists.
+
+Throughout: keep the volume-coverage model intact. None of this may turn the app into
+a strength-standards tracker (see docs/VOLUME_SCIENCE.md §3.5).
 
 ### 4. Phase 9 — AI-assisted custom exercises
 
