@@ -8,6 +8,35 @@ All notable changes to Body Shop are documented here. This project follows
 
 ### Added
 
+- **Five routines after famous athletes, all tagged `[experimental]`.** Reconstructions
+  of what has been published about how Dwayne "The Rock" Johnson, Tom Brady, Michael
+  Phelps, Usain Bolt and Serena Williams train — a hips-first leg day, a TB12 band
+  circuit, a swimmer's dryland session, a sprinter's power day, and a court-conditioning
+  circuit.
+
+  **The tag is the feature, not a garnish.** These are second-hand, often years old, and
+  separated from the coaching, the training age and the whole rest of the week that made
+  them make sense for that person — a sprinter's hour in the weight room is a small part
+  of being a sprinter. So each one names whose training it approximates and where the
+  reporting came from, the page says plainly that nobody named has endorsed anything, and
+  the rule is enforced rather than remembered: an experimental routine with no
+  attribution, *or* a routine attributed to a real person without the tag, fails at
+  import. Movements are mapped onto the nearest thing in the catalog, which is itself a
+  judgement — "rotational squats" is not a catalog entry.
+
+  They are also exempt from the rule that every routine movement must be a curated
+  staple. Band work, box jumps and medicine-ball slams are not on that list, and bending
+  a reconstruction to fit it would be inventing a session and putting someone's name on
+  it.
+
+  Sources: [Coach](https://www.coachweb.com/workouts/celebrity-workouts/the-rocks-trainer-shares-his-black-adam-workouts-and-theyre-brutal),
+  [Steel Supplements](https://steelsupplements.com/blogs/steel-blog/dwayne-johnson-s-real-workout-routine-train-like-the-rock),
+  [TB12 Sports](https://tb12sports.com/blogs/tb12/tom-brady-workout),
+  [Your Swim Log](https://www.yourswimlog.com/michael-phelps-dryland-training-video/),
+  [Bret Contreras](https://bretcontreras.com/how-does-usain-bolt-train/),
+  [RunnerClick](https://runnerclick.com/usain-bolt-training/),
+  [Dr Workout](https://www.drworkout.fitness/serena-williams-workout-routine/).
+
 - **Navigation turns a page.** The app is arranged as a book — chapters down the sides,
   numbered marks, a chapter that keeps its side — and moving between them was the one
   place that did not say so. It raised a veil to cover the server round trip, and since
@@ -156,6 +185,19 @@ All notable changes to Body Shop are documented here. This project follows
   taps from opening the app, and `/log`'s submit is docked in the thumb zone.
 
 ### Changed
+
+- **The page transition is a little book flipping, not the whole screen turning over.**
+  A full-screen leaf rotating was a transition happening *to* you; a book drawn to the
+  size of the wordmark under it is a small object you watch instead. Two static pages, a
+  spine and one leaf going over — boxes and borders only, no image, so it recolours with
+  the theme. It still flips the way the shelves point: forward for a later chapter, back
+  for an earlier one.
+
+- **Foam-roll movements no longer offer a weight.** A roller weighs what it weighs, there
+  is no heavier one, and nothing straps to it — so the column was not merely
+  usually-blank, it was meaningless. The new `unweighted` mode removes it outright, with
+  no toggle back; that is the distinction from `bodyweight`, where a weight is genuinely
+  possible and simply usually absent.
 
 - **The calendar folded into the weekly summary, and `/calendar` retired** (Phase 8.3).
   A whole chapter for a month grid was more room than it earned: it answered "what did I

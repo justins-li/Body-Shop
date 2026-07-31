@@ -77,14 +77,19 @@ it wrong for most of the catalog — which is what Phase 6.5 fixed.
 | `dumbbell` | `dumbbell` | Per dumbbell, **not** the pair's total | No |
 | `kettlebell` | `kettlebells` | Per bell | No |
 | `stack` | `cable`, `machine` | The stack setting as marked | No |
+| `unweighted` | `foam roll` | **Nothing.** No weight field is offered at all | No |
 | `bodyweight` | `body only`, `none` | Weight **added** to the lifter; usually `null` | No |
-| `implement` | `bands`, `medicine ball`, `exercise ball`, `foam roll`, `other` | Whatever the implement is marked as | No |
+| `implement` | `bands`, `medicine ball`, `exercise ball`, `other` | Whatever the implement is marked as | No |
 
 Two consequences for a client:
 
 - **Never draw a bar where there is no bar.** Only the two barbell modes have one.
   Printing "20 kg bar + 12.5 per side" under a cable pulldown is arithmetic about
   equipment that is not in the room.
+- **`unweighted` is not `bodyweight`.** A foam roller weighs what it weighs, there is
+  no heavier one, and nothing straps to it — so the column is meaningless rather than
+  usually-blank. Clients must draw no weight field and no way back to one; `bodyweight`
+  hides the field behind a toggle, this removes it.
 - **A `bodyweight` weight is additive and must be marked as such.** `20` on a pull-up
   and `20` on a curl are the same stored number meaning different things, so a set line
   reads `+20kg × 8` for the first and `20kg × 8` for the second.
@@ -212,7 +217,10 @@ five cards is most of a megabyte nobody looked at.
       "blurb": "Everything that presses. …",
       "level": "intermediate",
       "total_sets": 19,
-      "minutes": 75
+      "minutes": 75,
+      "experimental": false,
+      "inspired_by": null,
+      "source": null
     }
   ]
 }
@@ -223,7 +231,10 @@ five cards is most of a megabyte nobody looked at.
 | `key` | Stable id, used by `GET /api/routines/<key>`. |
 | `focus` | What the session trains, in the words someone would use to choose it. |
 | `total_sets` | Sum of the prescribed sets. |
-| `minutes` | **Derived** from `total_sets`, never typed — see `estimate_minutes` in `app/routines.py`. Rounded to five, because it is not known better than that. |
+| `minutes` | **Derived** from `total_sets`, never typed — see `estimate_minutes` in `app/routines.py`. Rounded to five, because it is not known better than that. A session that does not work at the usual pace (a continuous band circuit) carries its own per-set cost; the duration is still derived from the sets. |
+| `experimental` | `true` for a session **reconstructed from published coverage of a real athlete's training**. Clients must show it as such. |
+| `inspired_by` | Whose training it approximates. Always present when `experimental`, `null` otherwise — checked at import. |
+| `source` | Where the reporting came from, so the claim is checkable. Same rule. |
 
 ---
 
@@ -271,6 +282,14 @@ once, so six round trips would be six chances to render half a routine.
 | `weight_mode` | So the quick log can head its weight column correctly. See [Weight modes](#weight-modes). |
 
 **404** with `{"error": "Unknown routine: …"}` if the key is not one of the routines.
+
+**The `experimental` tag is not decoration.** Those routines are second-hand, often
+years old, and separated from the coaching, the training age and the rest of the week
+that made them make sense for that person. Nobody named has endorsed anything, movements
+are mapped onto the nearest catalog entry, and a client that renders these without the
+tag is making a claim the API does not. Attribution is enforced at import: an
+`experimental` routine with no `inspired_by`/`source` — or an attributed routine that is
+not tagged — raises `RoutineError`.
 
 **Logging from a routine uses `POST /api/entries` like anything else.** There is no
 routine-specific write endpoint, and deliberately: a set recorded while following a

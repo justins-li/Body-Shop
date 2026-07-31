@@ -182,6 +182,9 @@ export const WEIGHT_MODE_DISPLAY = {
     prefix: "+",
   },
   implement: { label: "Weight", note: "Whatever the implement is marked as.", prefix: "" },
+  // No weight column at all — see `unweighted` in app/exercises.py. The note
+  // still speaks, because a missing column with no explanation reads as a bug.
+  unweighted: { label: "", note: "No weight to record — just sets and time.", prefix: "" },
 };
 
 /** The display rules for a mode, falling back to a plain weight column. */

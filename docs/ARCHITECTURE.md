@@ -55,7 +55,7 @@ user, which is why it is worth having before auth exists.
 | `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses, or decide what a target *is*. |
 | `app/services/graph.py` | The training graph's rules: what a window means, what makes a movement an orphan, and joining this week's coverage and personal bests onto the nodes. | Query the database, or invent a strength *standard* (see below). |
 | `app/services/strength.py` | Estimating a one-rep max from the user's own sets, and reducing a window to one best per movement. | Query the database, or compare a user to anyone but themselves. |
-| `app/routines.py` | The suggested sessions, and the time estimate derived from their sets. Editorial content, validated against the catalog at import. | Touch the database, or state a duration that is not computed from the sets listed. |
+| `app/routines.py` | The suggested sessions, the athlete reconstructions and their attribution, and the time estimate derived from their sets. Editorial content, validated against the catalog at import. | Touch the database, state a duration that is not computed from the sets listed, or attribute a session to a real person without the `[experimental]` tag. |
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
 | `app/views.py` | Page shells and template context. | Contain business rules. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
@@ -64,7 +64,7 @@ user, which is why it is worth having before auth exists.
 | `app/static/js/layout.js` | The force-directed layout — a pure, deterministic function of the graph. | Touch the canvas, the DOM, or `Math.random`. |
 | `app/static/js/progress.js` | The canvas, the gestures, the size-by control and the detail panel on `/progress`. | Contain layout maths, or re-simulate on a render. |
 | `app/static/js/onboarding.js` | The one-time first-run question, and the record that it was asked. | Open on `/` or `/how-to-use`, or ask twice. |
-| `app/static/js/pageturn.js` | The transition between chapters: holding a navigation while the leaf falls, and which side it falls from. | Let a departure skip it — an unheld navigation tears the animation down. |
+| `app/static/js/pageturn.js` | The transition between chapters: holding a navigation while the book flips, and which way it flips. | Let a departure skip it — an unheld navigation tears the animation down. |
 | `app/static/js/setgrid.js` | **What a set is**: the rows, weight modes, added weight, the RPE gate, plate hints, repeat, and starting the rest timer. Mounted by `/log` and by a routine's quick-log. | Know which page it is on, or fetch anything. |
 | `app/static/js/routines.js` | The routines page: choosing a session, drawing its movements, and pointing the shared grid at one. | Reimplement any part of the grid. |
 | `app/static/js/weekstrip.js` | The calendar strip on `/summary`: seven boxes, expanding to the month; reports clicks and double-clicks on a day. | Own the anchor date, or navigate — it reports a gesture and the page decides. |
@@ -332,16 +332,17 @@ milliseconds the veil was a flicker: a hint that something loaded, rather than a
 of having moved.
 
 The transition is now **timed rather than measured.** `pageturn.js` intercepts the click,
-raises the veil, and holds the navigation for `TURN_MS` while a leaf falls across the
-screen. That is a real cost, taken on purpose: the app is slower by the length of the
+raises the veil, and holds the navigation for `TURN_MS` while a little book flips on it. That is a real cost, taken on purpose: the app is slower by the length of the
 animation, because "instant and imperceptible" and "you turned a page" are different
 experiences and this one is a book.
 
 Four things keep it from being a wipe with extra steps:
 
-- **It hinges.** The leaf is `.page-veil::before` rotating about a vertical spine from
-  edge-on to flat, under a `perspective` on the veil — without which the rotation is a
-  horizontal squash rather than a page.
+- **It is a small object, not the screen.** The veil carries a flipbook drawn to the
+  size of the wordmark under it: two static pages, a spine, and one leaf going over,
+  under a short `perspective`. A full-screen leaf turning was a transition happening *to*
+  you; at this size it is something you watch. Boxes and borders only — no image — so it
+  recolours with the theme and carries no detail nobody can see at 3rem.
 - **It follows the shelves.** The stacks split around the open chapter, so an earlier
   chapter is to your left and a later one to your right. `data-turn` picks the side:
   `forward` falls from the right, `back` from the left, read off which stack was clicked.

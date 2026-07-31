@@ -327,3 +327,19 @@ def test_no_cable_or_machine_movement_is_offered_a_bar():
     for exercise in all_exercises():
         if exercise.equipment in {"cable", "machine", "body only", "dumbbell"}:
             assert exercise.weight_mode not in barbell_modes, exercise.id
+
+
+def test_foam_roll_offers_no_weight_at_all():
+    """A foam roller has one weight — its own — and it is not the point.
+
+    Unlike a band or a ball there is no heavier one to reach for and nothing to
+    strap on, so the column is not merely usually-blank (that is `bodyweight`):
+    it is meaningless. `unweighted` removes it outright, with no toggle back.
+    """
+    rollers = [e for e in all_exercises() if e.equipment == "foam roll"]
+    assert rollers, "no foam-roll movements in the catalog"
+    for exercise in rollers:
+        assert exercise.weight_mode == "unweighted", exercise.id
+        # Not bodyweight: that mode offers an "Added weight" tick box, and
+        # there is nothing to add.
+        assert exercise.is_bodyweight is False, exercise.id

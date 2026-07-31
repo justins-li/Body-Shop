@@ -78,6 +78,32 @@ class Routine:
     level: str
     exercises: tuple[RoutineExercise, ...]
 
+    #: Marks a routine reconstructed from press coverage of a real athlete.
+    #:
+    #: These are shown with an **[experimental]** tag, and the tag is not
+    #: decoration. Everything else here is a session we wrote and stand behind.
+    #: These are a best reading of what has been *reported* about somebody
+    #: else's training — second-hand, often years old, and stripped of the
+    #: coaching, the training age and the whole rest of the week that made it
+    #: make sense for them. Interesting to look at; not advice.
+    experimental: bool = False
+
+    #: Whose training this approximates. Required when ``experimental``.
+    inspired_by: str | None = None
+
+    #: Where the reporting came from, so the claim is checkable.
+    source: str | None = None
+
+    #: Minutes one working set costs in *this* session, if not the usual.
+    #:
+    #: **Judgement, and the only per-routine number here.** A continuous band
+    #: circuit at twenty-plus reps does not cost what a heavy triple with three
+    #: minutes' rest costs, and pricing them the same put a badly wrong figure
+    #: on one card. Note this still *derives* the duration from the sets listed
+    #: — editing the exercises still moves the estimate — which is the property
+    #: worth protecting. What is typed is the pace, not the answer.
+    minutes_per_set: float | None = None
+
     @property
     def total_sets(self) -> int:
         return sum(item.sets for item in self.exercises)
@@ -85,7 +111,7 @@ class Routine:
     @property
     def minutes(self) -> int:
         """Estimated session length. Derived from the sets above, never typed."""
-        return estimate_minutes(self.total_sets)
+        return estimate_minutes(self.total_sets, self.minutes_per_set)
 
     def to_dict(self) -> dict:
         return {
@@ -94,13 +120,16 @@ class Routine:
             "focus": self.focus,
             "blurb": self.blurb,
             "level": self.level,
+            "experimental": self.experimental,
+            "inspired_by": self.inspired_by,
+            "source": self.source,
             "total_sets": self.total_sets,
             "minutes": self.minutes,
             "exercises": [item.to_dict() for item in self.exercises],
         }
 
 
-def estimate_minutes(total_sets: int) -> int:
+def estimate_minutes(total_sets: int, minutes_per_set: float | None = None) -> int:
     """Estimate how long ``total_sets`` of working sets takes, in minutes.
 
     Sets plus their rest, and then the fixed per-session overhead that
@@ -108,9 +137,14 @@ def estimate_minutes(total_sets: int) -> int:
     walking to the rack, waiting for it. Rounded to the nearest five, because a
     minute of precision on an estimate this rough would be a lie about how well
     it is known.
+
+    ``minutes_per_set`` overrides the usual pace for a session that does not
+    work at it — see :attr:`Routine.minutes_per_set`.
     """
-    raw = minutes_for_sets(total_sets) + SESSION_OVERHEAD_MINUTES
-    return max(5, int(round(raw / 5.0) * 5))
+    per_set = minutes_for_sets(total_sets)
+    if minutes_per_set is not None:
+        per_set = max(0, total_sets) * minutes_per_set
+    return max(5, int(round((per_set + SESSION_OVERHEAD_MINUTES) / 5.0) * 5))
 
 
 #: The routines offered on ``/routines``, in the order they are listed.
@@ -224,28 +258,180 @@ ROUTINES: tuple[Routine, ...] = (
     ),
 )
 
+#: Sessions reconstructed from published coverage of well-known athletes.
+#:
+#: **Every one of these is tagged [experimental], and the tag is the point.**
+#: The five routines above are sessions we wrote and stand behind. These are a
+#: best reading of what has been *reported* about somebody else's training:
+#: second-hand, often years old, and separated from the coaching, the training
+#: age, the sport-specific work and the rest of the week that made it make sense
+#: for them. A sprinter's lifting session is a small part of being a sprinter.
+#:
+#: So they are offered as something to look at rather than something to follow,
+#: they name their source, and they say plainly that they are approximations
+#: nobody involved has endorsed. Movements are mapped onto the nearest thing in
+#: the catalog, which is itself a judgement — "rotational squats" is not a
+#: catalog entry, and "Squats - With Bands" is the closest honest stand-in.
+ATHLETE_ROUTINES: tuple[Routine, ...] = (
+    Routine(
+        key="rock_legs",
+        name="Leg day",
+        focus="Glutes, quads, hamstrings, calves",
+        blurb=(
+            "Reported as hips and glutes first, squats late rather than first, and "
+            "no deadlift at all — the opposite order to most leg days. Around four "
+            "sets of everything, with a minute or so between them."
+        ),
+        level="intermediate",
+        experimental=True,
+        inspired_by="Dwayne “The Rock” Johnson",
+        source="Coach / Steel Supplements coverage of Dave Rienzi's programming",
+        exercises=(
+            RoutineExercise("Barbell_Hip_Thrust", 4, "8-12", "Hips first, while you are fresh."),
+            RoutineExercise("Barbell_Glute_Bridge", 4, "8-12", "More hip extension, shorter range."),
+            RoutineExercise("Leg_Extensions", 4, "12-15", "Quads in isolation."),
+            RoutineExercise("Lying_Leg_Curls", 4, "12", "Knee flexion, which hinging misses."),
+            RoutineExercise("Barbell_Squat", 4, "10-12", "Late and lighter than you would expect."),
+            RoutineExercise("Standing_Calf_Raises", 4, "15-20", "High reps, to finish."),
+        ),
+    ),
+    Routine(
+        key="brady_bands",
+        name="Band circuit",
+        focus="Whole body, bands only",
+        blurb=(
+            "The TB12 idea in one session: bands rather than iron, high reps, and "
+            "speed over load. Reported at seventeen to twenty-five reps a set, moving "
+            "between movements rather than resting long."
+        ),
+        level="beginner",
+        experimental=True,
+        inspired_by="Tom Brady",
+        source="TB12 Sports' own published nine-exercise routine",
+        # A continuous band circuit does not cost what a heavy triple costs.
+        minutes_per_set=1.6,
+        exercises=(
+            RoutineExercise("Squats_-_With_Bands", 3, "20", "Fast out of the bottom."),
+            RoutineExercise("Bench_Press_-_With_Bands", 3, "20", "Resisted pressing, not loaded."),
+            RoutineExercise("Band_Pull_Apart", 3, "25", "The pull against all that pressing."),
+            RoutineExercise("Shoulder_Press_-_With_Bands", 3, "20", "Overhead, under tension."),
+            RoutineExercise("Speed_Band_Overhead_Triceps", 3, "20", "Triceps, at speed."),
+            RoutineExercise("Bodyweight_Walking_Lunge", 3, "20", "Controlled on the way down."),
+        ),
+    ),
+    Routine(
+        key="phelps_dryland",
+        name="Dryland",
+        focus="Pulling, hinging, core",
+        blurb=(
+            "What a swimmer does out of the water: heavy compounds for the engine, "
+            "pull-ups for the lats, and core work that imitates the kick. Reported at "
+            "one to two hours, four or five times a week — on top of swimming twice."
+        ),
+        level="intermediate",
+        experimental=True,
+        inspired_by="Michael Phelps",
+        source="Steel Supplements / Your Swim Log accounts of Bob Bowman's dryland",
+        exercises=(
+            RoutineExercise("Pullups", 4, "10", "The swimmer's lift."),
+            RoutineExercise("Barbell_Deadlift", 3, "5", "Heavy, for the posterior chain."),
+            RoutineExercise("Barbell_Squat", 3, "8", "Legs, for the start and the turns."),
+            RoutineExercise("Barbell_Bench_Press_-_Medium_Grip", 3, "8", "Pressing, to balance the pulling."),
+            RoutineExercise("Hanging_Leg_Raise", 4, "15", "Reported as imitating the butterfly kick."),
+            RoutineExercise("Plank", 3, "60 sec", "Braced, not held slack."),
+        ),
+    ),
+    Routine(
+        key="bolt_power",
+        name="Power session",
+        focus="Explosive strength, legs and core",
+        blurb=(
+            "Speed work happens on the track; this is the ninety minutes in the weight "
+            "room that feeds it. Low reps and fast bars — the aim is force in a hurry, "
+            "not fatigue. Reported at three sessions a week."
+        ),
+        level="intermediate",
+        experimental=True,
+        inspired_by="Usain Bolt",
+        source="Bret Contreras / RunnerClick summaries of his published training",
+        exercises=(
+            RoutineExercise("Power_Clean", 5, "3", "Fast. Stop the moment speed drops."),
+            RoutineExercise("Barbell_Squat", 4, "5", "Heavy, but never grinding."),
+            RoutineExercise("Front_Box_Jump", 4, "5", "Land quiet. Step down, never jump down."),
+            RoutineExercise("Barbell_Lunge", 3, "10", "One leg at a time, as sprinting is."),
+            RoutineExercise("Good_Morning", 3, "8", "Hamstrings, which is where sprinters break."),
+            RoutineExercise("Hanging_Leg_Raise", 3, "15", "He credits the core repeatedly."),
+        ),
+    ),
+    Routine(
+        key="serena_court",
+        name="Court conditioning",
+        focus="Whole body, at speed",
+        blurb=(
+            "Reported as three to five sets of eight to twelve, kept deliberately "
+            "varied, and closer to a circuit than to a lifting session — strength in "
+            "service of a match rather than for its own sake."
+        ),
+        level="intermediate",
+        experimental=True,
+        inspired_by="Serena Williams",
+        source="Dr Workout / Jacked Gorilla summaries of published interviews",
+        minutes_per_set=2.4,
+        exercises=(
+            RoutineExercise("Barbell_Squat", 4, "12", "Legs and glutes, for the first step."),
+            RoutineExercise("Dumbbell_Lunges", 3, "12", "Single leg, changing direction."),
+            RoutineExercise("Alternating_Renegade_Row", 3, "10", "The plank row she is often filmed doing."),
+            RoutineExercise("Pushups", 3, "15", "Reported as done in thirty-second bursts."),
+            RoutineExercise("One-Arm_Medicine_Ball_Slam", 3, "10", "Rotational power, as a serve is."),
+            RoutineExercise("Plank", 3, "45 sec", "The trunk that everything else works through."),
+        ),
+    ),
+)
+
+#: Everything offered on ``/routines``: ours first, then the reconstructions.
+ALL_ROUTINES: tuple[Routine, ...] = ROUTINES + ATHLETE_ROUTINES
+
 #: Keyed for lookup; the tuple above stays the display order.
-ROUTINES_BY_KEY: dict[str, Routine] = {routine.key: routine for routine in ROUTINES}
+ROUTINES_BY_KEY: dict[str, Routine] = {routine.key: routine for routine in ALL_ROUTINES}
 
 
 class RoutineError(RuntimeError):
     """Raised at import when a routine does not match the catalog."""
 
 
-def _check_routines() -> None:
+def _check_routines(routines: tuple[Routine, ...] | None = None) -> None:
     """Every routine must name real movements, and say something about itself.
 
     An id that stopped resolving would render a card with a blank name and a
     dead log button — the same silent failure ``STAPLE_EXERCISE_IDS`` is checked
     against, and worth the same import-time error.
+
+    The attribution check is the one that matters most. An **[experimental]**
+    routine puts a real person's name on a session they did not write, so it may
+    not ship without saying whose training it approximates and where that came
+    from. A tag with nothing behind it is worse than no tag.
     """
-    keys = [routine.key for routine in ROUTINES]
+    routines = ALL_ROUTINES if routines is None else routines
+    keys = [routine.key for routine in routines]
     if len(set(keys)) != len(keys):
         raise RoutineError(f"Duplicate routine keys: {keys}.")
 
-    for routine in ROUTINES:
+    for routine in routines:
         if not routine.exercises:
             raise RoutineError(f"Routine {routine.key!r} has no exercises.")
+
+        if routine.experimental and not (routine.inspired_by and routine.source):
+            raise RoutineError(
+                f"Routine {routine.key!r} is experimental but names no athlete or no "
+                "source. A reconstruction of someone's training must say whose it is "
+                "and where the reporting came from."
+            )
+        if routine.inspired_by and not routine.experimental:
+            raise RoutineError(
+                f"Routine {routine.key!r} is attributed to {routine.inspired_by!r} but "
+                "is not tagged experimental. Anything reconstructed from coverage of a "
+                "real person's training must carry the tag."
+            )
 
         seen: set[str] = set()
         for item in routine.exercises:
@@ -271,8 +457,8 @@ _check_routines()
 
 
 def all_routines() -> list[Routine]:
-    """Every routine, in display order."""
-    return list(ROUTINES)
+    """Every routine, in display order — ours first, then the reconstructions."""
+    return list(ALL_ROUTINES)
 
 
 def get_routine(key: str) -> Routine | None:
