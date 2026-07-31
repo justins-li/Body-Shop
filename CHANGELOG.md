@@ -6,6 +6,22 @@ All notable changes to Body Shop are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+
+- **Credits and a contact block on `/how-to-use`.** Justin Li and Owen Zhang, both
+  lead developers, with portraits; plus a "Have questions?" section. The address is a
+  placeholder on the reserved `.example` TLD, so nothing sent to it can reach a stranger
+  who happens to own the domain — swap it before launch.
+- **A dark mode, and a toggle for it** (bottom-left, beside the rest readout). The cream
+  theme stays the default; the dark one is Phase 4.5's instrument palette restored as an
+  option rather than reinvented, so it arrives with its contrast reasoning intact.
+  **The volume ramp inverts with the ground** — pale → deep on cream, dim → lit on
+  near-black — because a volume scale has to climb in whichever direction reads as "more"
+  where it is drawn. The two ramps are not derived from each other; each satisfies the
+  same rule, that one set never looks like none, with its own numbers (3.02:1 and 3.12:1
+  against untrained). The choice is remembered per browser, the system preference decides
+  until you make one, and the theme is applied before first paint so neither flashes.
+
 ### Changed
 
 - **The whole front end is rebuilt against a reference design** (glukhovsky.com), and it

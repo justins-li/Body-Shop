@@ -1,5 +1,6 @@
 """Smoke tests for the four HTML pages."""
 
+import pathlib
 import re
 
 import pytest
@@ -294,3 +295,45 @@ def test_the_chapter_mark_sits_directly_above_its_name(client):
     body = client.get("/log").data.decode()
     first = body.split('class="shelf-mid"')[1]
     assert first.index("shelf-index") < first.index("shelf-name")
+
+
+# ---- Theme -----------------------------------------------------------------
+
+
+def test_every_page_carries_the_theme_toggle(client):
+    for path in ("/", "/how-to-use", "/calendar", "/log", "/summary", "/progress"):
+        body = client.get(path).data.decode()
+        assert 'id="theme-toggle"' in body, path
+        assert "js/theme.js" in body, path
+
+
+def test_the_theme_is_applied_before_the_stylesheet_loads(client):
+    """A deferred script would paint one theme and then flip to the other."""
+    body = client.get("/").data.decode()
+    assert body.index("bodyshop:theme") < body.index("css/styles.css")
+    # Blocking, not a module: `type="module"` is deferred by definition.
+    head = body.split("</head>")[0]
+    assert "bodyshop:theme" in head
+    prepaint = head[head.index("bodyshop:theme") - 400:head.index("bodyshop:theme")]
+    assert "type=\"module\"" not in prepaint
+
+
+def test_both_themes_and_both_ramps_are_compiled(client):
+    """The ramp inverts with the ground, so each theme needs its own values."""
+    css = (pathlib.Path(__file__).parent.parent
+           / "app" / "static" / "css" / "styles.css").read_text(encoding="utf-8")
+    assert "bodyshop-dark" in css
+    # Cream ramp (pale -> deep) and dark ramp (dim -> lit) both present.
+    assert "#4f9068" in css and "#14432a" in css
+    assert "#428262" in css and "#5fd98a" in css
+
+
+def test_how_to_use_credits_both_leads_and_offers_contact(client):
+    body = client.get("/how-to-use").data.decode()
+    for name in ("Justin Li", "Owen Zhang"):
+        assert name in body
+    assert body.count("Lead developer") == 2
+    assert "Have questions?" in body
+    assert "mailto:" in body
+    # Portraits degrade to initials rather than a broken image.
+    assert body.count("this.remove()") == 2

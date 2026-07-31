@@ -240,6 +240,58 @@
   --noise: 0;
 }
 
+/* 2b) The dark theme ------------------------------------------------------
+   Phase 4.5's instrument palette, restored as an option rather than the only
+   choice. It is not a darkened copy of the cream theme: it was derived on its
+   own ground, which is why the numbers here are the originals rather than
+   anything computed from the light values.
+
+   Near-black, faintly blue and never `#000`, so surfaces can still layer;
+   warm bone for text and every data mark; cold slate for structure; the same
+   oxidised brick accent, lifted to `#d97a63` for text because bare brick is
+   3.24:1 here and fails AA below large sizes.
+
+   **The ramp inverts with the ground** — see the block below. That is the
+   whole reason a theme toggle is more than a palette swap. */
+@plugin "../../../tools/daisyui/theme" {
+  name: "bodyshop-dark";
+  default: false;
+  prefersdark: false;
+  color-scheme: dark;
+
+  --color-base-100: #141922; /* the one raised step: panels, inputs, the field */
+  --color-base-200: #0d1014; /* ground */
+  --color-base-300: #242b36; /* hairlines, untrained fills */
+  --color-base-content: #ede6db; /* bone — text and every data mark */
+
+  --color-primary: #a34a38;
+  --color-primary-content: #ede6db;
+  --color-secondary: #7e8ca0; /* cold slate — secondary text and structure */
+  --color-secondary-content: #0d1014;
+  --color-accent: #d97a63; /* lifted brick, for accent text at body size */
+  --color-accent-content: #0d1014;
+  --color-neutral: #242b36;
+  --color-neutral-content: #ede6db;
+
+  --color-info: #7e8ca0;
+  --color-info-content: #0d1014;
+  --color-success: #5fd98a;
+  --color-success-content: #0d1014;
+  --color-warning: #f2a03f;
+  --color-warning-content: #0d1014;
+  --color-error: #f2745f;
+  --color-error-content: #0d1014;
+
+  --radius-selector: 0.25rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
 /* 3) Shared tokens ------------------------------------------------------- */
 @theme {
   /* Three faces, four named voices (section 5). Big Shoulders is condensed
@@ -284,6 +336,29 @@
 
 /* 4) Base ---------------------------------------------------------------- */
 @layer base {
+  /* The ramp inverts with the ground, and this is the load-bearing half of the
+     theme toggle. A volume scale has to climb in whichever direction reads as
+     "more" where it is drawn:
+
+       cream ground: pale -> deep   (more volume = more ink)   — the @theme block
+       dark ground:  dim  -> lit    (more volume = more light) — here
+
+     These are Phase 4.5's derived values, not the light ramp inverted. Each set
+     was checked against its own ground: on near-black the binding constraint is
+     that `train-min` sits far enough above `--color-rest` that one set never
+     looks like none (3.12:1 at #428262), which is the same rule the cream ramp
+     obeys with completely different numbers. */
+  [data-theme="bodyshop-dark"] {
+    --color-rest: #242b36;
+    --color-train-min: #428262;
+    --color-train-max: #5fd98a;
+    --color-over-min: #f2743f;
+    --color-over-max: #f5391f;
+    --color-train-accent: #5fd98a;
+    --color-over-accent: #f2905f;
+  }
+
+
   html {
     -webkit-font-smoothing: antialiased;
     scroll-behavior: smooth;
@@ -834,6 +909,42 @@
     color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
   }
 
+  /* Theme toggle. Docked bottom-left with the rest readout — the reference
+     puts its language selector in the same corner, and with no header these
+     are the only two persistent controls in the app. */
+  .theme-toggle {
+    position: fixed;
+    left: 1rem;
+    bottom: 4rem;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .theme-toggle:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+  .theme-toggle svg {
+    width: 0.95rem;
+    height: 0.95rem;
+  }
+  /* One icon per state: the sun shows on dark (what you would switch *to*),
+     the moon on light. Swapped in CSS so the button needs no JS to stay
+     truthful after a toggle. */
+  .theme-icon-dark { display: none; }
+  [data-theme="bodyshop-dark"] .theme-icon-dark { display: block; }
+  [data-theme="bodyshop-dark"] .theme-icon-light { display: none; }
+
+  @media (width < 64rem) {
+    .theme-toggle { bottom: 7.75rem; }
+  }
+
   /* The rest timer used to sit in the header. With the header gone it docks in
      the bottom-left corner, clear of the shelves and the tab bar. */
   .rest-dock {
@@ -916,6 +1027,79 @@
     margin: 0;
     color: var(--color-secondary);
     line-height: 1.6;
+  }
+
+  /* -- Credits and contact (/how-to-use) ---------------------------------
+     Portraits are square and hairline-framed, like the specimen plate: the
+     app has no rounded avatars anywhere and this is not the place to start. */
+  .team-list {
+    display: grid;
+    gap: 1.5rem;
+  }
+  @media (width >= 40rem) {
+    .team-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem; }
+  }
+  .team-member {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+  }
+  /* The initials sit *under* the photograph, so a missing file degrades to a
+     monogram rather than a broken-image glyph. */
+  .team-portrait {
+    position: relative;
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 5.5rem;
+    height: 5.5rem;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+    background-color: var(--color-base-100);
+  }
+  .team-initials {
+    font-size: 1.5rem;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, var(--color-base-content) 40%, transparent);
+  }
+  .team-portrait img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    /* Portraits are shot at different crops; cover keeps both square without
+       squashing either. `50% 20%` favours the head over the torso. */
+    object-fit: cover;
+    object-position: 50% 20%;
+  }
+  .team-name {
+    display: block;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 400;
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+  .team-title {
+    display: block;
+    margin-top: 0.3rem;
+    color: var(--color-secondary);
+  }
+
+  .contact-address {
+    display: inline-block;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(1.5rem, 3.2vw, 2.4rem);
+    line-height: 1.1;
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 30%, transparent);
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .contact-address:hover,
+  .contact-address:focus-visible {
+    color: var(--color-accent);
+    border-bottom-color: currentColor;
   }
 
   /* -- Home masthead ------------------------------------------------------
