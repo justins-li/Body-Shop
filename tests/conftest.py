@@ -51,8 +51,12 @@ def app(tmp_path, request):
             engine = get_engine(application)
             with engine.begin() as connection:
                 connection.execute(
+                    # `user` is a reserved word in Postgres, and this is the one
+                    # place in the project that writes raw SQL — so it is the one
+                    # place the quoting has to be done by hand.
                     sa.text(
-                        "TRUNCATE TABLE workout_set, workout_entry RESTART IDENTITY CASCADE"
+                        'TRUNCATE TABLE workout_set, workout_entry, "user" '
+                        "RESTART IDENTITY CASCADE"
                     )
                 )
             yield application
