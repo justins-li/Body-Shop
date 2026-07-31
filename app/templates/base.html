@@ -3,8 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="color-scheme" content="light">
-  <meta name="theme-color" content="#faf4eb">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#faf4eb" id="theme-color">
+
+  {#
+    Applied before the first paint, and deliberately not a module: a deferred
+    script would let the cream theme render and then flip, which is worse than
+    either theme. Stored choice wins; with none, the system preference decides.
+  #}
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem("bodyshop:theme");
+        var dark = stored
+          ? stored === "dark"
+          : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        if (dark) {
+          document.documentElement.dataset.theme = "bodyshop-dark";
+          document.documentElement.style.colorScheme = "dark";
+        }
+      } catch (e) {
+        // Storage blocked; the cream default in the markup stands.
+      }
+    })();
+  </script>
   <title>{% block title %}Body Shop{% endblock %}</title>
   <meta name="description" content="Body Shop — log your workouts and see which muscle groups you hit each week.">
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
@@ -147,6 +169,22 @@
     </button>
   </div>
 
+  {# Light/dark. The label names the *current* theme; the icon shows it too, so
+     the control reads correctly whether you scan the word or the glyph. #}
+  <button type="button" class="theme-toggle" id="theme-toggle"
+          aria-pressed="false" aria-label="Switch between light and dark">
+    <svg class="theme-icon-light" viewBox="0 0 16 16" aria-hidden="true"
+         fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+      <circle cx="8" cy="8" r="3.1"></circle>
+      <path d="M8 1.4v1.7M8 12.9v1.7M1.4 8h1.7M12.9 8h1.7M3.3 3.3l1.2 1.2M11.5 11.5l1.2 1.2M12.7 3.3l-1.2 1.2M4.5 11.5l-1.2 1.2"></path>
+    </svg>
+    <svg class="theme-icon-dark" viewBox="0 0 16 16" aria-hidden="true"
+         fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">
+      <path d="M13.2 9.6A5.6 5.6 0 0 1 6.4 2.8a5.6 5.6 0 1 0 6.8 6.8z"></path>
+    </svg>
+    <span class="type-label" data-theme-label>Light</span>
+  </button>
+
   {# Shown while a shelf navigation is in flight. Pages are server-rendered, so
      this covers the request, not a client-side route change. #}
   <div class="page-veil" id="page-veil" aria-hidden="true">
@@ -164,10 +202,12 @@
 
   <div id="toast" class="toast-bar" role="status" aria-live="polite"></div>
 
-  {# The timer is on every page, so it boots from here rather than per-page. #}
+  {# Both of these are on every page, so they boot from here rather than per-page. #}
   <script type="module">
     import { initRestTimer } from "{{ url_for('static', filename='js/timer.js') }}";
+    import { initThemeToggle } from "{{ url_for('static', filename='js/theme.js') }}";
     initRestTimer(document.getElementById("rest-timer"));
+    initThemeToggle(document.getElementById("theme-toggle"));
   </script>
 
   {#
