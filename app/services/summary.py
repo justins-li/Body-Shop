@@ -31,9 +31,9 @@ from ..exercises import (
     get_exercise,
     regions_for,
     regions_of,
-    target_for,
 )
 from ..models import WorkoutEntry, list_entries
+from ..training import DEFAULT_PROFILE, TrainerProfile
 from .weeks import week_bounds, week_days
 
 
@@ -79,7 +79,9 @@ def grade(sets: float, target: int) -> tuple[str, float]:
     return "over", round(min(1.0, over / overshoot_span(target)), 3)
 
 
-def summarise_entries(entries: list[WorkoutEntry]) -> dict[str, dict]:
+def summarise_entries(
+    entries: list[WorkoutEntry], profile: TrainerProfile | None = None
+) -> dict[str, dict]:
     """Aggregate ``entries`` into ``{muscle: {worked, sets, state, ...}}``.
 
     ``sets`` weights each set by how directly the movement trains the group: 3
@@ -92,14 +94,21 @@ def summarise_entries(entries: list[WorkoutEntry]) -> dict[str, dict]:
 
     Each group also carries its weekly ``target``, how many sets it is ``over``
     by, and the ``state``/``intensity`` pair the body map shades with.
+
+    ``profile`` is the Phase 6 trainer setup, which decides what each group's
+    target actually is; omitting it grades against the baseline convention,
+    which is exactly what happened before that phase. Nothing else here changes
+    with it — the aggregation is the same sets either way, and only the number
+    they are measured against moves.
     """
+    profile = profile or DEFAULT_PROFILE
     summary: dict[str, dict] = {
         muscle: {
             "muscle": muscle,
             "label": MUSCLE_LABELS[muscle],
             "worked": False,
             "sets": 0.0,
-            "target": target_for(muscle),
+            "target": profile.target_for(muscle),
             "over": 0.0,
             "state": "rest",
             "intensity": 0.0,
@@ -186,11 +195,22 @@ def _finish_regions(bucket: dict) -> None:
         )
 
 
-def weekly_summary(user_id: str, day: date, week_starts_on: int = 1) -> dict:
-    """Build the full payload backing the weekly summary page for ``day``."""
+def weekly_summary(
+    user_id: str,
+    day: date,
+    week_starts_on: int = 1,
+    profile: TrainerProfile | None = None,
+) -> dict:
+    """Build the full payload backing the weekly summary page for ``day``.
+
+    The resolved ``profile`` is echoed back beside the grading it produced, so a
+    client renders the targets it was actually graded against rather than
+    re-deriving them from a preference it holds locally.
+    """
+    profile = profile or DEFAULT_PROFILE
     start, end = week_bounds(day, week_starts_on)
     entries = list_entries(user_id, start, end)
-    muscles = summarise_entries(entries)
+    muscles = summarise_entries(entries, profile)
 
     per_day = {d.isoformat(): 0 for d in week_days(start)}
     for entry in entries:
@@ -201,6 +221,7 @@ def weekly_summary(user_id: str, day: date, week_starts_on: int = 1) -> dict:
     return {
         "week_start": start.isoformat(),
         "week_end": end.isoformat(),
+        "profile": profile.to_dict(),
         "total_sets": sum(entry.sets for entry in entries),
         "total_entries": len(entries),
         "muscles": muscles,

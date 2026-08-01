@@ -3,29 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#faf4eb" id="theme-color">
 
   {#
-    Stamp the signed-in state on <html> before anything paints. Deliberately
-    inline, blocking and tiny: a module script is deferred, and a deferred
-    toggle is a visible flash of the wrong half of the landing page.
-
-    The key is duplicated from auth.js's STORAGE_KEY rather than imported —
-    importing would make this a module, which is exactly what it must not be.
-    Keep the two literals in step.
+    Applied before the first paint, and deliberately not a module: a deferred
+    script would let the cream theme render and then flip, which is worse than
+    either theme. Stored choice wins; with none, the system preference decides.
   #}
   <script>
     (function () {
-      var signedIn = false;
       try {
-        signedIn = Boolean(JSON.parse(localStorage.getItem("bodyshop.auth")));
+        var stored = localStorage.getItem("bodyshop:theme");
+        var dark = stored
+          ? stored === "dark"
+          : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        if (dark) {
+          document.documentElement.dataset.theme = "bodyshop-dark";
+          document.documentElement.style.colorScheme = "dark";
+        }
       } catch (e) {
-        signedIn = false;
+        // Storage blocked; the cream default in the markup stands.
       }
-      document.documentElement.setAttribute("data-auth", signedIn ? "in" : "out");
     })();
   </script>
-  <meta name="theme-color" content="#faf4eb">
   <title>{% block title %}Body Shop{% endblock %}</title>
   <meta name="description" content="Body Shop — log your workouts and see which muscle groups you hit each week.">
   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
@@ -41,6 +42,28 @@
   <link rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&family=Noto+Serif:wght@300;400&display=swap">
 
+  {#
+    Stamp the signed-in state on <html> before anything paints. Deliberately
+    inline, blocking and tiny, exactly like the theme script above: a module
+    script is deferred, and a deferred toggle is a visible flash of the wrong
+    half of the landing page.
+
+    The key is duplicated from auth.js's STORAGE_KEY rather than imported —
+    importing would make this a module, which is what it must not be. Keep the
+    two literals in step.
+  #}
+  <script>
+    (function () {
+      var signedIn = false;
+      try {
+        signedIn = Boolean(JSON.parse(localStorage.getItem("bodyshop.auth")));
+      } catch (e) {
+        signedIn = false;
+      }
+      document.documentElement.setAttribute("data-auth", signedIn ? "in" : "out");
+    })();
+  </script>
+
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 
   {#
@@ -52,6 +75,12 @@
     window.BODYSHOP_SUPABASE = {{ supabase | tojson }};
   </script>
 </head>
+{#
+  `bare` is set by the five auth pages. They are not chapters of the book, so
+  they get no shelves, no tab bar, no rest dock and no first-run dialog — and
+  `sections` above never learns about them, which is what leaves the
+  chapter-ordering tests untouched.
+#}
 <body data-page="{{ page }}" class="min-h-screen flex flex-col{{ '' if bare else ' has-tab-bar' }}">
   <a class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[70]
             focus:border focus:border-base-content/25 focus:bg-base-100
@@ -74,10 +103,20 @@
     from is not a chapter, and the whole point of the mark is that it is stable
     enough to navigate by.
   #}
+  {#
+    Chapter 02 was Calendar until Phase 8.3. A whole chapter for a month grid was
+    more room than it earned — it answered "what did I do that day", which the
+    summary's own entry list already answers for the week you are reading — so
+    the grid moved to `/summary` as a strip and the shelf went to Routines,
+    which had nowhere to live and is the answer to "what do I do today".
+
+    Keeping the *number* meant Log, Weekly summary and Graph did not renumber
+    around the change. A chapter mark you can navigate by is one that stays put.
+  #}
   {% set sections = [
     ('views.home_page',     'home',     'Home',           '00', 'Purpose and the map'),
     ('views.how_page',      'how',      'How to use',     '01', 'The idea, and the colours'),
-    ('views.calendar_page', 'calendar', 'Calendar',       '02', 'Every day you trained'),
+    ('views.routines_page', 'routines', 'Routines',       '02', 'Sessions worth following'),
     ('views.log_page',      'log',      'Log workout',    '03', 'Sets, weight, reps, RPE'),
     ('views.summary_page',  'summary',  'Weekly summary', '04', 'Coverage, twelve groups'),
     ('views.progress_page', 'progress', 'Graph',          '05', 'The week, drawn'),
@@ -106,7 +145,7 @@
   {% set marks = {
     'home':     'M2 7.6 8 2.8l6 4.8V13a.9.9 0 0 1-.9.9h-3.2v-4H7.1v4H3.9A.9.9 0 0 1 3 13z',
     'how':      'M8 4.6S6.6 3.1 3.1 3.1v9c3.5 0 4.9 1.5 4.9 1.5s1.4-1.5 4.9-1.5v-9C9.4 3.1 8 4.6 8 4.6zm0 0v9',
-    'calendar': 'M2.6 4.4h10.8v9.2H2.6zm0 2.7h10.8M5.6 2.6v3M10.4 2.6v3',
+    'routines': 'M2.6 4.2h4.2M2.6 8h4.2M2.6 11.8h4.2M9.6 4.2h3.8M9.6 8h3.8M9.6 11.8h3.8',
     'log':      'M8 3.2v9.6M3.2 8h9.6',
     'summary':  'M3.2 13.2V7.4M6.4 13.2V3.4M9.6 13.2V9.2M12.8 13.2V5.4',
     'progress': 'M4 11.6 7 6.8l3 2.6 2.4-4.6M4 11.6h.01M7 6.8h.01M10 9.4h.01M12.4 4.8h.01',
@@ -138,11 +177,6 @@
 
   <div class="shell">
     {# ---- Left: the chapters before this one, in order -------------------- #}
-    {#
-      Auth pages are not chapters of the book — they have no number and never
-      enter the stack, which is also what keeps `sections` above untouched and
-      the chapter-ordering tests passing unchanged.
-    #}
     {% if not bare %}
       <nav class="shelf-stack shelf-stack-left" aria-label="Earlier sections">
         {% for endpoint, key, label, chapter, blurb in left_shelves %}
@@ -165,13 +199,13 @@
     {% endif %}
   </div>
 
+  {% if not bare %}
   {#
     The rest countdown. It used to live in the header; with the header gone it
     docks bottom-left, but the contract is unchanged — it runs on every page,
     `timer.js` persists a deadline rather than a count, and choosing a rest
     length stays on /log beside the sets.
   #}
-  {% if not bare %}
   <div class="rest-timer rest-dock" id="rest-timer">
     <span class="type-label text-secondary" aria-hidden="true">Rest</span>
     <span class="rest-timer-readout" data-timer-readout
@@ -188,14 +222,46 @@
   </div>
   {% endif %}
 
-  {# Shown while a shelf navigation is in flight. Pages are server-rendered, so
-     this covers the request, not a client-side route change. #}
+  {# Light/dark. The label names the *current* theme; the icon shows it too, so
+     the control reads correctly whether you scan the word or the glyph. #}
+  <button type="button" class="theme-toggle" id="theme-toggle"
+          aria-pressed="false" aria-label="Switch between light and dark">
+    <svg class="theme-icon-light" viewBox="0 0 16 16" aria-hidden="true"
+         fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+      <circle cx="8" cy="8" r="3.1"></circle>
+      <path d="M8 1.4v1.7M8 12.9v1.7M1.4 8h1.7M12.9 8h1.7M3.3 3.3l1.2 1.2M11.5 11.5l1.2 1.2M12.7 3.3l-1.2 1.2M4.5 11.5l-1.2 1.2"></path>
+    </svg>
+    <svg class="theme-icon-dark" viewBox="0 0 16 16" aria-hidden="true"
+         fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round">
+      <path d="M13.2 9.6A5.6 5.6 0 0 1 6.4 2.8a5.6 5.6 0 1 0 6.8 6.8z"></path>
+    </svg>
+    <span class="type-label" data-theme-label>Light</span>
+  </button>
+
+  {#
+    The page being turned. Pages are server-rendered, so this covers a real
+    request — but they render in milliseconds, so covering only the request made
+    it a flicker rather than a sense of having moved.
+
+    `pageturn.js` now holds the navigation until a leaf has fallen across the
+    screen, hinged on the side the chapter you clicked was standing on. The leaf
+    itself is `::before`; this element is the stage it rotates in.
+  #}
   <div class="page-veil" id="page-veil" aria-hidden="true">
+    {#
+      A little book, flipping. Sized to the wordmark under it rather than to the
+      screen: a full-screen leaf turning over is a transition happening *to* you,
+      and at this size it is a small object you are watching instead. Two static
+      pages, a spine, and one leaf going over — all CSS boxes, no image.
+    #}
+    <span class="flipbook" aria-hidden="true">
+      <span class="flipbook-leaf"></span>
+    </span>
     <span class="page-veil-mark type-label">Body Shop</span>
   </div>
 
-  {# Thumb-zone navigation. Hidden from `sm:` up, where the shelves take over. #}
   {% if not bare %}
+  {# Thumb-zone navigation. Hidden from `sm:` up, where the shelves take over. #}
   <nav class="tab-bar sm:hidden" aria-label="Primary">
     {% for endpoint, key, label, chapter, blurb in sections if key not in ('home', 'how') %}
       <a href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
@@ -205,35 +271,97 @@
   </nav>
   {% endif %}
 
-  <div id="toast" class="toast-bar" role="status" aria-live="polite"></div>
-
-  {# The timer is on every page, so it boots from here rather than per-page. #}
   {% if not bare %}
-  <script type="module">
-    import { initRestTimer } from "{{ url_for('static', filename='js/timer.js') }}";
-    initRestTimer(document.getElementById("rest-timer"));
-  </script>
+  {#
+    First run. The trainer setup decides every weekly target in the app, and its
+    default is a guess about a stranger — so it is worth one question before the
+    first summary is read. `onboarding.js` opens this once and never again;
+    skipping counts as an answer, so it cannot become a nag.
+
+    The shell ships on every page but the module refuses to open it on `/` and
+    `/how-to-use`: both are static, render identically for any visitor, and `/`
+    is pinned to exactly one screen.
+  #}
+  <dialog class="first-run" id="first-run" aria-labelledby="first-run-heading">
+    <form method="dialog" class="first-run-body">
+      <p class="type-label text-secondary m-0">Before you start</p>
+      <h2 id="first-run-heading" class="first-run-title">
+        How long have you been training?
+      </h2>
+      <p class="type-lede text-sm">
+        It sets how many sets a week each muscle group is aiming for. Nothing is
+        locked in — you can change it whenever you like on Weekly summary.
+      </p>
+
+      <div class="first-run-levels">
+        {% for level in experience_levels %}
+          <button type="button" class="first-run-level" data-level="{{ level.key }}"
+                  aria-pressed="false">
+            <span class="first-run-level-name type-label">{{ level.label }}</span>
+            <span class="first-run-level-blurb">{{ level.blurb }}</span>
+            {% if level.rpe %}
+              <span class="first-run-level-note type-label">Unlocks RPE</span>
+            {% endif %}
+          </button>
+        {% endfor %}
+      </div>
+
+      {# The other half of the setup. Asking now beats asking twice, and these
+         are the numbers that decide whether the targets above can fit at all. #}
+      <p class="first-run-plan">
+        <label for="first-run-sessions">I train</label>
+        <input type="number" id="first-run-sessions" class="field field-sm type-data"
+               inputmode="numeric"
+               min="{{ session_bounds.min_sessions }}"
+               max="{{ session_bounds.max_sessions }}"
+               value="{{ default_profile.sessions_per_week }}">
+        <label for="first-run-minutes">times a week, for</label>
+        <input type="number" id="first-run-minutes" class="field field-sm type-data"
+               inputmode="numeric" step="5"
+               min="{{ session_bounds.min_minutes }}"
+               max="{{ session_bounds.max_minutes }}"
+               value="{{ default_profile.minutes_per_session }}">
+        <label for="first-run-minutes">minutes.</label>
+      </p>
+
+      <div class="first-run-actions">
+        <button type="button" class="step-key" id="first-run-skip">Skip</button>
+        <button type="button" class="btn-brick" id="first-run-start">Start logging</button>
+      </div>
+    </form>
+  </dialog>
   {% endif %}
 
-  {#
-    Reveal the veil while a shelf request is in flight. Deliberately tiny and
-    inline: it is three lines, it must run before any page module, and a page
-    with JS disabled simply navigates without it.
-  #}
-  <script>
-    (function () {
-      var veil = document.getElementById("page-veil");
-      document.querySelectorAll("a[data-nav]").forEach(function (link) {
-        link.addEventListener("click", function () {
-          veil.classList.add("is-visible");
-        });
-      });
-      // Coming back via the bfcache must not leave the veil down.
-      window.addEventListener("pageshow", function () {
-        veil.classList.remove("is-visible");
-      });
-    })();
+  <div id="toast" class="toast-bar" role="status" aria-live="polite"></div>
+
+  {# All four of these are on every page, so they boot from here rather than
+     per-page. `initOnboarding` takes the page key and declines to open on the
+     two static chapters. #}
+  <script type="module">
+    import { initRestTimer } from "{{ url_for('static', filename='js/timer.js') }}";
+    import { initThemeToggle } from "{{ url_for('static', filename='js/theme.js') }}";
+    import { initOnboarding } from "{{ url_for('static', filename='js/onboarding.js') }}";
+    import { initPageTurn } from "{{ url_for('static', filename='js/pageturn.js') }}";
+    // The rest dock and the first-run dialog are not rendered on the bare auth
+    // pages, so their elements are null there. The theme toggle and the page
+    // turn are on every page.
+    initRestTimer(document.getElementById("rest-timer"));
+    initThemeToggle(document.getElementById("theme-toggle"));
+    initOnboarding(document.getElementById("first-run"), {{ page | tojson }});
+    initPageTurn(document.getElementById("page-veil"));
   </script>
+
+  {#
+    This used to be three lines of inline script that raised the veil on a shelf
+    click. It moved into `pageturn.js` (booted above) when the transition became
+    timed rather than measured — holding the navigation, hinging the leaf, and
+    reading the direction off which stack was clicked is more than belongs in a
+    template, and it must not be bound twice.
+
+    The trade that came with the move: until that module loads, a shelf click is
+    an ordinary link and navigates with no turn. That is the whole fallback, and
+    it is the same one a page with JavaScript disabled gets.
+  #}
 
   {% block scripts %}{% endblock %}
 </body>

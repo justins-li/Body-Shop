@@ -10,8 +10,10 @@ import pytest
 
 from app.exercises import (
     DEFAULT_MUSCLE_SCHEME,
+    EQUIPMENT_WEIGHT_MODES,
     EXERCISE_REGIONS,
     EXERCISES,
+    WEIGHT_MODES,
     MUSCLE_SCHEMES,
     MUSCLE_GROUPS,
     MUSCLE_LABELS,
@@ -272,3 +274,72 @@ def test_biceps_and_abs_are_not_subdivided():
     """Their subdivisions are EMG folklore; see docs/VOLUME_SCIENCE.md."""
     assert regions_of("biceps") == ()
     assert regions_of("abs") == ()
+
+
+# ---- Weight modes (Phase 6.5) ----------------------------------------------
+
+
+def test_every_equipment_value_names_a_weight_mode():
+    """The check that makes the fix stick.
+
+    Falling through to the default is silent, and the failure it produces is the
+    one Phase 6.5 exists to fix — a cable movement logged as though it were a
+    loaded barbell. Adding equipment upstream must mean deciding how it is
+    weighed, so this is an import-time error rather than a shrug.
+    """
+    seen = {e.equipment for e in all_exercises()}
+    assert seen <= set(EQUIPMENT_WEIGHT_MODES)
+    assert set(EQUIPMENT_WEIGHT_MODES.values()) <= set(WEIGHT_MODES)
+
+
+@pytest.mark.parametrize(
+    ("exercise_id", "mode"),
+    [
+        ("Barbell_Squat", "barbell"),
+        ("Dumbbell_Bench_Press", "dumbbell"),
+        ("Triceps_Pushdown", "stack"),      # cable
+        ("Leg_Press", "stack"),             # machine
+        ("Pullups", "bodyweight"),
+        ("Pushups", "bodyweight"),
+        ("One-Arm_Kettlebell_Swings", "kettlebell"),
+        ("Farmers_Walk", "implement"),
+    ],
+)
+def test_weight_mode_follows_the_equipment(exercise_id, mode):
+    assert get_exercise(exercise_id).weight_mode == mode
+
+
+def test_only_bodyweight_movements_take_added_weight():
+    """The "Added weight" toggle belongs where a weight is strapped *to* the
+    lifter — every other mode weighs the thing being lifted."""
+    assert get_exercise("Pullups").is_bodyweight is True
+    assert get_exercise("Barbell_Squat").is_bodyweight is False
+    assert get_exercise("Triceps_Pushdown").is_bodyweight is False
+
+
+def test_no_cable_or_machine_movement_is_offered_a_bar():
+    """The original complaint: a pulldown reported as a 45 lb bar plus plates.
+
+    `barFor` in plates.js returns a bar for exactly the two barbell modes, so
+    the assertion here is that no stack movement claims one of them.
+    """
+    barbell_modes = {"barbell", "ez_bar"}
+    for exercise in all_exercises():
+        if exercise.equipment in {"cable", "machine", "body only", "dumbbell"}:
+            assert exercise.weight_mode not in barbell_modes, exercise.id
+
+
+def test_foam_roll_offers_no_weight_at_all():
+    """A foam roller has one weight — its own — and it is not the point.
+
+    Unlike a band or a ball there is no heavier one to reach for and nothing to
+    strap on, so the column is not merely usually-blank (that is `bodyweight`):
+    it is meaningless. `unweighted` removes it outright, with no toggle back.
+    """
+    rollers = [e for e in all_exercises() if e.equipment == "foam roll"]
+    assert rollers, "no foam-roll movements in the catalog"
+    for exercise in rollers:
+        assert exercise.weight_mode == "unweighted", exercise.id
+        # Not bodyweight: that mode offers an "Added weight" tick box, and
+        # there is nothing to add.
+        assert exercise.is_bodyweight is False, exercise.id

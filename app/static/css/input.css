@@ -260,6 +260,58 @@
   --noise: 0;
 }
 
+/* 2b) The dark theme ------------------------------------------------------
+   Phase 4.5's instrument palette, restored as an option rather than the only
+   choice. It is not a darkened copy of the cream theme: it was derived on its
+   own ground, which is why the numbers here are the originals rather than
+   anything computed from the light values.
+
+   Near-black, faintly blue and never `#000`, so surfaces can still layer;
+   warm bone for text and every data mark; cold slate for structure; the same
+   oxidised brick accent, lifted to `#d97a63` for text because bare brick is
+   3.24:1 here and fails AA below large sizes.
+
+   **The ramp inverts with the ground** — see the block below. That is the
+   whole reason a theme toggle is more than a palette swap. */
+@plugin "../../../tools/daisyui/theme" {
+  name: "bodyshop-dark";
+  default: false;
+  prefersdark: false;
+  color-scheme: dark;
+
+  --color-base-100: #141922; /* the one raised step: panels, inputs, the field */
+  --color-base-200: #0d1014; /* ground */
+  --color-base-300: #242b36; /* hairlines, untrained fills */
+  --color-base-content: #ede6db; /* bone — text and every data mark */
+
+  --color-primary: #a34a38;
+  --color-primary-content: #ede6db;
+  --color-secondary: #7e8ca0; /* cold slate — secondary text and structure */
+  --color-secondary-content: #0d1014;
+  --color-accent: #d97a63; /* lifted brick, for accent text at body size */
+  --color-accent-content: #0d1014;
+  --color-neutral: #242b36;
+  --color-neutral-content: #ede6db;
+
+  --color-info: #7e8ca0;
+  --color-info-content: #0d1014;
+  --color-success: #5fd98a;
+  --color-success-content: #0d1014;
+  --color-warning: #f2a03f;
+  --color-warning-content: #0d1014;
+  --color-error: #f2745f;
+  --color-error-content: #0d1014;
+
+  --radius-selector: 0.25rem;
+  --radius-field: 0.25rem;
+  --radius-box: 0;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
 /* 3) Shared tokens ------------------------------------------------------- */
 @theme {
   /* Three faces, four named voices (section 5). Big Shoulders is condensed
@@ -304,6 +356,29 @@
 
 /* 4) Base ---------------------------------------------------------------- */
 @layer base {
+  /* The ramp inverts with the ground, and this is the load-bearing half of the
+     theme toggle. A volume scale has to climb in whichever direction reads as
+     "more" where it is drawn:
+
+       cream ground: pale -> deep   (more volume = more ink)   — the @theme block
+       dark ground:  dim  -> lit    (more volume = more light) — here
+
+     These are Phase 4.5's derived values, not the light ramp inverted. Each set
+     was checked against its own ground: on near-black the binding constraint is
+     that `train-min` sits far enough above `--color-rest` that one set never
+     looks like none (3.12:1 at #428262), which is the same rule the cream ramp
+     obeys with completely different numbers. */
+  [data-theme="bodyshop-dark"] {
+    --color-rest: #242b36;
+    --color-train-min: #428262;
+    --color-train-max: #5fd98a;
+    --color-over-min: #f2743f;
+    --color-over-max: #f5391f;
+    --color-train-accent: #5fd98a;
+    --color-over-accent: #f2905f;
+  }
+
+
   html {
     -webkit-font-smoothing: antialiased;
     scroll-behavior: smooth;
@@ -900,6 +975,42 @@
     color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
   }
 
+  /* Theme toggle. Docked bottom-left with the rest readout — the reference
+     puts its language selector in the same corner, and with no header these
+     are the only two persistent controls in the app. */
+  .theme-toggle {
+    position: fixed;
+    left: 1rem;
+    bottom: 4rem;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .theme-toggle:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+  .theme-toggle svg {
+    width: 0.95rem;
+    height: 0.95rem;
+  }
+  /* One icon per state: the sun shows on dark (what you would switch *to*),
+     the moon on light. Swapped in CSS so the button needs no JS to stay
+     truthful after a toggle. */
+  .theme-icon-dark { display: none; }
+  [data-theme="bodyshop-dark"] .theme-icon-dark { display: block; }
+  [data-theme="bodyshop-dark"] .theme-icon-light { display: none; }
+
+  @media (width < 64rem) {
+    .theme-toggle { bottom: 7.75rem; }
+  }
+
   /* The rest timer used to sit in the header. With the header gone it docks in
      the bottom-left corner, clear of the shelves and the tab bar. */
   .rest-dock {
@@ -920,30 +1031,162 @@
 
   /* Shown while a shelf request is in flight. Pages are server-rendered, so
      this covers a real round trip rather than decorating a client-side one. */
+  /* -- Turning a page ----------------------------------------------------
+     The app is arranged as a book, and navigation was the one place that did
+     not say so: the veil covered a server round trip that finishes in
+     milliseconds, so it read as a flicker rather than as having moved.
+
+     It is now timed rather than measured. A leaf falls across the screen and
+     the navigation waits for it (see pageturn.js) — the app is slower by
+     exactly this long, deliberately, because "imperceptible" and "you turned a
+     page" are different things and this one is a book.
+
+     Kept honest against the house rules: the leaf is a flat fill with a
+     hairline at its spine, not a shadow and not a gradient wash. What sells it
+     is the rotation, which is the only thing here depicting a physical object. */
+
   .page-veil {
+    /* Must match `TURN_MS` in pageturn.js — the script waits for this. */
+    --page-turn-ms: 460ms;
+    /* One leaf going over, twice inside the hold. */
+    --flip-ms: 230ms;
+
     position: fixed;
     inset: 0;
     z-index: 80;
     display: grid;
-    place-items: center;
+    grid-auto-flow: row;
+    place-content: center;
+    justify-items: center;
+    gap: 1rem;
     background-color: var(--color-base-200);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.18s ease;
+    transition: opacity 0.12s ease;
   }
   .page-veil.is-visible {
     opacity: 1;
     pointer-events: auto;
   }
+
+  /* -- The flipbook ------------------------------------------------------
+     A little open book with one leaf going over. Sized to the wordmark under
+     it rather than to the screen: a full-screen page turning is a transition
+     happening *to* you, and at this size it is a small object you are watching
+     instead — which is the difference between a effect and a mark.
+
+     Boxes and borders only, no image: it has to recolour with the theme, and
+     at 3rem an SVG would be carrying detail nobody can see. */
+  .flipbook {
+    position: relative;
+    display: block;
+    width: 3.1rem;
+    height: 2.15rem;
+    /* Without a perspective the leaf's rotation is a horizontal squash rather
+       than a page lifting off the one beneath it. Short, because the object is
+       small and a distant camera flattens it. */
+    perspective: 260px;
+    perspective-origin: 50% 50%;
+  }
+
+  /* The two pages lying open. The spine is where they meet, and it is the only
+     part drawn heavier — a book is mostly edges. */
+  .flipbook::before,
+  .flipbook::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 38%, transparent);
+    background-color: var(--color-base-100);
+  }
+  .flipbook::before {
+    left: 0;
+    border-right-width: 0;
+  }
+  .flipbook::after {
+    right: 0;
+    border-left-width: 0;
+  }
+
+  /* The leaf going over. Hinged at the spine, starting on the right-hand page
+     and landing on the left — the direction a page turns when you read
+     forward. `[data-turn="back"]` mirrors it, so the book agrees with which
+     shelf stack was clicked. */
+  .flipbook-leaf {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 50%;
+    transform-origin: left center;
+    transform-style: preserve-3d;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 38%, transparent);
+    background-color: var(--color-base-100);
+  }
+  .page-veil.is-visible .flipbook-leaf {
+    animation: flipbook-forward var(--flip-ms) ease-in-out infinite;
+  }
+  .page-veil[data-turn="back"] .flipbook-leaf {
+    left: auto;
+    right: 50%;
+    transform-origin: right center;
+  }
+  .page-veil[data-turn="back"].is-visible .flipbook-leaf {
+    animation-name: flipbook-back;
+  }
+
+  /* Edge-on at the halfway point is what reads as paper rather than as a door
+     swinging: the leaf all but disappears as it passes the spine. */
+  @keyframes flipbook-forward {
+    from { transform: rotateY(0deg); }
+    to   { transform: rotateY(-180deg); }
+  }
+  @keyframes flipbook-back {
+    from { transform: rotateY(0deg); }
+    to   { transform: rotateY(180deg); }
+  }
+
+  /* The wordmark under the book, at the size the book is drawn to match. It
+     arrives rather than pulsing — the old pulse was a loading spinner's idea,
+     and there is nothing to wait for any more. */
   .page-veil-mark {
-    animation: veil-pulse 1.1s ease-in-out infinite;
+    animation: veil-mark-in 200ms ease-out both;
   }
-  @keyframes veil-pulse {
-    0%, 100% { opacity: 0.35; }
-    50%      { opacity: 1; }
+  @keyframes veil-mark-in {
+    from { opacity: 0; }
+    to   { opacity: 0.55; }
   }
+
+  /* The other half of the turn: the chapter you landed on settling onto the
+     page. Transform-only, so it cannot change layout height — `/` is pinned to
+     exactly one screen and a margin here would break that. */
+  .shell-main {
+    animation: page-settle 320ms cubic-bezier(0.22, 0.68, 0.35, 1) both;
+  }
+  @keyframes page-settle {
+    from { opacity: 0; transform: translate3d(0, 0.5rem, 0); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* Someone who asked for less movement has not asked to be kept waiting for
+     it: the rotation goes, the hold shortens (pageturn.js), and the leaf just
+     appears. */
   @media (prefers-reduced-motion: reduce) {
-    .page-veil-mark { animation: none; }
+    /* The book stays — it is the mark — but it stops flipping, and the hold
+       shortens in pageturn.js. Asking for less movement is not asking to be
+       kept waiting for it. */
+    .page-veil.is-visible .flipbook-leaf,
+    .page-veil[data-turn="back"].is-visible .flipbook-leaf {
+      animation: none;
+      transform: none;
+    }
+    .page-veil-mark {
+      animation: none;
+      opacity: 0.55;
+    }
+    .shell-main { animation: none; }
   }
 
   /* -- Chapter pages -----------------------------------------------------
@@ -982,6 +1225,79 @@
     margin: 0;
     color: var(--color-secondary);
     line-height: 1.6;
+  }
+
+  /* -- Credits and contact (/how-to-use) ---------------------------------
+     Portraits are square and hairline-framed, like the specimen plate: the
+     app has no rounded avatars anywhere and this is not the place to start. */
+  .team-list {
+    display: grid;
+    gap: 1.5rem;
+  }
+  @media (width >= 40rem) {
+    .team-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem; }
+  }
+  .team-member {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+  }
+  /* The initials sit *under* the photograph, so a missing file degrades to a
+     monogram rather than a broken-image glyph. */
+  .team-portrait {
+    position: relative;
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 5.5rem;
+    height: 5.5rem;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 20%, transparent);
+    background-color: var(--color-base-100);
+  }
+  .team-initials {
+    font-size: 1.5rem;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, var(--color-base-content) 40%, transparent);
+  }
+  .team-portrait img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    /* Portraits are shot at different crops; cover keeps both square without
+       squashing either. `50% 20%` favours the head over the torso. */
+    object-fit: cover;
+    object-position: 50% 20%;
+  }
+  .team-name {
+    display: block;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 400;
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+  .team-title {
+    display: block;
+    margin-top: 0.3rem;
+    color: var(--color-secondary);
+  }
+
+  .contact-address {
+    display: inline-block;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(1.5rem, 3.2vw, 2.4rem);
+    line-height: 1.1;
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 30%, transparent);
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .contact-address:hover,
+  .contact-address:focus-visible {
+    color: var(--color-accent);
+    border-bottom-color: currentColor;
   }
 
   /* -- Home masthead ------------------------------------------------------
@@ -1684,6 +2000,29 @@
     color: var(--color-secondary);
   }
 
+  /* The personal best, and the set it was estimated from — Phase 6.7. It
+     always shows its working, so it needs room for a whole clause. */
+  .graph-panel-best {
+    margin: 0.3rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--color-base-content);
+  }
+  /* "No load recorded" is an absence, not a reading, so it sits back with the
+     other secondary text rather than looking like a number. */
+  .graph-panel-best.is-unmeasured {
+    color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+
+  /* A movement whose sets carry no weight: a ring in its coverage colour, so
+     it still says what it feeds while saying it cannot be sized. Distinct from
+     `.graph-key-orphan`, which is bone and means "fallen out of the training". */
+  .graph-key-unmeasured {
+    width: 0.7rem;
+    height: 0.7rem;
+    border: 1.5px solid color-mix(in srgb, var(--color-train-max) 75%, transparent);
+    border-radius: 9999px;
+  }
+
   /* -- Legend swatches -------------------------------------------------- */
   .swatch {
     display: inline-block;
@@ -2094,6 +2433,430 @@
   /* Empty until a weight is typed; collapse rather than reserve a blank line. */
   .plate-hint:empty {
     display: none;
+  }
+
+  /* -- Columns the movement or the setup does not call for (Phase 6/6.5) --
+     `no-weight` is a body-only movement with nothing strapped on; `no-rpe` is
+     any trainer setup below advanced. Both are toggled from log.js onto the
+     header *and* every row together, so the two can never disagree about how
+     many columns there are — which is why the class names are hand-written
+     here rather than assembled as utilities Tailwind would purge.
+
+     The field is removed from the DOM as well as from the grid (see
+     `setRow` in log.js); this is only the geometry that follows. */
+  .set-grid-head.no-weight,
+  .set-row.no-weight {
+    grid-template-columns: 1.5rem minmax(0, 1fr) 2.75rem;
+  }
+  .set-grid-head.no-weight > span:nth-child(2) {
+    display: none;
+  }
+
+  .set-row.no-rpe {
+    grid-template-areas:
+      "idx weight reps remove"
+      "idx type   type type"
+      "idx hint   hint hint";
+  }
+  .set-row.no-weight {
+    grid-template-areas:
+      "idx reps remove"
+      "idx rpe  type"
+      "idx hint hint";
+  }
+  .set-row.no-weight.no-rpe {
+    grid-template-areas:
+      "idx reps remove"
+      "idx type type"
+      "idx hint hint";
+  }
+
+  /* -- "Added weight", for body-only movements --------------------------
+     Shown only where a weight would be *added* to the lifter. A full-width
+     hit area rather than a bare checkbox: this is on the hot path, and the
+     44pt rule applies to a tick box as much as to a button. */
+  .added-weight-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-height: 2.75rem;
+    margin-bottom: 0.5rem;
+    padding: 0 0.4rem;
+    cursor: pointer;
+  }
+  .added-weight-toggle[hidden] {
+    display: none;
+  }
+  .added-weight-box {
+    flex: none;
+    width: 1.1rem;
+    height: 1.1rem;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+  }
+
+  /* -- First run ---------------------------------------------------------
+     One question, once. A `<dialog>` rather than a band because it is a
+     genuine one-time decision and modality is what stops it being scrolled
+     past — but it still obeys the house rules: hairline border, square
+     corners, no shadow, one continuous ground. */
+  .first-run {
+    width: min(34rem, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 22%, transparent);
+    border-radius: 0;
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    overflow: auto;
+  }
+  .first-run::backdrop {
+    /* The page stays legible behind it: this is an introduction, not an
+       interstitial, and hiding what you were about to read is worse. */
+    background-color: color-mix(in srgb, var(--color-base-300) 82%, transparent);
+  }
+  .first-run-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding: 1.6rem 1.5rem 1.35rem;
+  }
+  .first-run-title {
+    margin: 0;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: clamp(1.4rem, 5vw, 1.85rem);
+    line-height: 1.12;
+  }
+
+  /* One column on a phone, three across from `sm:` — three squeezed side by
+     side at 360px leaves each blurb four words wide and unreadable. */
+  .first-run-levels {
+    display: grid;
+    gap: 0.5rem;
+  }
+  @media (width >= 34rem) {
+    .first-run-levels {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .first-run-level {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-height: 2.75rem;
+    padding: 0.75rem 0.8rem;
+    text-align: left;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 18%, transparent);
+    border-radius: var(--radius-field);
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .first-run-level:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+  /* The chosen one is marked by an outline, never a fill: a filled accent is
+     reserved for "over target" on the volume ramp, and the two must not be
+     confusable anywhere in the app. */
+  .first-run-level[aria-pressed="true"] {
+    border-color: var(--color-primary);
+    background-color: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  }
+  .first-run-level-blurb {
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    color: var(--color-secondary);
+  }
+  .first-run-level-note {
+    color: var(--color-primary);
+  }
+
+  .first-run-plan {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    padding-top: 0.35rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+    font-size: 0.9375rem;
+  }
+  .first-run-plan .field {
+    width: 4.25rem;
+    text-align: center;
+  }
+
+  .first-run-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.75rem;
+    padding-top: 0.35rem;
+  }
+
+  /* -- The date input's own picker ---------------------------------------
+     Left alone, Chrome renders the calendar button as a faint glyph the same
+     weight as the digits beside it, so the one control on the row that opens
+     something did not read as a control. Given a border and the accent's ink
+     it becomes a target — outlined rather than filled, since a filled accent
+     means "over target" on the volume ramp and nothing else may claim it. */
+  .field-date {
+    padding-right: 0.45rem;
+  }
+  .field-date::-webkit-calendar-picker-indicator {
+    padding: 0.24rem;
+    margin-left: 0.4rem;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+    border-radius: var(--radius-field);
+    cursor: pointer;
+    opacity: 1;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .field-date::-webkit-calendar-picker-indicator:hover {
+    border-color: var(--color-primary);
+    background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  }
+  /* The stock glyph is near-black and vanishes on the dark theme. */
+  [data-theme="bodyshop-dark"] .field-date::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+
+  /* -- The calendar, folded into /summary (Phase 8.3) --------------------
+     Seven boxes by default, the surrounding month on request. Both states are
+     the same `.day-cell` against the same fixed reference, so expanding
+     changes how many are drawn and never what one means. */
+  .calendar-strip {
+    margin-top: 1.25rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+  }
+  .calendar-strip-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.6rem;
+  }
+  /* Collapsed, the seven days are one row; the month keeps the seven-column
+     grid the cells were designed against. */
+  #calendar-grid:not(.is-month) {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+  /* Two readings under the grid — what the bars mean, and the double-click.
+     They wrap onto separate lines at phone width rather than stranding one
+     word of the second on a line of its own. */
+  .calendar-caption {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem 1.25rem;
+  }
+
+  /* -- Routines (Phase 8.1) ----------------------------------------------- */
+  .routine-list {
+    display: grid;
+    gap: 0.5rem;
+  }
+  @media (width >= 48rem) {
+    .routine-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .routine-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    width: 100%;
+    height: 100%;
+    min-height: 2.75rem;
+    padding: 0.9rem 1rem;
+    text-align: left;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    border-radius: var(--radius-field);
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .routine-card:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+  /* Outlined, never filled — see the accent rule above. */
+  .routine-card[aria-pressed="true"] {
+    border-color: var(--color-primary);
+    background-color: color-mix(in srgb, var(--color-primary) 7%, transparent);
+  }
+  .routine-card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .routine-card-name {
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: 1.25rem;
+    line-height: 1.15;
+  }
+  .routine-card-time {
+    flex: none;
+    font-size: 0.8125rem;
+    color: var(--color-primary);
+  }
+  .routine-card-blurb {
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--color-secondary);
+  }
+
+  /* [experimental]. Mono and bracketed like the chapter marks, so it reads as
+     an annotation on the thing rather than as a badge sold with it. Deliberately
+     not the accent: the accent means "act on this", and this means the
+     opposite. */
+  .routine-tag {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
+    white-space: nowrap;
+  }
+  /* A dashed rule down the side: the same "provisional" grammar the warm-up
+     row already uses in the set grid. */
+  .routine-card.is-experimental {
+    border-style: dashed;
+  }
+  .routine-detail-note {
+    margin: 0 0 1.25rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px dashed color-mix(in srgb, var(--color-base-content) 25%, transparent);
+    color: var(--color-secondary);
+  }
+
+  /* One movement in a routine: its frames beside what to do about it. */
+  .routine-exercise {
+    display: grid;
+    gap: 0.9rem;
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: 1.1rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
+  }
+  .routine-exercise:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+  @media (width >= 40rem) {
+    .routine-exercise {
+      grid-template-columns: 11rem minmax(0, 1fr);
+      align-items: start;
+    }
+  }
+  .routine-exercise-frames {
+    width: 100%;
+    max-width: 11rem;
+  }
+  .routine-exercise-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+  .routine-exercise-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    margin: 0;
+  }
+  .routine-exercise-order {
+    color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+    font-size: 0.8125rem;
+  }
+  .routine-exercise-name {
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: 1.15rem;
+    line-height: 1.15;
+  }
+  .routine-exercise-dose {
+    margin: 0;
+    font-size: 0.9375rem;
+    color: var(--color-base-content);
+  }
+  .routine-exercise-note {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--color-secondary);
+  }
+  .routine-how > summary {
+    cursor: pointer;
+    color: var(--color-secondary);
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+  }
+  .routine-log {
+    align-self: flex-start;
+    margin-top: 0.2rem;
+  }
+
+  /* -- Quick log ----------------------------------------------------------
+     The dialog is only a frame: the grid inside is the component /log mounts,
+     so a set logged from a routine obeys every rule a set logged there does. */
+  .quick-log {
+    width: min(32rem, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 22%, transparent);
+    border-radius: 0;
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    overflow: auto;
+  }
+  .quick-log::backdrop {
+    background-color: color-mix(in srgb, var(--color-base-300) 82%, transparent);
+  }
+  .quick-log-body {
+    padding: 1.2rem 1.25rem 1.1rem;
+  }
+  .quick-log-name {
+    margin: 0 0 0.9rem;
+    font-family: "Noto Serif", Georgia, serif;
+    font-weight: 300;
+    font-size: 1.35rem;
+    line-height: 1.15;
+  }
+  .quick-log-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1rem;
+  }
+
+  /* -- Trainer setup (Phase 6) -------------------------------------------
+     Three controls on /summary, beside the targets they decide. Two columns
+     at phone width would strand the minutes field, so the experience select
+     spans the row until there is space for all three. */
+  .setup-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .setup-grid > *:first-child {
+    grid-column: 1 / -1;
+  }
+  @media (width >= 40rem) {
+    .setup-grid {
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .setup-grid > *:first-child {
+      grid-column: auto;
+    }
   }
 
   /* ---- Rest timer ------------------------------------------------------

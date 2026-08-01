@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Routines · Body Shop{% endblock %}
+
+{% block content %}
+<div class="wrap pt-9 pb-1">
+  <p class="type-label text-secondary mb-3">Routines</p>
+  <h1 class="type-display text-[clamp(2rem,9vw,3.25rem)] mb-3">Something to follow</h1>
+  <p class="type-lede">
+    Five sessions, each built around one thing. Pick one, work down the list, and
+    log each movement as you finish it — it lands in this week the same way
+    anything else you log does.
+  </p>
+</div>
+
+<div class="wrap">
+  {#
+    The list is server-rendered because routines are static server data — there
+    is nothing to wait for. Choosing one fetches `/api/routines/<key>`, which is
+    where the photographs and the instructions live.
+  #}
+  <section class="band" aria-labelledby="routine-list-heading">
+    <div class="band-head">
+      <h2 id="routine-list-heading" class="type-label text-base-content">Pick a session</h2>
+      <span class="type-label text-secondary">{{ routines | length }} routines</span>
+    </div>
+
+    <ul class="routine-list list-none m-0 p-0" id="routine-list">
+      {% for routine in routines %}
+      <li>
+        <button type="button" class="routine-card{{ ' is-experimental' if routine.experimental else '' }}"
+                data-routine="{{ routine.key }}" aria-pressed="false">
+          <span class="routine-card-head">
+            {# Two routines are called "Leg day". The reconstructions lead with
+               whose training they approximate, which is what you are choosing
+               between anyway — and it keeps the list unambiguous. #}
+            <span class="routine-card-name">
+              {{ routine.inspired_by if routine.experimental else routine.name }}
+            </span>
+            {# Derived from the prescribed sets, never typed — see
+               `estimate_minutes` in app/routines.py. #}
+            <span class="routine-card-time type-data">~{{ routine.minutes }} min</span>
+          </span>
+          <span class="routine-card-focus type-label text-secondary">
+            {% if routine.experimental %}
+              <span class="routine-tag">[experimental]</span>
+              {{ routine.name }} · {{ routine.focus }}
+            {% else %}
+              {{ routine.focus }}
+            {% endif %}
+          </span>
+          <span class="routine-card-blurb">{{ routine.blurb }}</span>
+          <span class="routine-card-meta type-label text-secondary">
+            {{ routine.exercises | length }} movements · {{ routine.total_sets }} sets ·
+            {{ routine.level }}
+          </span>
+        </button>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <p class="text-sm text-secondary border-t hairline mt-6 pt-5 m-0 leading-relaxed">
+      These are starting points, not prescriptions. The weekly summary is still
+      what tells you whether the week came out balanced —
+      <span class="text-base-content">a routine is a session, not a plan.</span>
+    </p>
+
+    {#
+      The tag is not decoration, so it is explained rather than left to be
+      guessed at. The first five routines are ours. The tagged ones are a best
+      reading of what has been *reported* about somebody else's training, and
+      saying that plainly is the price of putting a real person's name on a card.
+    #}
+    <p class="text-sm text-secondary mt-4 m-0 leading-relaxed">
+      <span class="routine-tag">[experimental]</span>
+      marks a session reconstructed from published coverage of an athlete's
+      training. They are second-hand, often years old, and separated from the
+      coaching, the training age and the rest of the week that made them make
+      sense for that person — a sprinter's hour in the weight room is a small
+      part of being a sprinter.
+      <span class="text-base-content">Nobody named has endorsed these</span>,
+      each names its source, and movements are mapped onto the nearest thing in
+      the catalog. Worth looking at; not advice.
+    </p>
+  </section>
+
+  {# Filled by routines.js once a routine is chosen. #}
+  <section class="band" id="routine-detail" hidden aria-labelledby="routine-detail-heading">
+    <div class="band-head">
+      <h2 id="routine-detail-heading" class="type-label text-base-content">&nbsp;</h2>
+      <span class="type-data text-sm text-secondary" id="routine-detail-meta"></span>
+    </div>
+    {# Filled by routines.js for reconstructions only — the tag travels with the
+       routine, not just with the card that opened it. #}
+    <p class="routine-detail-note text-sm leading-relaxed" id="routine-detail-note" hidden></p>
+    <div id="routine-exercises" class="grid gap-4"></div>
+  </section>
+</div>
+
+{#
+  Quick log. The grid inside is the *same component* `/log` mounts (Phase 8.2),
+  so a set recorded here obeys every rule a set recorded there does — weight
+  modes, added weight, the RPE gate, warm-ups, units.
+#}
+<dialog class="quick-log" id="quick-log" aria-labelledby="quick-log-heading">
+  <form class="quick-log-body" id="quick-log-form" novalidate>
+    <div class="band-head">
+      <h2 id="quick-log-heading" class="type-label text-base-content">Log</h2>
+      <button type="button" class="step-key" id="quick-log-close" aria-label="Close">×</button>
+    </div>
+
+    <p class="quick-log-name" id="quick-log-name"></p>
+
+    <div class="flex items-center justify-between gap-3 mb-3">
+      <label class="type-label text-secondary" for="quick-log-date">Date</label>
+      <input type="date" id="quick-log-date" required
+             value="{{ selected_date.isoformat() }}"
+             class="field field-sm type-data field-date">
+    </div>
+
+    <div id="quick-log-grid"></div>
+
+    <p class="form-error" id="quick-log-error" role="alert" hidden></p>
+
+    <div class="quick-log-actions">
+      <button type="submit" class="btn-brick">Log it</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { initRoutines } from "{{ url_for('static', filename='js/routines.js') }}";
+  initRoutines({{ selected_date.isoformat() | tojson }});
+</script>
+{% endblock %}

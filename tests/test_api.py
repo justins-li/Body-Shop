@@ -341,8 +341,8 @@ def test_progress_graph_endpoint(client, add):
     assert data["edges"] == [
         {"source": "Barbell_Squat", "target": "Romanian_Deadlift", "days": 1}
     ]
-    # Two movements is not a graph; the page says so rather than drawing one.
-    assert data["graph_ready"] is False
+    # Two movements still draw — `sparse` says it is early, it does not gate.
+    assert data["sparse"] is True
     assert data["coverage"]["quads"]["state"] == "trained"
 
 
@@ -363,6 +363,159 @@ def test_progress_graph_excludes_warmup_only_movements(client, add):
     assert [node["exercise_id"] for node in data["nodes"]] == ["Barbell_Deadlift"]
     # And no edge is left pointing at the movement that dropped out.
     assert data["edges"] == []
+
+
+# ---- The trainer setup on the wire (Phase 6) -------------------------------
+
+
+def test_weekly_summary_defaults_to_the_baseline_targets(client):
+    """No profile in the query is the pre-Phase-6 grading, exactly."""
+    payload = client.get("/api/summary/week?date=2026-07-28").get_json()
+    assert payload["muscles"]["chest"]["target"] == 20
+    assert payload["muscles"]["abs"]["target"] == 10
+    assert payload["profile"]["experience"] == "experienced"
+    assert payload["profile"]["volume_scale"] == 1.0
+
+
+def test_weekly_summary_scales_targets_to_the_trainer_setup(client):
+    payload = client.get(
+        "/api/summary/week?date=2026-07-28"
+        "&experience=beginner&sessions=6&minutes=90"
+    ).get_json()
+    # The week is roomy, so the beginner level is what binds: 0.6 of baseline.
+    assert payload["profile"]["limited_by"] == "experience"
+    assert payload["muscles"]["chest"]["target"] == 12
+    assert payload["muscles"]["abs"]["target"] == 6
+
+
+def test_a_short_week_lowers_the_targets(client):
+    payload = client.get(
+        "/api/summary/week?date=2026-07-28"
+        "&experience=advanced&sessions=2&minutes=30"
+    ).get_json()
+    assert payload["profile"]["limited_by"] == "plan"
+    assert payload["muscles"]["chest"]["target"] < 20
+
+
+def test_the_profile_echoes_the_targets_it_graded_against(client):
+    """The page renders these rather than re-deriving them, so the two halves of
+    the payload must agree."""
+    payload = client.get(
+        "/api/summary/week?date=2026-07-28&experience=beginner"
+    ).get_json()
+    targets = payload["profile"]["targets"]
+    for muscle, info in payload["muscles"].items():
+        assert info["target"] == targets[muscle], muscle
+
+
+def test_a_bad_trainer_setup_falls_back_rather_than_400ing(client):
+    """It arrives from a view control. A stale localStorage key should show the
+    usual targets, not blank the summary page."""
+    response = client.get(
+        "/api/summary/week?date=2026-07-28"
+        "&experience=wizard&sessions=banana&minutes=-9"
+    )
+    assert response.status_code == 200
+    assert response.get_json()["profile"]["experience"] == "experienced"
+
+
+def test_grading_scales_so_a_week_can_cross_its_target(client, add):
+    """The point of the whole feature: the same sets read differently against a
+    smaller target."""
+    add("2026-07-28", BENCH, sets=14)
+
+    baseline = client.get("/api/summary/week?date=2026-07-28").get_json()
+    assert baseline["muscles"]["chest"]["state"] == "trained"
+
+    scaled = client.get(
+        "/api/summary/week?date=2026-07-28&experience=beginner&sessions=6&minutes=90"
+    ).get_json()
+    assert scaled["muscles"]["chest"]["state"] == "over"
+
+
+def test_the_graph_colours_against_the_same_setup(client, add):
+    """Node colour *is* the body map's grading, so the two pages must not
+    disagree about the same week."""
+    add("2026-07-28", BENCH, sets=14)
+    query = "date=2026-07-28&experience=beginner&sessions=6&minutes=90"
+
+    graph = client.get(f"/api/progress/graph?{query}").get_json()
+    summary = client.get(f"/api/summary/week?{query}").get_json()
+    assert graph["coverage"]["chest"]["state"] == summary["muscles"]["chest"]["state"]
+    assert graph["coverage"]["chest"]["state"] == "over"
+
+
+# ---- Weight modes on the wire (Phase 6.5) ----------------------------------
+
+
+def test_catalog_carries_the_weight_mode(client):
+    exercises = {e["id"]: e for e in client.get("/api/exercises").get_json()["exercises"]}
+    assert exercises[BENCH]["weight_mode"] == "barbell"
+    assert exercises[PULLUP]["weight_mode"] == "bodyweight"
+    assert exercises[PULLUP]["is_bodyweight"] is True
+    assert exercises["Triceps_Pushdown"]["weight_mode"] == "stack"
+
+
+def test_entries_carry_the_weight_mode(client, add):
+    """So a rendered set line reads "+20kg × 8" for a weighted pull-up without
+    the client having to consult the catalog."""
+    add("2026-07-28", PULLUP, sets=3)
+    entries = client.get("/api/entries?date=2026-07-28").get_json()["entries"]
+    assert entries[0]["weight_mode"] == "bodyweight"
+
+
+# ---- Routines on the wire (Phase 8.1) --------------------------------------
+
+
+def test_routine_list_is_the_light_shape(client):
+    """Five routines' worth of photographs to render five cards is most of a
+    megabyte nobody looked at."""
+    routines = client.get("/api/routines").get_json()["routines"]
+    assert routines
+    assert all("exercises" not in r for r in routines)
+    assert all({"key", "name", "focus", "minutes", "total_sets"} <= set(r) for r in routines)
+
+
+def test_routine_detail_hydrates_every_exercise(client):
+    """One request rather than one per movement: the page shows them all at
+    once, so six round trips would be six chances to render half a routine."""
+    routine = client.get("/api/routines/push").get_json()["routine"]
+    assert routine["key"] == "push"
+    for item in routine["exercises"]:
+        assert item["name"]
+        assert len(item["images"]) == 2
+        assert item["instructions"]
+        # The quick log needs this to head its weight column correctly.
+        assert item["weight_mode"]
+
+
+def test_routine_images_are_absolute(client):
+    routine = client.get("/api/routines/push").get_json()["routine"]
+    assert routine["exercises"][0]["images"][0].startswith("http")
+
+
+def test_unknown_routine_is_a_404(client):
+    response = client.get("/api/routines/nope")
+    assert response.status_code == 404
+    assert "Unknown routine" in response.get_json()["error"]
+
+
+def test_a_routine_logs_through_the_same_endpoint_as_the_log_page(client):
+    """The quick log is not a lesser log — it is the same POST, so a set
+    recorded from a routine reaches the weekly summary identically."""
+    routine = client.get("/api/routines/push").get_json()["routine"]
+    first = routine["exercises"][0]
+
+    created = client.post("/api/entries", json={
+        "date": "2026-07-28",
+        "exercise_id": first["exercise_id"],
+        "sets": [{"weight": 80, "reps": 8}, {"weight": 80, "reps": 8}],
+    })
+    assert created.status_code == 201
+
+    summary = client.get("/api/summary/week?date=2026-07-28").get_json()
+    assert summary["muscles"]["chest"]["sets"] == 2.0
+    assert summary["muscles"]["chest"]["worked"] is True
 
 
 class TestGatedEndpoints:

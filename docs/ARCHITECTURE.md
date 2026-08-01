@@ -8,12 +8,7 @@ summary page, and eventually any export). So the code is organised around keepin
 that rule in exactly one place, with thin layers on either side of it.
 
 ```
-browser  ──fetch──▶  Supabase GoTrue   (credentials; never touches Flask)
-   │                      │
-   │                      └──▶ bearer token, stored in localStorage
-   ▼
-browser  ──fetch──▶  app/api.py        (HTTP: parse, serialise, status codes,
-   (with the token)                     token verification, g.user_id)
+browser  ──fetch──▶  app/api.py        (HTTP: parse, serialise, status codes)
                           │
                           ▼
                      app/services/     (rules: week boundaries, muscle coverage)
@@ -33,21 +28,16 @@ Which backend is in use is decided entirely by `DATABASE_URL`, and nothing above
 `lastrowid` versus `RETURNING`, `AUTOINCREMENT` versus `IDENTITY`, and how a
 `DATE` is stored, so `models.py` expresses queries once.
 
-`app/views.py` renders eleven server-side shells — six chapters and five bare auth
-pages; everything dynamic is fetched by the page's JavaScript module from the same
-`/api` the tests exercise. That means the HTML never diverges from the API, and the
-API is testable without a browser.
+`app/views.py` renders six server-side shells (`/`, `/how-to-use`, `/routines`, `/log`,
+`/summary`, `/progress`); everything dynamic is fetched by the page's JavaScript module
+from the same `/api` the tests exercise. That means the HTML never diverges from the
+API, and the API is testable without a browser. `/calendar` was a seventh until Phase
+8.3 folded it into `/summary`; it survives as a 301 so shared `?date=` links still land
+on the right week.
 
 `/` and `/how-to-use` are the exceptions: static pages with no JS module and no API
-calls. As of Phase 5 `/` carries both a signed-out and a signed-in block and shows
-one, chosen from `localStorage` by a blocking script before first paint — so it still
-makes no request, and neither half flashes.
-
-**Every shell is public, including the chapters.** Bearer tokens live in
-`localStorage`, and a browser does not send an `Authorization` header on a
-navigation, so Flask cannot gate a page render. The page's JS module redirects to
-`/login` when the API answers 401. The cost is one unauthenticated frame; the benefit
-is that the web app consumes exactly the API a mobile client will.
+calls. `/` is the one page that will render identically for a visitor and a signed-in
+user, which is why it is worth having before auth exists.
 
 ## Layer responsibilities
 
@@ -55,24 +45,29 @@ is that the web app consumes exactly the API a mobile client will.
 | --- | --- | --- |
 | `app/data/exercises.json` | The catalog data itself — 873 vendored movements. | Be hand-edited; it is generated output. |
 | `tools/build_exercise_catalog.py` | Fetching the pinned source and mapping its vocabulary onto ours. | Run at import, in CI, or at request time. |
-| `app/exercises.py` | Loading and validating the catalog, the muscle groups, targets and volume weights. | Touch the database. |
+| `app/exercises.py` | Loading and validating the catalog, the muscle groups, **baseline** targets, volume weights, and the equipment → `weight_mode` rule. | Touch the database, or scale a target — that is `training.py`'s job. |
+| `app/training.py` | The trainer setup: experience levels, the session plan, and the one multiplier they resolve to. Pure functions over `exercises.py`'s baseline. | Touch the database, or know about HTTP. |
 | `app/tables.py` | The schema, as SQLAlchemy `MetaData`. Source of truth for both dialects. | Change any existing database — that needs a migration. |
 | `migrations/` | How a database reaches the schema `tables.py` describes. Revisions are append-only history. | Import app constants that a later commit could change. |
 | `app/db.py` | The engine, request-scoped connections, and the migration commands. | Contain queries. |
 | `app/models.py` | Every SQL statement, plus input validation. | Know about HTTP or Jinja, or know which dialect it is on. |
-| `app/services/auth.py` | Verifying a Supabase JWT (signature, expiry, audience, issuer) against either the shared HS256 secret or the project's JWKS, and deleting a Supabase auth record. | Import Flask. `require_user`, `g.user_id` and the 401 live in `api.py`, because they touch `request` and `g`. |
 | `app/services/weeks.py` | Week/month boundary maths. | Query the database. |
-| `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses. |
-| `app/services/graph.py` | The training graph's rules: what a window means, what makes a movement an orphan, and joining this week's coverage onto the nodes. | Query the database, or invent a strength benchmark (see below). |
+| `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses, or decide what a target *is*. |
+| `app/services/graph.py` | The training graph's rules: what a window means, what makes a movement an orphan, and joining this week's coverage and personal bests onto the nodes. | Query the database, or invent a strength *standard* (see below). |
+| `app/services/strength.py` | Estimating a one-rep max from the user's own sets, and reducing a window to one best per movement. | Query the database, or compare a user to anyone but themselves. |
+| `app/routines.py` | The suggested sessions, the athlete reconstructions and their attribution, and the time estimate derived from their sets. Editorial content, validated against the catalog at import. | Touch the database, state a duration that is not computed from the sets listed, or attribute a session to a real person without the `[experimental]` tag. |
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
 | `app/views.py` | Page shells and template context. | Contain business rules. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
 | `app/static/js/timer.js` | The rest countdown, booted from `base.html` on every page. Pure client state, persisted as a *deadline* so it survives navigation and tab throttling. | Touch the API, or persist anything but its duration and that deadline. |
-| `app/static/js/auth.js` | The token store, and every call to Supabase GoTrue — signup, the password grant, refresh, recover, update. | Call our own API, or import an SDK. |
-| `app/static/js/api.js` | Every call to our own API: the bearer header, and one silent refresh-and-retry on a 401. | Call Supabase, or retry more than once. |
 | `app/static/js/plates.js` | Plate arithmetic — a pure function of weight and bar. | Store anything, or fetch. |
 | `app/static/js/layout.js` | The force-directed layout — a pure, deterministic function of the graph. | Touch the canvas, the DOM, or `Math.random`. |
-| `app/static/js/progress.js` | The canvas, the gestures and the detail panel on `/progress`. | Contain layout maths, or re-simulate on a render. |
+| `app/static/js/progress.js` | The canvas, the gestures, the size-by control and the detail panel on `/progress`. | Contain layout maths, or re-simulate on a render. |
+| `app/static/js/onboarding.js` | The one-time first-run question, and the record that it was asked. | Open on `/` or `/how-to-use`, or ask twice. |
+| `app/static/js/pageturn.js` | The transition between chapters: holding a navigation while the book flips, and which way it flips. | Let a departure skip it — an unheld navigation tears the animation down. |
+| `app/static/js/setgrid.js` | **What a set is**: the rows, weight modes, added weight, the RPE gate, plate hints, repeat, and starting the rest timer. Mounted by `/log` and by a routine's quick-log. | Know which page it is on, or fetch anything. |
+| `app/static/js/routines.js` | The routines page: choosing a session, drawing its movements, and pointing the shared grid at one. | Reimplement any part of the grid. |
+| `app/static/js/weekstrip.js` | The calendar strip on `/summary`: seven boxes, expanding to the month; reports clicks and double-clicks on a day. | Own the anchor date, or navigate — it reports a gesture and the page decides. |
 | `app/static/css/input.css` | The design system: theme pair, tokens, and every hand-written rule. | — (`styles.css` beside it is generated; never edit it) |
 
 ## Styling
@@ -84,14 +79,18 @@ written — there is no bundler. The compiled `styles.css` is committed, so runn
 app or CI never needs the toolchain; only editing `input.css` does.
 
 Configuration is CSS-first (Tailwind v4): no `tailwind.config.js`. `@theme` holds the
-tokens, a single `@plugin "daisyui/theme"` block defines the one `bodyshop` theme, and
-`@source` directives list the content globs.
+tokens, two `@plugin "daisyui/theme"` blocks define the `bodyshop` and `bodyshop-dark`
+themes, and `@source` directives list the content globs.
 
-That theme is **dark, and the only one**. Phase 4.5 retired the light half of the pair
-rather than re-deriving it: the volume ramp now climbs in luminance (dim → lit), which
-is how "more volume" reads on a near-black ground and exactly backwards on a light one.
-Maintaining both would have meant two ramps whose colours mean opposite things — the
-kind of disagreement this codebase's single-source-of-truth design exists to prevent.
+There are **two themes and a toggle** — cream (`bodyshop`, the markup default) and
+Phase 4.5's instrument palette (`bodyshop-dark`). All 35 stock daisyUI themes stay off.
+A theme here is never only a palette swap: **the volume ramp inverts with the ground**,
+because a scale has to climb in whichever direction reads as "more" where it is drawn —
+pale → deep on cream, dim → lit on near-black. Neither ramp was derived from the other.
+Each satisfies the same binding rule, that one set must never look like none, with its
+own numbers (3.02:1 on cream, 3.12:1 on dark), because the constraint that binds moves
+with the ground. The chosen theme is applied by a blocking inline script in `base.html`'s
+head, before the stylesheet: a module is deferred and would paint one theme then flip.
 
 The division of labour is the part worth internalising:
 
@@ -246,6 +245,225 @@ The only invented numbers are `REGION_NEGLECT_SHARE` (0.15) and
 responding at all), both named constants in `services/summary.py` rather than literals, so
 what is opinion stays visible.
 
+### Weight modes: the catalog decides how a set is logged
+
+`equipment` is not just a browse filter. It decides how a weight is *recorded*, through
+`weight_mode` — derived on read in `exercises.py`, never stored:
+
+| Mode | The number means | Has a bar |
+| --- | --- | --- |
+| `barbell` / `ez_bar` | The loaded total, bar included | Yes — 20 kg / 45 lb, and 10 kg / 25 lb |
+| `dumbbell` / `kettlebell` | Per implement, not the pair | No |
+| `stack` | The pin setting on a cable or machine | No |
+| `bodyweight` | Weight **added** to the lifter; usually nothing | No |
+| `implement` | Whatever the thing is marked as | No |
+
+Before Phase 6.5 the set grid assumed every movement was a loaded barbell: one column
+called "Weight", and a plate breakdown under whatever was typed. That is right for a
+squat and wrong for a cable pushdown, a dumbbell press and a pull-up in three different
+ways — the pulldown in particular reported a bar that is not in the room.
+
+Three decisions worth keeping:
+
+- **The rule is server-side, the wording is not.** `EQUIPMENT_WEIGHT_MODES` is one map
+  in `exercises.py` and reaches `/log` on the exercise payload; what a mode is *called*
+  lives in `WEIGHT_MODE_DISPLAY` in `ui.js`, beside the rest of the display vocabulary.
+  Bar weights live in `plates.js`, which already owned plate arithmetic.
+- **An unmapped equipment value is an import-time error.** `_check_weight_modes` raises
+  `CatalogError` rather than falling through to a default, because the fallback's failure
+  is exactly the one this feature exists to fix — a movement quietly logged as a barbell.
+- **A field the mode does not call for is removed from the DOM, not hidden.** `log.js`
+  reads the grid back through those nodes, and a hidden input still carries its value, so
+  a weight typed before "Added weight" was unticked would submit anyway.
+
+## Routines, and one set grid
+
+Phase 8.1. The app could always say what your week *was*; it had nothing to say about
+what a session could be, and a new user's first screen was an empty picker over 873
+movements — the worst possible introduction to a catalog.
+
+`app/routines.py` holds five sessions, each focused on one thing. They are **editorial
+content in code**, the same status as `STAPLE_EXERCISE_IDS`: `exercises.json` is
+generated from a pinned commit and never hand-edited, and a routine is a judgement about
+training rather than a fact about the source. `_check_routines` runs at import and
+refuses an id that no longer resolves, a movement listed twice, or a routine with no
+exercises — the first would render a card with a blank name and a dead log button.
+
+Two rules worth keeping:
+
+- **The time estimate is derived, never typed.** `estimate_minutes` builds it from the
+  prescribed sets via `training.MINUTES_PER_WORKING_SET` plus the per-session overhead
+  that module already names, then rounds to five minutes because it is not known better
+  than that. A hand-written "45 min" drifts the first time anyone edits the list above
+  it. It also means the routines come out at one session of Phase 6's `REFERENCE_PLAN`,
+  which is not a coincidence — both are the same arithmetic.
+- **A routine is a suggestion, and its prescription is a placeholder.** The quick log
+  opens with the routine's set count and its reps as placeholders, exactly as `/log`
+  offers last session's numbers. An untouched row still saves as `NULL`. Recording what
+  a routine *told you to do* as though it happened is the one thing a training log must
+  never do.
+
+`MINUTES_PER_WORKING_SET` is new, and mildly contradicts Phase 6, which pointedly needed
+no such constant: scaling targets is a ratio against the reference plan, so a per-set
+cost appears in both halves and cancels. An estimate is an absolute answer, where nothing
+cancels — so the number is now stated in one place rather than implied.
+
+### One grid, two entrances
+
+`setgrid.js` is what a set *is*: rows, weight modes and their plate hints, the
+added-weight toggle, the RPE gate, warm-ups, units, repeat, and starting the rest timer.
+It lived inside `log.js` while `/log` was the only way to record anything. Routines added
+a second entrance, and a "quick log" with its own simpler grid would have been a second
+set of rules about all of the above — the exact divergence this codebase keeps one copy
+of everything to avoid. The two entrances differ in what they are *for*, not in what a
+set is.
+
+The component **builds its own markup**, including the header. That reverses a stated
+reason: the header used to be server-rendered so the column names survived with no
+script. The rows never did, so it bought a header over nothing — and it cannot be true of
+a grid mounted into a dialog. `/log` now ships `<div id="set-grid-mount">`.
+
+## Turning a page
+
+The app is arranged as a book — chapters down the sides, numbered marks, a chapter that
+keeps its side. Navigation between them was the one place that did not say so. It raised
+a veil to cover the server round trip, and since these pages render in a few
+milliseconds the veil was a flicker: a hint that something loaded, rather than a sense
+of having moved.
+
+The transition is now **timed rather than measured.** `pageturn.js` intercepts the click,
+raises the veil, and holds the navigation for `TURN_MS` while a little book flips on it. That is a real cost, taken on purpose: the app is slower by the length of the
+animation, because "instant and imperceptible" and "you turned a page" are different
+experiences and this one is a book.
+
+Four things keep it from being a wipe with extra steps:
+
+- **It is a small object, not the screen.** The veil carries a flipbook drawn to the
+  size of the wordmark under it: two static pages, a spine, and one leaf going over,
+  under a short `perspective`. A full-screen leaf turning was a transition happening *to*
+  you; at this size it is something you watch. Boxes and borders only — no image — so it
+  recolours with the theme and carries no detail nobody can see at 3rem.
+- **It follows the shelves.** The stacks split around the open chapter, so an earlier
+  chapter is to your left and a later one to your right. `data-turn` picks the side:
+  `forward` falls from the right, `back` from the left, read off which stack was clicked.
+  The gesture agrees with where the thing you clicked was standing.
+- **The arrival is the other half.** `.shell-main` animates in on load — transform-only,
+  so it cannot change layout height, which `/` being pinned to exactly one screen
+  requires. It is pure CSS, so it happens with no JavaScript at all.
+- **The leaf stays on-system.** A flat fill with a hairline at its spine that fades as it
+  lands, not a shadow and not a gradient wash — both of which the design rules ban. The
+  rotation is the only thing here depicting a physical object, and it does the work.
+
+Three constraints worth knowing before touching it:
+
+- **`TURN_MS` and `--page-turn-ms` must agree.** The script waits for the animation; if
+  they drift, either the leaf is torn down mid-fall or the app sits still after it lands.
+- **Every departure goes through `turnTo`.** A navigation that only raises the veil and
+  leaves replaces the document a few milliseconds in, and the turn is a flicker again —
+  which is why `/summary`'s double-click-to-log calls it rather than assigning directly.
+- **Shelves must stay real `<a href>`s.** The whole fallback — before the module loads,
+  and with JavaScript off — is that a shelf is an ordinary link that simply navigates.
+
+`prefers-reduced-motion` drops the rotation and shortens the hold to 140ms. Someone who
+has asked for less movement has not asked to be kept waiting for it.
+
+## The calendar, folded in
+
+Phase 8.3 retired `/calendar`. A whole chapter for a month grid was more room than the
+feature earned: it answered "what did I do that day", which the summary's own entry list
+already answers for the week being read.
+
+What was worth keeping is the *shape of a month* — which days you trained, and how hard.
+So it collapses. `weekstrip.js` draws **this week's seven boxes** by default, costing one
+row above the body map, and expands to the surrounding month on request. Both states are
+the same `.day-cell` against the same fixed `FULL_DAY_SETS` reference, so expanding
+changes how many are drawn and never what one means; scaling to the range's own busiest
+day would make the strip and the expanded month incomparable, and they are the same cells.
+
+The whole month's totals are fetched even when a week is drawn — one request either way,
+and it makes expanding instant. Clicking a day goes through `goToDate` in `summary.js`,
+the one place the anchor moves, because `?date=` is shared state every page honours.
+
+**Double-clicking a day opens `/log` for it.** Reading the week and adding to it are the
+two things anyone does here, and the second used to mean finding the day, then the shelf,
+then the date field again. The single click still does the cheap, reversible thing and
+the second commits — and it deliberately does *not* debounce the first, which would cost
+every ordinary click a quarter-second wait to serve the rarer gesture. `dblclick` fires
+after both clicks, so the page has already re-anchored to that day, which is wanted
+anyway before leaving it.
+
+The strip reports both gestures through callbacks and navigates from neither: where a
+click goes is the page's business, which is what keeps the module mountable somewhere
+that answers differently. It is an accelerator, never the only route — the caption under
+the grid and every cell's `aria-label` both name it, so it is not pointer-only lore.
+
+The shelf became **Routines, keeping chapter 02**, so Log, Weekly summary and Graph did
+not renumber around the change: a chapter mark you can navigate by is one that stays put.
+
+## The trainer setup
+
+Phase 6. Until then every user was graded against one set of targets. `app/training.py`
+keeps `MUSCLE_TARGETS` as the *baseline* and scales it by two things the user knows about
+themselves: how long they have been training (`EXPERIENCE_LEVELS`) and how much time they
+intend to spend (`SessionPlan`).
+
+**The two combine with `min`, not by multiplying**, and that is the whole model:
+
+> your target is the smaller of what your experience asks for and what your week can hold.
+
+Multiplying was the first attempt and it double-counts. Training three short sessions
+*is* how a beginner's lower volume shows up, so applying both factors charged them twice
+for one fact and drove every group onto the floor. Under `min` the session plan can only
+ever reduce a target — which is the honest direction, since more hours available is not a
+reason for the app to ask for more sets, but fewer hours is a reason it cannot ask for as
+many.
+
+One consequence is worth knowing before it reads as a bug: `REFERENCE_PLAN` is defined as
+the week the baseline targets already describe, so **switching to Advanced without
+lengthening the week changes nothing.** An advanced lifter asking for 1.3× the volume has
+to find 1.3× the time. `limited_by` in the payload names which input is binding, and the
+summary page says so in words, because the plan is the one the user can act on.
+
+What is sourced and what is convention:
+
+| | Status |
+| --- | --- |
+| `MIN_GROUP_TARGET = 4` | **Sourced** — the floor at which a muscle responds at all (Pelland et al. 2025) |
+| `volume_scale` per level (0.6 / 1.0 / 1.3) | Convention. Tune freely; do not defend as findings |
+| `SESSION_OVERHEAD_MINUTES = 10` | Judgement. Fixed per session, which is why 2 × 30 holds fewer working sets than 1 × 60 |
+| `REFERENCE_PLAN` (5 × 75) | Derived, and the arithmetic is in the docstring: 180 weighted units ÷ ~2.0 per set ≈ 90 sets ≈ 315 working minutes |
+
+**No ownership yet.** Phase 5 makes this a column on the user row; until then it is a
+`localStorage` preference sent with each request (`experience`/`sessions`/`minutes`), and
+`resolve_profile` treats every input as untrusted — falling back and clamping rather than
+raising, the same discipline `window` follows on the graph. The API shape does not change
+when Phase 5 lands.
+
+**The client never computes a target.** It sends the three values and renders
+`profile.targets` from the response. `/progress` sends them too, because node colour *is*
+the body map's grading and the two pages must not disagree about one week.
+
+### Asking once, on first run
+
+The setup's default is a guess about a stranger, so `onboarding.js` puts the question
+once, in a `<dialog>` booted from `base.html` beside the timer and the theme toggle.
+Three rules keep it from becoming a nag:
+
+- **It runs on the app pages only.** `data-page` gates it: `/` and `/how-to-use` are
+  static, make no API calls, and must render identically for any visitor — and `/` is
+  pinned to exactly one screen. A dialog over either would break the one property that
+  makes them worth having before auth exists.
+- **Skipping is an answer.** `bodyshop:onboarded` is written by both exits, and by
+  `Escape`. It is deliberately a *separate* key from the stored profile: were they the
+  same, someone who skipped would be asked on every visit, and someone who cleared only
+  their preferences would never be asked again — both backwards.
+- **A browser with storage blocked is treated as already asked**, since a question whose
+  answer cannot be recorded would reappear on every page load.
+
+Answering reloads the page. Everything on screen was fetched and graded before the
+answer existed, and one request on a page that has just opened is cheaper than a
+partial re-render that could leave two targets on screen at once.
+
 ## The volume scale
 
 `app/services/summary.py::summarise_entries` produces, for each of the twelve groups
@@ -268,11 +486,13 @@ in `MUSCLE_GROUPS`:
 
 `intensity` restarts at the bottom of the new ramp when a group crosses its target,
 so the two scales are read independently — a group is never "dark green *and* faintly
-red". Targets come from `exercises.py::MUSCLE_TARGETS`: 20 sets a week for the large
+red". Targets come from the trainer setup (above), which scales
+`exercises.py::MUSCLE_TARGETS`: at the default setup, 20 sets a week for the large
 groups (chest, back, shoulders, quads, hamstrings, glutes) and 10 for the small ones
-(abs, biceps, triceps, forearms, traps, calves), which recover on less volume.
-Overshoot saturates at half the target, so one extra set is a visible step on either
-scale.
+(abs, biceps, triceps, forearms, traps, calves), which recover on less volume. **Nothing
+downstream may hard-code those two numbers** — `summarise_entries` takes a profile and
+every consumer reads `target` off the group. Overshoot saturates at half the target, so
+one extra set is a visible step on either scale.
 
 The front-end does no grading of its own: `summary.js` writes `intensity` to a
 `--level` custom property and toggles `.is-worked` / `.is-over` on every element with
@@ -363,23 +583,49 @@ before there was anything to overlay.
 movements performed on the same day. Added in Phase 4.5 as the redesign's signature
 element, and scoped hard to data that already exists.
 
-**The encodings are the app's own thesis, not a borrowed one.** Node size is
-cumulative non-warmup sets. Node colour is the *current* weekly coverage state of the
-movement's primary muscle — the same `state`/`intensity` pair the body map uses, so
-the two pages cannot disagree about a week. Edge opacity is how many days two
-movements were logged together. Nothing here is strength-relative: the app stores no
-bodyweight, computes no 1RM, and pre-Phase-4 history has `NULL` weights, so a
-strength-standard colouring would be a fabricated number wearing the same clothes as
-the sourced ones. That is [Phase 7](ROADMAP.md) work, and when it lands a lift with no
-benchmark must render as a hollow ring rather than a guess.
+**The encodings are the app's own thesis, not a borrowed one.** Node colour is the
+*current* weekly coverage state of the movement's primary muscle — the same
+`state`/`intensity` pair the body map uses, so the two pages cannot disagree about a
+week. Edge opacity is how many days two movements were logged together.
+
+**Node size answers one of two questions, and the reader picks which** (Phase 6.7):
+cumulative non-warmup sets, or the best single the movement's sets support. The second
+is *your own best from your own log*, estimated with Epley — arithmetic on data the
+user typed in, not a benchmark imported from elsewhere. A strength **standard** — what
+someone of your bodyweight "should" press — remains out, and always was: the app stores
+no bodyweight and has no business ranking anyone against a population.
+
+The honesty rule this module wrote down *before* the data to break it existed is now
+enforced rather than aspirational: **a movement with no recorded load has no estimate and
+draws as a hollow ring.** Sizing it at zero would claim it is light, which is a different
+and false statement from "not measured". Bodyweight work and every pre-Phase-4 row land
+there, so the payload also reports `measured` — how much of the drawing can be sized at
+all — because a canvas of rings should explain itself rather than look broken.
+
+**There is no minimum node count.** Until Phase 6.7 the page refused to draw below
+fifteen movements and showed a ranked list with a note about what would unlock the
+picture. That was backwards for the one visual the app has: a new user met an
+explanation of something they could not see, and the drawing then arrived all at once
+rather than growing. `SPARSE_GRAPH_NODES` survives only as a note under the canvas, so a
+two-node picture says it is early instead of pretending to be a map.
+
+Switching the size question is a **re-draw, never a refetch and never a re-simulation** —
+both numbers are already in the payload, and the layout fingerprint ignores size for
+exactly the reason it ignores colour.
 
 **Orphans are the point.** Movements logged fewer than `ORPHAN_MIN_SESSIONS` times, or
 not inside `ORPHAN_STALE_WEEKS`, are pushed to a ring outside the core and drawn as
 hollow rings. Both thresholds are opinion, so they are named constants with docstrings
 — the same discipline `REGION_NEGLECT_SHARE` follows. They are also listed in words
 below the canvas, because a force-directed graph that is only a hairball is
-decoration; the written list is the finding, and it is the whole page below
-`MIN_GRAPH_NODES` movements, where the drawing would be a list with extra steps.
+decoration; the written list is the finding, and it stands whether or not the drawing
+above it is dense enough to read.
+
+Note the graph now carries **two** kinds of hollow ring, and they mean different
+things. Bone means *fallen out of the training*; the muscle's own coverage colour means
+*no load recorded*, so it still says what the movement feeds while saying it cannot be
+sized. The legend only shows the second under the strength view, where it is the only
+place it can occur.
 
 Three implementation decisions worth keeping:
 
@@ -439,33 +685,15 @@ because the new edges had no colours yet.
 
 ## Data model
 
-Three tables, defined in [`app/tables.py`](../app/tables.py). Entries are
-append-only rows; there is no per-day "workout" record, which keeps logging a
-single insert and makes range queries trivial.
+Two tables, defined in [`app/tables.py`](../app/tables.py). Entries are append-only
+rows; there is no per-day "workout" record, which keeps logging a single insert
+and makes range queries trivial.
 
 ```sql
-user(id UUID, email TEXT UNIQUE, created_at TIMESTAMPTZ)
-workout_entry(id, user_id -> user ON DELETE CASCADE, entry_date DATE,
-              exercise_id TEXT, created_at TIMESTAMPTZ)
+workout_entry(id, entry_date DATE, exercise_id TEXT, created_at TIMESTAMPTZ)
 workout_set(id UUID, entry_id -> workout_entry ON DELETE CASCADE,
             set_index INTEGER, weight REAL, reps INTEGER, rpe REAL, set_type TEXT)
 ```
-
-`user` is a **mirror** of Supabase's `auth.users`, not a source of truth. It
-exists because `user_id` has to be a real foreign key on both dialects and
-SQLite has no `auth.users` to point at, and it deliberately carries no
-`password_hash` (Supabase owns the credential) and no `verified_at` (a mirrored
-verification flag drifts invisibly until someone is wrongly let in or wrongly
-kept out). Rows appear just-in-time on the first authenticated request; there is
-no signup webhook.
-
-Both foreign keys cascade, so deleting an account is one `DELETE FROM "user"`
-with no cascade handling in Python — and Phase 7's `body_metric` and Phase 8's
-`custom_exercise` inherit that simply by declaring the same FK.
-
-`idx_workout_entry_user_date` is ordered `(user_id, entry_date)` because that is
-the order every query in `models.py` uses: filter to one user, then range over
-dates.
 
 `workout_entry.sets` was an integer column until Phase 4. It is now **derived**:
 `WorkoutEntry.sets` counts child rows whose `set_type` is not `warmup`. A
@@ -529,6 +757,11 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
 ## Testing strategy
 
 - `tests/test_weeks.py` — boundary maths, no app needed.
+- `tests/test_training.py` — the trainer setup, also pure: that the two inputs
+  combine with `min` rather than by multiplying, that a plan beyond the level
+  stops raising targets, that the 2:1 shape of the week survives scaling, that
+  nothing falls below the four-set floor, and that `resolve_profile` clamps and
+  falls back on every kind of bad input rather than raising.
 - `tests/test_exercises.py` — the catalog's contract: known slugs, unique ids, two
   frames each, no muscle both primary and secondary, the volume weights, and the
   ranking's invariants (every staple id resolves, the tiers do not interleave, every
@@ -542,8 +775,13 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
 - `tests/test_api.py` — every endpoint, including the validation failure modes.
 - `tests/test_graph.py` — the training graph's rules: the warm-up exclusion reaching
   both nodes and edges, that no edge survives pointing at a movement that is not a
-  node, the co-occurrence count, and the orphan thresholds asserted directly so
-  changing one is a deliberate edit.
+  node, the co-occurrence count, the orphan thresholds asserted directly so changing
+  one is a deliberate edit, and — since Phase 6.7 — that a single movement still draws,
+  that bests are window-scoped, and that a movement with no load carries `best: null`.
+- `tests/test_strength.py` — the one-rep-max estimate, pure. Weighted toward the cases
+  where it must **refuse**: no weight, no reps, a set too long to extrapolate from. An
+  unmeasurable movement drawing as a small node instead of a ring is the failure the
+  whole module is arranged to prevent.
 - `tests/test_pages.py` — the five pages render and contain every muscle region, and
   `/log` ships a picker shell rather than the catalog. Page markers are chosen to be
   unique to their page, since the nav links appear on all four.
@@ -565,20 +803,24 @@ which is the difference between seconds and minutes against a hosted database.
 
 ## Deliberate limitations
 
-- **No per-user preferences.** The kg/lb choice still lives in `localStorage`, not
-  on the `user` row, so it does not follow you between devices. Moving it is a
-  Phase 7 nicety, not a blocker.
-- **No rate limiting of our own.** Supabase rate-limits the credential endpoints,
-  and our API is bearer-only with no credential to brute-force against it. Revisit
-  if Phase 6's host does not provide it.
+- ~~**Single user.**~~ **Reversed by Phase 5.** Every row carries a `user_id`
+  and the account lives in a mirrored `user` table. What follows described the
+  pre-Phase-5 shape: there was no auth and no `user_id` column; the database was
+  whoever's machine it runs on. Adding accounts means a `user` table and a foreign
+  key on `workout_entry`.
 - **No connection pooling of our own on Postgres.** `NullPool` is deliberate: both
   Supabase and Neon put a pooler in front, and a second pool inside a serverless
   function exhausts connection limits at trivial traffic. Under a long-lived
   process (gunicorn) this trades a little latency for that safety.
-- **No strength-relative marks.** Weight, reps and RPE are stored per set as of
-  Phase 4, but nothing computes a 1RM or a PR: no bodyweight is stored and
-  pre-Phase-4 history has `NULL` weights, so any such mark would be a guess. See
-  [Phase 7](ROADMAP.md).
+- **No strength standard, and no bodyweight.** Phase 6.7 added an estimated one-rep
+  max from your own sets, but the app still stores no bodyweight and compares you to
+  no one — so it can say "you have pressed the equivalent of 98 kg" and cannot say
+  "that is intermediate". Whether it ever should is a product question, not a missing
+  feature.
+- **No PR detection.** The best is recomputed per window rather than recorded when it
+  happens, so nothing notices or announces a new one. That is [Phase 8](ROADMAP.md).
+- **No editing.** Entries and sets are append-only; a mistake is deleted and
+  re-logged. Also Phase 8.
 - **One `shoulders` group.** The catalog distinguishes front, side and rear raises in
   its facets, but the map shades a single deltoid region. Splitting into three is a
   data change plus SVG paths, not a re-model — see [ROADMAP.md](ROADMAP.md).

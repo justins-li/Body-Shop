@@ -88,6 +88,8 @@ it once and filters client-side, and including them quadruples the payload. Use
       "force": "push",
       "mechanic": "compound",
       "counts_toward_volume": true,
+      "weight_mode": "barbell",
+      "is_bodyweight": false,
       "rank": 0
     }
   ]
@@ -105,6 +107,8 @@ it once and filters client-side, and including them quadruples the payload. Use
 | `force` | `push`, `pull`, `static` or `null`. |
 | `mechanic` | `compound`, `isolation` or `null`. |
 | `counts_toward_volume` | `false` for stretching, cardio and plyometrics — still loggable, but graded as zero sets. |
+| `weight_mode` | How a weight recorded against this movement should be read. Derived from `equipment`, never stored — see the table below. |
+| `is_bodyweight` | `true` when a recorded weight means weight **added to the lifter** (a belt or a vest) rather than the load itself. Equivalent to `weight_mode == "bodyweight"`. |
 | `rank` | How prominently to offer the movement, **lower first**. Not a field of the source data: it is Body Shop's "common lifts first" ordering (`STAPLE_EXERCISE_IDS` in `app/exercises.py`). `0`–~130 are the curated staples in order; `1000+` is everything else, ordered by `mechanic`, `level` and `equipment`, with zero-volume categories last. Sort on it; do not read meaning into the number. |
 
 The twelve muscle group slugs are `chest`, `abs`, `shoulders`, `biceps`, `forearms`,
@@ -112,6 +116,41 @@ The twelve muscle group slugs are `chest`, `abs`, `shoulders`, `biceps`, `forear
 
 Ids come from [free-exercise-db](https://github.com/yuhonas/free-exercise-db) and are
 case-sensitive (`Barbell_Squat`, `Sit-Up`, `3_4_Sit-Up`).
+
+### Weight modes
+
+`weight` on a set is always a number of kilograms, but **what that number is a weight
+*of*** depends on the equipment. A client that renders every movement the same way gets
+it wrong for most of the catalog — which is what Phase 6.5 fixed.
+
+| `weight_mode` | Equipment | The number means | Plate breakdown |
+| --- | --- | --- | --- |
+| `barbell` | `barbell` | Total on the bar, bar included | Yes, 20 kg / 45 lb bar |
+| `ez_bar` | `e-z curl bar` | Total on the EZ bar, bar included | Yes, 10 kg / 25 lb bar |
+| `dumbbell` | `dumbbell` | Per dumbbell, **not** the pair's total | No |
+| `kettlebell` | `kettlebells` | Per bell | No |
+| `stack` | `cable`, `machine` | The stack setting as marked | No |
+| `unweighted` | `foam roll` | **Nothing.** No weight field is offered at all | No |
+| `bodyweight` | `body only`, `none` | Weight **added** to the lifter; usually `null` | No |
+| `implement` | `bands`, `medicine ball`, `exercise ball`, `other` | Whatever the implement is marked as | No |
+
+Two consequences for a client:
+
+- **Never draw a bar where there is no bar.** Only the two barbell modes have one.
+  Printing "20 kg bar + 12.5 per side" under a cable pulldown is arithmetic about
+  equipment that is not in the room.
+- **`unweighted` is not `bodyweight`.** A foam roller weighs what it weighs, there is
+  no heavier one, and nothing straps to it — so the column is meaningless rather than
+  usually-blank. Clients must draw no weight field and no way back to one; `bodyweight`
+  hides the field behind a toggle, this removes it.
+- **A `bodyweight` weight is additive and must be marked as such.** `20` on a pull-up
+  and `20` on a curl are the same stored number meaning different things, so a set line
+  reads `+20kg × 8` for the first and `20kg × 8` for the second.
+
+The mapping is derived at read time from `equipment` and lives in
+`EQUIPMENT_WEIGHT_MODES` in [app/exercises.py](../app/exercises.py). Every equipment
+value in the catalog must appear there — an unmapped one raises `CatalogError` at
+import rather than silently falling through to a default.
 
 ---
 
@@ -215,6 +254,105 @@ error.
 
 ---
 
+## `GET /api/routines`
+
+The suggested sessions — Phase 8.1. The **light** shape: no exercises, for the same
+reason `GET /api/exercises` omits images. Five routines' worth of photographs to render
+five cards is most of a megabyte nobody looked at.
+
+```json
+{
+  "routines": [
+    {
+      "key": "push",
+      "name": "Push day",
+      "focus": "Chest, shoulders, triceps",
+      "blurb": "Everything that presses. …",
+      "level": "intermediate",
+      "total_sets": 19,
+      "minutes": 75,
+      "experimental": false,
+      "inspired_by": null,
+      "source": null
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `key` | Stable id, used by `GET /api/routines/<key>`. |
+| `focus` | What the session trains, in the words someone would use to choose it. |
+| `total_sets` | Sum of the prescribed sets. |
+| `minutes` | **Derived** from `total_sets`, never typed — see `estimate_minutes` in `app/routines.py`. Rounded to five, because it is not known better than that. A session that does not work at the usual pace (a continuous band circuit) carries its own per-set cost; the duration is still derived from the sets. |
+| `experimental` | `true` for a session **reconstructed from published coverage of a real athlete's training**. Clients must show it as such. |
+| `inspired_by` | Whose training it approximates. Always present when `experimental`, `null` otherwise — checked at import. |
+| `source` | Where the reporting came from, so the claim is checkable. Same rule. |
+
+---
+
+## `GET /api/routines/<key>`
+
+One routine with its exercises hydrated — the catalog joined on, plus images and
+instructions. One request rather than one per movement: the page shows every exercise at
+once, so six round trips would be six chances to render half a routine.
+
+```json
+{
+  "routine": {
+    "key": "push",
+    "name": "Push day",
+    "focus": "Chest, shoulders, triceps",
+    "blurb": "Everything that presses. …",
+    "level": "intermediate",
+    "total_sets": 19,
+    "minutes": 75,
+    "exercises": [
+      {
+        "exercise_id": "Barbell_Bench_Press_-_Medium_Grip",
+        "name": "Barbell Bench Press - Medium Grip",
+        "sets": 4,
+        "reps": "6-8",
+        "note": "Flat, heaviest first.",
+        "primary": ["Chest"],
+        "secondary": ["Shoulders", "Triceps"],
+        "weight_mode": "barbell",
+        "counts_toward_volume": true,
+        "images": ["https://cdn.jsdelivr.net/…/0.jpg", "https://cdn.jsdelivr.net/…/1.jpg"],
+        "instructions": ["Lie back on a flat bench. …"]
+      }
+    ]
+  }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `sets` | Working sets prescribed. A whole number, and what `minutes` is built from. |
+| `reps` | Rep guidance **as written** — a string, because `"8-10"`, `"max"` and `"30-40 m"` are all things a routine legitimately says and none of them are arithmetic. |
+| `note` | Why this movement is in this routine, in one line. |
+| `primary` / `secondary` | Display labels (`"Chest"`), not slugs — this payload is for rendering a card. |
+| `weight_mode` | So the quick log can head its weight column correctly. See [Weight modes](#weight-modes). |
+
+**404** with `{"error": "Unknown routine: …"}` if the key is not one of the routines.
+
+**The `experimental` tag is not decoration.** Those routines are second-hand, often
+years old, and separated from the coaching, the training age and the rest of the week
+that made them make sense for that person. Nobody named has endorsed anything, movements
+are mapped onto the nearest catalog entry, and a client that renders these without the
+tag is making a claim the API does not. Attribution is enforced at import: an
+`experimental` routine with no `inspired_by`/`source` — or an attributed routine that is
+not tagged — raises `RoutineError`.
+
+**Logging from a routine uses `POST /api/entries` like anything else.** There is no
+routine-specific write endpoint, and deliberately: a set recorded while following a
+routine is the same object as one typed on `/log`, and it reaches the weekly summary the
+same way. The prescription is a *suggestion* — clients must render `sets` and `reps` as
+placeholders, never as values, or the log records what the routine said instead of what
+happened.
+
+---
+
 ## `GET /api/entries`
 
 List workout entries, newest first.
@@ -236,6 +374,7 @@ With no parameters, returns every entry.
       "exercise_id": "Barbell_Bench_Press_-_Medium_Grip",
       "exercise_name": "Barbell Bench Press - Medium Grip",
       "muscles": ["chest", "shoulders", "triceps"],
+      "weight_mode": "barbell",
       "set_count": 2,
       "sets": [
         {
@@ -263,6 +402,11 @@ With no parameters, returns every entry.
 `muscles` is `primary + secondary` and does not say which is which — fetch the
 exercise if you need the split.
 
+`weight_mode` rides on the entry so a rendered set line does not need a second request
+for the catalog: it is the same value the exercise payload carries, and it is what tells
+a client to print `+20kg × 8` rather than `20kg × 8` for a weighted pull-up. See
+[Weight modes](#weight-modes).
+
 `set_count` is the number of sets counting toward weekly volume — **warm-up sets are
 stored but excluded from it**, same as everywhere else volume is counted. `sets` is
 every set the entry has, in logged order, including warm-ups.
@@ -271,7 +415,7 @@ every set the entry has, in logged order, including warm-ups.
 | --- | --- |
 | `id` | A UUID, unique per set. |
 | `set_index` | 1-based position within the entry, assigned by submission order. |
-| `weight` | Kilograms. `null` when not recorded. |
+| `weight` | Kilograms. `null` when not recorded. Read it through the entry's `weight_mode` — under `bodyweight` it is weight *added* to the lifter, not the load. |
 | `reps` | `null` when not recorded. |
 | `rpe` | `null` when not recorded. |
 | `set_type` | One of `normal`, `warmup`, `drop`, `failure`. |
@@ -369,6 +513,19 @@ day of only warm-ups is indistinguishable from a day with nothing logged.
 The weekly muscle-coverage summary for the week containing `date` (defaults to
 today). This is the endpoint that drives the body map.
 
+| Query param | Default | Notes |
+| --- | --- | --- |
+| `date` | Today | Any day inside the week wanted. |
+| `experience` | `experienced` | `beginner`, `experienced` or `advanced`. |
+| `sessions` | `5` | Sessions a week, clamped to 1–14. |
+| `minutes` | `75` | Minutes a session, clamped to 15–240. |
+
+The last three are the **trainer setup** (Phase 6) and they decide every group's
+`target`. See [Trainer setup](#trainer-setup) below. **None of them 400 on a bad
+value** — they arrive from a view control, so an unknown level falls back to the
+default and out-of-range numbers are clamped, the same rule `window` follows on the
+graph endpoint.
+
 Example below: 12 sets of barbell bench press (primary chest; secondary shoulders and
 triceps). Groups omitted for brevity all look like `abs`.
 
@@ -379,6 +536,16 @@ Warm-up sets are excluded from every count on this page — `total_sets`, each g
 {
   "week_start": "2026-07-27",
   "week_end": "2026-08-02",
+  "profile": {
+    "experience": "experienced",
+    "label": "Experienced",
+    "shows_rpe": false,
+    "volume_scale": 1.0,
+    "limited_by": "experience",
+    "sessions_per_week": 5,
+    "minutes_per_session": 75,
+    "targets": { "chest": 20, "abs": 10, "...": 0 }
+  },
   "total_sets": 12,
   "total_entries": 1,
   "muscles": {
@@ -431,11 +598,40 @@ mark a group `worked`.
 `worked` is `true` when the week gave the group any volume at all — including a
 single set at half weight.
 
+### Trainer setup
+
+`profile` is the resolved trainer setup, echoed back beside the grading it produced.
+**Clients must render `profile.targets` rather than re-deriving them** — the scaling
+rule lives in [app/training.py](../app/training.py) and a second implementation on the
+client is a disagreement waiting to happen.
+
+| Field | Meaning |
+| --- | --- |
+| `experience` / `label` | The chosen level and its display name. |
+| `shows_rpe` | Whether `/log` should offer an RPE field. `true` for `advanced` only. |
+| `volume_scale` | The single multiplier applied to every baseline target. |
+| `limited_by` | `experience` or `plan` — which of the two inputs is holding the targets down. Say so on screen: the plan is the one the user can change. |
+| `sessions_per_week` / `minutes_per_session` | The session plan, after clamping. |
+| `targets` | Every group's resolved weekly target. Always integers. |
+
+The two inputs combine with **`min`, never by multiplying**: your target is the smaller
+of what your experience asks for and what your week can hold. Training fewer hours *is*
+how a lower experience level shows up, so applying both charges for the same fact twice.
+A plan roomier than the baseline therefore changes nothing — having the time to train
+more is not a reason for the app to ask for more sets.
+
+No target ever falls below **4 sets a week**, the literature's approximate floor for a
+muscle responding at all. That is the one sourced number in the module; the level
+multipliers and the per-session overhead are named conventions. All of it is argued in
+[docs/VOLUME_SCIENCE.md](VOLUME_SCIENCE.md).
+
 ### Volume grading
 
-Each group also reports how its volume compares to a weekly `target` — 20 sets for
-the large groups (chest, back, shoulders, quads, hamstrings, glutes), 10 for the small
-ones (abs, biceps, triceps, forearms, traps, calves).
+Each group also reports how its volume compares to a weekly `target`. At the default
+setup that is 20 sets for the large groups (chest, back, shoulders, quads, hamstrings,
+glutes) and 10 for the small ones (abs, biceps, triceps, forearms, traps, calves); the
+trainer setup scales both together, so **do not hard-code either number** — read
+`target` off the group, or `profile.targets`.
 
 | Field | Meaning |
 | --- | --- |
@@ -492,6 +688,7 @@ added.
 | --- | --- | --- |
 | `window` | `8w` | `8w`, `6m`, `all` |
 | `date` | Today | Anchors both ends of the window *and* the colouring week |
+| `experience`, `sessions`, `minutes` | See above | The trainer setup, which decides the targets `coverage` is graded against |
 
 ```json
 {
@@ -506,7 +703,25 @@ added.
       "sets": 24,
       "sessions": 6,
       "last_logged": "2026-07-28",
-      "orphan": false
+      "orphan": false,
+      "weight_mode": "barbell",
+      "best": {
+        "one_rep_max": 116.7,
+        "weight": 100.0,
+        "reps": 5,
+        "achieved_on": "2026-07-24"
+      }
+    },
+    {
+      "exercise_id": "Pullups",
+      "name": "Pullups",
+      "primary_muscle": "back",
+      "sets": 12,
+      "sessions": 4,
+      "last_logged": "2026-07-27",
+      "orphan": false,
+      "weight_mode": "bodyweight",
+      "best": null
     }
   ],
   "edges": [
@@ -515,8 +730,9 @@ added.
   "coverage": {
     "quads": { "state": "trained", "intensity": 0.6 }
   },
-  "graph_ready": true,
-  "min_nodes": 15
+  "measured": 1,
+  "sparse": false,
+  "sparse_below": 15
 }
 ```
 
@@ -539,20 +755,57 @@ nodes, so the graph and the body map cannot say different things about the same 
 Note it is the week containing `date`, *not* the whole window: the question the page
 answers is what this training is feeding now.
 
+That is also why the trainer setup has to be sent here too. Node colour *is* the body
+map's grading, so a graph fetched without the profile the summary page is using would
+be graded against different targets and the two pages would disagree about one week.
+
 `orphan` marks a movement that has fallen out of the training — logged fewer than
 three times, or nothing in eight weeks. Both thresholds are **judgement, not
 evidence**, and live as named constants in `app/services/graph.py` for the same reason
 `REGION_NEGLECT_SHARE` does.
 
-`graph_ready` is false below `min_nodes` movements, where a force-directed graph is a
-list with extra steps. `/progress` shows the neglected-movement list alone and says
-what unlocks the drawing.
+### Personal bests
 
-**Not here, and deliberately:** nothing strength-relative. Node size is set count, not
-volume-load or estimated 1RM, because the app stores no bodyweight, computes no 1RM,
-and pre-Phase-4 history has `NULL` weights — any such mark would be a guess. That is a
-Phase 7 addition, and when it lands a lift with no benchmark must render as a hollow
-ring rather than a fabricated number.
+`best` is the heaviest single the movement's sets in this window support, estimated
+with Epley (`weight × (1 + reps / 30)`) in `app/services/strength.py`. It is **your own
+best, from your own log** — not a strength standard. Nothing in this API compares a user
+to a population; the app stores no bodyweight and has no business ranking anyone.
+
+| Field | Meaning |
+| --- | --- |
+| `one_rep_max` | The estimate, in kilograms. A logged single passes through untouched — it is the lift, not an estimate. |
+| `weight` / `reps` | The actual set it came from, so a client can show its working. |
+| `achieved_on` | When that set was performed. Ties go to the **earlier** date: a best is when you first reached it. |
+
+**`best` is `null` whenever no set can support an estimate** — bodyweight movements,
+rows logged as a bare count, and everything from before Phase 4 added the weight column.
+Clients **must draw a hollow ring rather than a small node**: an unmeasured lift is not
+a light lift, and sizing it at zero states something false. `weight_mode` rides alongside
+so a client can say *why* there is no number.
+
+Sets longer than 12 reps are ignored for the estimate rather than extrapolated — every
+rep-max formula drifts badly past ten, and Epley on a 20-rep set reports a single 67%
+above the bar. Warm-ups are excluded, as everywhere else: on movements where the warm-up
+is the heaviest thing logged it would routinely beat the real work.
+
+Bests are scoped to the **window**, not to all time. A lifetime figure would keep a
+movement large long after it was dropped, which is the opposite of what `orphan` is for.
+
+`measured` counts the nodes carrying a `best`, so a client can say "6 of 14 movements
+sized by load" rather than leaving a canvas of rings looking broken.
+
+### There is no longer a minimum
+
+`sparse` is **a note, not a gate**. Before Phase 6.7 the response carried `graph_ready`
+and `/progress` refused to draw below fifteen movements — which meant a new user met an
+explanation of a picture they could not see, and the picture then arrived all at once
+instead of growing. The graph now draws from the first logged movement; `sparse` (with
+`sparse_below`) only says whether it is dense enough to read as a *shape* yet. The one
+case with nothing to draw is an empty window.
+
+**Still not here, and deliberately:** a strength *standard*. Colouring or sizing against
+what someone of a given bodyweight "should" lift needs a bodyweight the app does not
+store and a population comparison it does not make.
 
 ---
 

@@ -12,13 +12,14 @@ from datetime import date
 from flask import Blueprint, current_app, g, jsonify, request
 
 from .exercises import all_exercises, get_exercise
+from .routines import all_routines, get_routine
 from .models import (
-    ValidationError,
-    add_entry,
-    delete_entry,
     delete_user,
     ensure_user,
     get_user,
+    ValidationError,
+    add_entry,
+    delete_entry,
     last_sets_for_exercise,
     list_entries,
     parse_date,
@@ -29,6 +30,7 @@ from .services.auth import AuthError, decode_token, delete_auth_user
 from .services.graph import DEFAULT_WINDOW, training_graph
 from .services.summary import weekly_summary
 from .services.weeks import month_bounds, week_bounds
+from .training import TrainerProfile, resolve_profile
 
 bp = Blueprint("api", __name__, url_prefix="/api")
 
@@ -51,6 +53,22 @@ def _query_date(name: str, default: date | None = None) -> date:
 
 def _image_base() -> str:
     return str(current_app.config.get("EXERCISE_IMAGE_BASE", ""))
+
+
+def _query_profile() -> TrainerProfile:
+    """Read the trainer setup off the query string.
+
+    Phase 5 moves this onto the user row; until there is a user, the choice is a
+    client preference and arrives with the request. Bad values fall back to the
+    default rather than 400-ing — same reasoning as ``window`` on the graph
+    endpoint. A stale ``localStorage`` key should show the usual targets, not
+    blank the summary page.
+    """
+    return resolve_profile(
+        request.args.get("experience"),
+        request.args.get("sessions"),
+        request.args.get("minutes"),
+    )
 
 
 def _unauthorised():
@@ -99,9 +117,9 @@ def require_user(view):
     return wrapped
 
 
-# Public, deliberately. The catalog is public-domain data that ships in the
-# repo and the week-bounds endpoint is arithmetic over a query parameter;
-# gating either would buy nothing and would leave /login unable to render.
+# Public, deliberately. The catalog and the routines are public-domain data
+# that ship in the repo, and week bounds are arithmetic over a query parameter;
+# gating any of them would leave /login unable to render.
 @bp.get("/exercises")
 def get_exercises():
     """The whole catalog, in its light shape.
@@ -168,6 +186,50 @@ def get_last_sets(exercise_id: str):
     )
 
 
+@bp.get("/routines")
+def get_routines():
+    """Every suggested routine, without its exercises' images or instructions.
+
+    The **light** shape, for the same reason ``/api/exercises`` has one: the
+    listing needs a name, a focus and a time estimate, and hydrating five
+    routines' worth of photographs to render five cards is most of a megabyte
+    nobody looked at.
+    """
+    return jsonify(
+        {
+            "routines": [
+                {
+                    key: value
+                    for key, value in routine.to_dict().items()
+                    if key != "exercises"
+                }
+                for routine in all_routines()
+            ]
+        }
+    )
+
+
+@bp.get("/routines/<key>")
+def get_routine_detail(key: str):
+    """One routine with its exercises hydrated — images, instructions and all.
+
+    One request rather than one per movement: the page shows every exercise at
+    once, so six round trips would be six chances to render half a routine.
+    """
+    routine = get_routine(key)
+    if routine is None:
+        return jsonify({"error": f"Unknown routine: {key!r}."}), 404
+
+    base = _image_base()
+    payload = routine.to_dict()
+    for item in payload["exercises"]:
+        exercise = get_exercise(item["exercise_id"])
+        detail = exercise.to_detail_dict(base)
+        item["images"] = detail["images"]
+        item["instructions"] = detail["instructions"]
+    return jsonify({"routine": payload})
+
+
 @bp.get("/entries")
 @require_user
 def get_entries():
@@ -232,9 +294,14 @@ def get_calendar():
 @bp.get("/summary/week")
 @require_user
 def get_weekly_summary():
-    """Weekly muscle-coverage summary for the week containing ``date``."""
+    """Weekly muscle-coverage summary for the week containing ``date``.
+
+    ``experience``, ``sessions`` and ``minutes`` carry the Phase 6 trainer setup
+    and decide what each group's target is. The resolved profile comes back in
+    the payload, so the page renders the targets it was graded against.
+    """
     day = _query_date("date")
-    return jsonify(weekly_summary(g.user_id, day, _week_start()))
+    return jsonify(weekly_summary(g.user_id, day, _week_start(), _query_profile()))
 
 
 @bp.get("/progress/graph")
@@ -253,6 +320,7 @@ def get_progress_graph():
             request.args.get("window", DEFAULT_WINDOW),
             _query_date("date"),
             _week_start(),
+            _query_profile(),
         )
     )
 

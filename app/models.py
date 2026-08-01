@@ -26,7 +26,7 @@ from uuid import uuid4
 import sqlalchemy as sa
 
 from .db import get_db
-from .exercises import get_exercise
+from .exercises import DEFAULT_WEIGHT_MODE, get_exercise
 from .tables import user, workout_entry, workout_set
 
 #: The four set types. Only ``warmup`` is excluded from weekly volume.
@@ -93,6 +93,18 @@ class WorkoutEntry:
         exercise = get_exercise(self.exercise_id)
         return exercise.muscles if exercise else ()
 
+    @property
+    def weight_mode(self) -> str:
+        """How this movement's weights should be read back — Phase 6.5.
+
+        Carried on the entry so a rendered set line does not need the catalog:
+        ``+20kg × 8`` for a weighted pull-up and ``20kg × 8`` for a curl are the
+        same stored number meaning different things, and every surface that
+        lists entries has to say which.
+        """
+        exercise = get_exercise(self.exercise_id)
+        return exercise.weight_mode if exercise else DEFAULT_WEIGHT_MODE
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -100,6 +112,7 @@ class WorkoutEntry:
             "exercise_id": self.exercise_id,
             "exercise_name": self.exercise_name,
             "muscles": list(self.muscles),
+            "weight_mode": self.weight_mode,
             # Named so no client reads it as len(sets): warm-ups are in `sets`
             # but not in this count.
             "set_count": self.sets,
@@ -169,9 +182,7 @@ def delete_user(user_id: str) -> bool:
 
     One statement. ``workout_entry.user_id`` and ``workout_set.entry_id`` are
     both ``ON DELETE CASCADE`` and app/db.py enables SQLite foreign keys per
-    connection, so there is no cascade handling to write here — and Phase 7's
-    ``body_metric`` and Phase 8's ``custom_exercise`` inherit that by declaring
-    the same FK.
+    connection, so there is no cascade handling to write here.
     """
     db = get_db()
     result = db.execute(sa.delete(user).where(user.c.id == user_id))
@@ -299,8 +310,7 @@ def _sets_for(entry_ids: list[int]) -> dict[int, list[WorkoutSet]]:
     **This is the one query in the module that does not filter by ``user_id``,
     and that is safe only because of who calls it.** Every caller passes ids
     that came out of an already-filtered query, so the join would be redundant.
-    A new caller that sources entry ids any other way — a client-supplied id, a
-    join from ``workout_set``, anything — **must** join back through
+    A new caller that sources entry ids any other way **must** join back through
     ``workout_entry`` and filter there, or it is an IDOR.
     """
     if not entry_ids:
@@ -333,7 +343,7 @@ def _entries_from(rows) -> list[WorkoutEntry]:
 def add_entry(
     user_id: str, entry_date, exercise_id: str, sets: list[dict]
 ) -> WorkoutEntry:
-    """Insert an entry and its sets, owned by ``user_id``, after validating both."""
+    """Insert an entry and its sets after validating both."""
     parsed_date, parsed_exercise = validate_entry(entry_date, exercise_id)
     rows = validate_sets(sets)
 
@@ -361,12 +371,7 @@ def add_entry(
 
 
 def get_entry(user_id: str, entry_id: int) -> WorkoutEntry | None:
-    """Return one of ``user_id``'s entries with its sets, or ``None``.
-
-    Another user's id reads as absent rather than forbidden — the caller turns
-    that into a 404, which is the same answer an id that does not exist gets. A
-    403 would confirm the id is real.
-    """
+    """Return a single entry with its sets, or ``None``."""
     rows = (
         get_db()
         .execute(
@@ -384,7 +389,7 @@ def get_entry(user_id: str, entry_id: int) -> WorkoutEntry | None:
 def list_entries(
     user_id: str, start: date | None = None, end: date | None = None
 ) -> list[WorkoutEntry]:
-    """Return ``user_id``'s entries in the inclusive ``start``–``end`` range."""
+    """Return entries within the inclusive ``start``–``end`` range, with sets."""
     query = sa.select(workout_entry).where(workout_entry.c.user_id == user_id)
     if start is not None:
         query = query.where(workout_entry.c.entry_date >= start)
@@ -397,12 +402,7 @@ def list_entries(
 
 
 def delete_entry(user_id: str, entry_id: int) -> bool:
-    """Delete one of ``user_id``'s entries. ``True`` if a row was removed.
-
-    Returns ``False`` for another user's row, so the API answers 404 — identical
-    to a row that does not exist. This is the endpoint the roadmap named as the
-    live IDOR before Phase 5.
-    """
+    """Delete an entry. Returns ``True`` if a row was removed."""
     db = get_db()
     result = db.execute(
         sa.delete(workout_entry).where(
@@ -442,7 +442,7 @@ def recent_exercise_usage(user_id: str, limit: int = 12) -> list[tuple[str, int]
 
 
 def recent_exercise_ids(user_id: str, limit: int = 12) -> list[str]:
-    """Return ``user_id``'s recently-logged exercise ids, most recent first."""
+    """Return recently-logged exercise ids, most recently used first."""
     return [exercise_id for exercise_id, _uses in recent_exercise_usage(user_id, limit)]
 
 
@@ -452,9 +452,9 @@ def last_sets_for_exercise(
     """The most recent entry's sets for ``exercise_id`` — the /log prefill.
 
     **Joins back through ``workout_entry`` rather than reading ``workout_set``
-    directly**, which is what makes the ``user_id`` filter below reachable at
-    all. A set query that skipped this join would be the same IDOR as an
-    unguarded ``delete_entry``, wearing a different hat.
+    directly.** That costs nothing today and is mandatory from Phase 5: once
+    entries carry a ``user_id``, a set query that skips this join is the same
+    IDOR as an unguarded ``delete_entry``, wearing a different hat.
     """
     row = (
         get_db()
@@ -492,7 +492,7 @@ def _counted_sessions(user_id: str, start: date, end: date):
         )
         .where(
             workout_entry.c.user_id == user_id,
-            workout_entry.c.entry_date.between(start, end),
+                workout_entry.c.entry_date.between(start, end),
             workout_set.c.set_type != "warmup",
         )
         .distinct()
@@ -568,6 +568,54 @@ def exercise_co_occurrence(
         .all()
     )
     return [(row[0], row[1], int(row.days)) for row in rows]
+
+
+def loaded_sets(
+    user_id: str, start: date, end: date
+) -> list[tuple[str, float, int, date]]:
+    """Return ``(exercise_id, weight, reps, entry_date)`` for every scored set.
+
+    Backs the personal bests on ``/progress``. Only rows carrying **both** a
+    weight and a rep count come back, since a set missing either cannot support
+    a one-rep-max estimate — that filter is here because it is a statement about
+    the columns being NULL, not a training judgement. Which of the surviving
+    sets is worth an estimate is :mod:`app.services.strength`'s call.
+
+    Warm-ups are excluded, the same rule as everywhere else: a warm-up single is
+    not a personal best, and it would routinely outrank real work on movements
+    where the warm-up is the heaviest thing logged.
+
+    Ordered so the reduction downstream is deterministic on either dialect.
+    """
+    rows = (
+        get_db()
+        .execute(
+            sa.select(
+                workout_entry.c.exercise_id,
+                workout_set.c.weight,
+                workout_set.c.reps,
+                workout_entry.c.entry_date,
+            )
+            .select_from(
+                workout_entry.join(
+                    workout_set, workout_set.c.entry_id == workout_entry.c.id
+                )
+            )
+            .where(
+                workout_entry.c.user_id == user_id,
+                workout_entry.c.entry_date.between(start, end),
+                workout_set.c.set_type != "warmup",
+                workout_set.c.weight.is_not(None),
+                workout_set.c.reps.is_not(None),
+            )
+            .order_by(workout_entry.c.entry_date, workout_entry.c.id)
+        )
+        .all()
+    )
+    return [
+        (row.exercise_id, float(row.weight), int(row.reps), row.entry_date)
+        for row in rows
+    ]
 
 
 def sets_by_date(user_id: str, start: date, end: date) -> dict[str, int]:

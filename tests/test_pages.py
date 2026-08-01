@@ -1,5 +1,6 @@
 """Smoke tests for the four HTML pages."""
 
+import pathlib
 import re
 
 import pytest
@@ -13,7 +14,7 @@ from app.exercises import DEFAULT_MUSCLE_SCHEME, MUSCLE_GROUPS, MUSCLE_SCHEMES
         # The masthead's own class: the landing page's headline is its wordmark,
         # which appears in every page's header, so structure is the stable marker.
         ("/", b"home-masthead"),
-        ("/calendar", b"What you trained"),
+        ("/routines", b"Something to follow"),
         ("/log", b"New entry"),
         ("/summary", b"Sets by split"),
         ("/progress", b"Where your training lives"),
@@ -30,7 +31,7 @@ def test_pages_render(client, path, marker):
 def test_home_page_needs_no_api(client):
     """`/` is static: it must not depend on a page module or the JSON API."""
     body = client.get("/").data.decode()
-    assert "js/calendar.js" not in body
+    assert "js/routines.js" not in body
     assert "js/summary.js" not in body
 
 
@@ -62,9 +63,15 @@ def test_log_page_renders_a_picker_shell_not_the_catalog(client):
 
 
 def test_log_page_renders_a_set_grid_shell(client):
-    """Rows are built by log.js; the page ships the container and the controls."""
+    """The page ships a mount point; `setgrid.js` builds everything inside it.
+
+    Phase 8.2 moved the header, the add/repeat buttons and the added-weight
+    toggle into the component, because a routine's quick-log mounts the same
+    grid into a dialog and a grid needing a server-rendered shell could not be
+    the same grid in both places.
+    """
     body = client.get("/log").data.decode()
-    for marker in ('id="set-grid"', 'id="add-set"', 'id="weight-unit"'):
+    for marker in ('id="set-grid-mount"', 'id="weight-unit"'):
         assert marker in body
 
     # The old flat-count stepper is gone, not hidden.
@@ -83,7 +90,7 @@ def test_log_page_keeps_every_submitted_field_inside_the_form(client):
     body = client.get("/log").data.decode()
     start = body.index('<form id="entry-form"')
     end = body.index("</form>", start)
-    for field in ('id="entry-date"', 'id="exercise-id"', 'id="set-grid"'):
+    for field in ('id="entry-date"', 'id="exercise-id"', 'id="set-grid-mount"'):
         assert start < body.index(field) < end, field
 
 
@@ -203,12 +210,12 @@ def test_progress_page_ships_a_canvas_and_a_written_fallback(client):
     assert "Barbell Squat" not in body
 
 
-@pytest.mark.parametrize("path", ["/", "/calendar", "/log", "/summary", "/progress"])
+@pytest.mark.parametrize("path", ["/", "/routines", "/log", "/summary", "/progress"])
 def test_every_page_ships_the_rest_timer_strip(client, path):
     """The countdown moved into `base.html` in Phase 4.5.
 
     It used to live on `/log` alone, which killed a rest the moment you looked
-    at the calendar. The strip is now shared, and `timer.js` persists a deadline
+    at the routines. The strip is now shared, and `timer.js` persists a deadline
     so the count survives the navigation.
     """
     body = client.get(path).data.decode()
@@ -223,7 +230,7 @@ def test_only_log_ships_the_rest_duration_select(client):
     in the document, so a second copy would be silently dead.
     """
     assert client.get("/log").data.decode().count("data-timer-duration") == 1
-    for path in ("/", "/calendar", "/summary"):
+    for path in ("/", "/routines", "/summary"):
         assert "data-timer-duration" not in client.get(path).data.decode()
 
 
@@ -232,7 +239,7 @@ def test_only_log_ships_the_rest_duration_select(client):
 
 def test_the_current_page_is_never_a_shelf_beside_itself(client):
     """Leftmost is Home; the right stack is every section except this one."""
-    for path, key in [("/", "home"), ("/how-to-use", "how"), ("/calendar", "calendar"),
+    for path, key in [("/", "home"), ("/how-to-use", "how"), ("/routines", "routines"),
                       ("/log", "log"), ("/summary", "summary"), ("/progress", "progress")]:
         body = client.get(path).data.decode()
         shelves = re.findall(r'class="shelf(?: shelf-home)?" data-nav\s+href="([^"?]+)', body)
@@ -245,7 +252,7 @@ def test_the_current_page_is_never_a_shelf_beside_itself(client):
 
 def test_chapter_numbers_are_fixed_to_the_section(client):
     """A chapter that renumbers by position is not a chapter you can navigate by."""
-    expected = {"/how-to-use": "01", "/calendar": "02", "/log": "03",
+    expected = {"/how-to-use": "01", "/routines": "02", "/log": "03",
                 "/summary": "04", "/progress": "05"}
     for path in ("/", "/log", "/progress"):
         body = client.get(path).data.decode()
@@ -273,9 +280,9 @@ def _shelf_names(body, side):
 
 def test_chapters_split_around_the_open_one_and_keep_their_side(client):
     """Earlier chapters stack left, later ones right — never reshuffled."""
-    order = ["Home", "How to use", "Calendar", "Log workout", "Weekly summary", "Graph"]
+    order = ["Home", "How to use", "Routines", "Log workout", "Weekly summary", "Graph"]
     for path, name in [("/", "Home"), ("/how-to-use", "How to use"),
-                       ("/calendar", "Calendar"), ("/log", "Log workout"),
+                       ("/routines", "Routines"), ("/log", "Log workout"),
                        ("/summary", "Weekly summary"), ("/progress", "Graph")]:
         body = client.get(path).data.decode()
         cut = order.index(name)
@@ -294,6 +301,293 @@ def test_the_chapter_mark_sits_directly_above_its_name(client):
     body = client.get("/log").data.decode()
     first = body.split('class="shelf-mid"')[1]
     assert first.index("shelf-index") < first.index("shelf-name")
+
+
+# ---- Theme -----------------------------------------------------------------
+
+
+def test_every_page_carries_the_theme_toggle(client):
+    for path in ("/", "/how-to-use", "/routines", "/log", "/summary", "/progress"):
+        body = client.get(path).data.decode()
+        assert 'id="theme-toggle"' in body, path
+        assert "js/theme.js" in body, path
+
+
+def test_the_theme_is_applied_before_the_stylesheet_loads(client):
+    """A deferred script would paint one theme and then flip to the other."""
+    body = client.get("/").data.decode()
+    assert body.index("bodyshop:theme") < body.index("css/styles.css")
+    # Blocking, not a module: `type="module"` is deferred by definition.
+    head = body.split("</head>")[0]
+    assert "bodyshop:theme" in head
+    prepaint = head[head.index("bodyshop:theme") - 400:head.index("bodyshop:theme")]
+    assert "type=\"module\"" not in prepaint
+
+
+def test_both_themes_and_both_ramps_are_compiled(client):
+    """The ramp inverts with the ground, so each theme needs its own values."""
+    css = (pathlib.Path(__file__).parent.parent
+           / "app" / "static" / "css" / "styles.css").read_text(encoding="utf-8")
+    assert "bodyshop-dark" in css
+    # Cream ramp (pale -> deep) and dark ramp (dim -> lit) both present.
+    assert "#4f9068" in css and "#14432a" in css
+    assert "#428262" in css and "#5fd98a" in css
+
+
+def test_how_to_use_credits_both_leads_and_offers_contact(client):
+    body = client.get("/how-to-use").data.decode()
+    for name in ("Justin Li", "Owen Zhang"):
+        assert name in body
+    assert body.count("Lead developer") == 2
+    assert "Have questions?" in body
+    assert "mailto:" in body
+    # Portraits degrade to initials rather than a broken image.
+    assert body.count("this.remove()") == 2
+
+
+# ---- Phase 6 / 6.5 shells --------------------------------------------------
+
+
+def test_summary_ships_the_trainer_setup_controls(client):
+    """The three controls that decide every target on the page below them."""
+    body = client.get("/summary").data.decode()
+    for marker in (
+        'id="experience-select"',
+        'id="sessions-input"',
+        'id="minutes-input"',
+        'id="setup-effect"',
+    ):
+        assert marker in body, marker
+
+
+def test_summary_offers_every_experience_level(client):
+    from app.training import EXPERIENCE_LEVELS
+
+    body = client.get("/summary").data.decode()
+    for level in EXPERIENCE_LEVELS:
+        assert f'value="{level.key}"' in body
+
+
+def test_session_inputs_carry_the_servers_own_bounds(client):
+    """The markup's min/max must not drift from what `resolve_profile` clamps
+    to, so they are rendered from the same constants."""
+    from app.training import MAX_MINUTES, MAX_SESSIONS, MIN_MINUTES, MIN_SESSIONS
+
+    body = client.get("/summary").data.decode()
+    assert f'min="{MIN_SESSIONS}"' in body and f'max="{MAX_SESSIONS}"' in body
+    assert f'min="{MIN_MINUTES}"' in body and f'max="{MAX_MINUTES}"' in body
+
+
+def test_the_grid_mount_sits_inside_the_form(client):
+    """`onSubmit` reads the entry off a FormData, so everything the grid builds
+    has to land inside the form. This broke every submit once already, when the
+    date input was moved into the page header for density."""
+    body = client.get("/log").data.decode()
+    form = body[body.index('id="entry-form"'): body.index("</form>")]
+    for marker in ('id="entry-date"', 'id="set-grid-mount"'):
+        assert marker in form, marker
+
+
+# ---- First run, and the graph's new controls (Phase 6.7) -------------------
+
+
+@pytest.mark.parametrize("path", ["/routines", "/log", "/summary", "/progress"])
+def test_app_pages_ship_the_first_run_dialog(client, path):
+    """The shell rides on base.html; `onboarding.js` decides whether to open it."""
+    body = client.get(path).data.decode()
+    assert 'id="first-run"' in body
+    assert 'id="first-run-start"' in body
+    assert 'id="first-run-skip"' in body
+
+
+@pytest.mark.parametrize("path", ["/", "/how-to-use"])
+def test_static_pages_never_open_the_first_run_dialog(client, path):
+    """`/` and `/how-to-use` are static and must render identically for any
+    visitor — `/` is also pinned to exactly one screen. The module refuses to
+    open on them, and the page key it reads is what enforces it."""
+    body = client.get(path).data.decode()
+    page = "home" if path == "/" else "how"
+    assert f'initOnboarding(document.getElementById("first-run"), "{page}")' in body
+
+
+def test_first_run_offers_every_experience_level(client):
+    from app.training import EXPERIENCE_LEVELS
+
+    body = client.get("/log").data.decode()
+    for level in EXPERIENCE_LEVELS:
+        assert f'data-level="{level.key}"' in body
+
+
+def test_first_run_dialog_starts_closed(client):
+    """A `<dialog>` without `open` is display:none, so a browser with JS off —
+    or a returning user — never sees it at all."""
+    body = client.get("/log").data.decode()
+    dialog = body[body.index('<dialog class="first-run"'):]
+    assert " open" not in dialog[: dialog.index(">")]
+
+
+def test_progress_ships_the_size_control(client):
+    body = client.get("/progress").data.decode()
+    assert 'id="size-select"' in body
+    assert 'value="strength"' in body
+    assert 'id="graph-key-load"' in body
+
+
+def test_progress_no_longer_promises_a_graph_at_fifteen(client):
+    """Phase 6.7 replaced the threshold with a count that climbs. The page must
+    not still tell a new user the drawing is locked."""
+    body = client.get("/progress").data.decode().lower()
+    assert "graph_ready" not in body
+    assert "starts at one dot" in body
+
+
+# ---- Routines and the folded calendar (Phase 8) ----------------------------
+
+
+def test_calendar_redirects_to_the_week_it_was_showing(client):
+    """`/calendar` retired in Phase 8.3, but `?date=` links to it are the app's
+    own shared state — so an old link still lands on the right week."""
+    response = client.get("/calendar?date=2026-07-28")
+    assert response.status_code == 301
+    assert response.headers["Location"] == "/summary?date=2026-07-28"
+
+
+def test_the_calendar_is_now_a_strip_on_the_summary(client):
+    body = client.get("/summary").data.decode()
+    for marker in ('id="calendar-grid"', 'id="calendar-toggle"', 'id="calendar-heading"'):
+        assert marker in body, marker
+
+
+def test_the_strip_starts_collapsed(client):
+    """Seven boxes cost one row above the body map; a month would cost six."""
+    body = client.get("/summary").data.decode()
+    toggle = body[body.index('id="calendar-toggle"'):]
+    assert 'aria-expanded="false"' in toggle[: toggle.index(">") + 1]
+    assert "Show the month" in body
+
+
+def test_routines_page_lists_every_routine(client):
+    from app.routines import ROUTINES
+
+    body = client.get("/routines").data.decode()
+    for routine in ROUTINES:
+        assert f'data-routine="{routine.key}"' in body
+        assert routine.name in body
+
+
+def test_routines_show_a_derived_time_estimate(client):
+    """Rendered from `estimate_minutes`, so it cannot drift from the exercises."""
+    from app.routines import ROUTINES
+
+    body = client.get("/routines").data.decode()
+    for routine in ROUTINES:
+        assert f"~{routine.minutes} min" in body
+
+
+def test_routines_page_ships_the_quick_log_dialog(client):
+    body = client.get("/routines").data.decode()
+    for marker in ('id="quick-log"', 'id="quick-log-grid"', 'id="quick-log-form"'):
+        assert marker in body, marker
+
+
+def test_the_quick_log_mounts_the_same_grid_as_the_log_page(client):
+    """Phase 8.2's whole point: one implementation of what a set is.
+
+    Both pages import `setgrid.js`, and neither server-renders a grid of its
+    own — a second, simpler grid on the routines page would have been a second
+    set of rules about weight modes, warm-ups and units.
+    """
+    routines = client.get("/routines").data.decode()
+    log = client.get("/log").data.decode()
+    assert "js/routines.js" in routines and "js/log.js" in log
+    # Neither ships rows or a header server-side; the component owns both.
+    assert 'class="set-row"' not in routines and 'class="set-row"' not in log
+
+
+def test_routines_are_reachable_as_chapter_two(client):
+    """Calendar's old shelf. Keeping the number meant Log, Weekly summary and
+    Graph did not renumber around the change."""
+    body = client.get("/log").data.decode()
+    assert 'href="/routines' in body
+    assert "Routines" in body
+
+
+def test_the_double_click_shortcut_is_advertised(client):
+    """A gesture nobody is told about is a gesture nobody uses.
+
+    Double-clicking a day in the calendar strip opens `/log` for it. It is an
+    accelerator rather than the only route — the Log workout shelf is still
+    there — but it is named in the caption under the grid, and `weekstrip.js`
+    also puts it on each cell's `aria-label` so it is not pointer-only lore.
+    """
+    body = client.get("/summary").data.decode()
+    assert "double-click a day to log it" in body
+
+
+# ---- Turning a page --------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "path", ["/", "/how-to-use", "/routines", "/log", "/summary", "/progress"]
+)
+def test_every_page_boots_the_page_turn(client, path):
+    """It is a transition *between* chapters, so it has to be on both ends."""
+    body = client.get(path).data.decode()
+    assert "js/pageturn.js" in body
+    assert 'initPageTurn(document.getElementById("page-veil"))' in body
+
+
+def test_the_old_inline_veil_script_is_gone(client):
+    """It moved into `pageturn.js` when the transition became timed rather than
+    measured. Left in place it would bind the click twice, and the second
+    handler would navigate immediately — tearing the animation down."""
+    body = client.get("/log").data.decode()
+    assert 'veil.classList.add("is-visible")' not in body
+
+
+def test_every_shelf_is_a_real_link(client):
+    """The turn holds the navigation, so the fallback matters: before the module
+    loads — and with no JavaScript at all — a shelf has to be an ordinary link
+    that simply navigates."""
+    body = client.get("/summary").data.decode()
+    shelves = re.findall(r'<a class="shelf[^"]*" data-nav\s+href="([^"]+)"', body)
+    assert shelves, "no shelves found"
+    assert all(href.startswith("/") for href in shelves)
+
+
+def test_the_veil_carries_a_flipbook_rather_than_a_full_screen_leaf(client):
+    """The transition is a small object you watch, not something happening to
+    the whole screen — sized to the wordmark beneath it."""
+    body = client.get("/log").data.decode()
+    assert 'class="flipbook"' in body
+    assert 'class="flipbook-leaf"' in body
+    assert 'class="page-veil-mark type-label">Body Shop' in body
+
+
+@pytest.mark.parametrize(
+    "athlete",
+    ["Dwayne", "Tom Brady", "Michael Phelps", "Usain Bolt", "Serena Williams"],
+)
+def test_the_athlete_routines_are_listed_and_attributed(client, athlete):
+    body = client.get("/routines").data.decode()
+    assert athlete in body
+
+
+def test_every_athlete_routine_is_tagged_on_its_card(client):
+    """The tag is not decoration: it is the difference between a session we
+    stand behind and a reconstruction of someone else's."""
+    from app.routines import ATHLETE_ROUTINES
+
+    body = client.get("/routines").data.decode()
+    assert body.count("[experimental]") >= len(ATHLETE_ROUTINES)
+
+
+def test_the_tag_is_explained_on_the_page(client):
+    """A tag nobody can decode is a badge. This one has to say what it means,
+    and that nobody named endorsed anything."""
+    body = client.get("/routines").data.decode()
+    assert "reconstructed from published coverage" in body.lower()
+    assert "Nobody named has endorsed these" in body
 
 
 def test_every_page_carries_the_supabase_config(client):
@@ -347,7 +641,9 @@ def test_auth_pages_are_reachable_signed_out(app, path, _marker):
 
 def test_auth_pages_never_appear_as_a_shelf(client):
     """A shelf for /login would renumber the book."""
-    for page in ("/calendar", "/log", "/summary", "/progress", "/how-to-use"):
+    # /calendar retired in Phase 8.3 and is now a 301 to /summary, so it renders
+    # no shelves at all. Routines took chapter 02.
+    for page in ("/routines", "/log", "/summary", "/progress", "/how-to-use"):
         body = client.get(page).data.decode()
         shelves = re.findall(r'class="shelf[^"]*"\s+data-nav\s+href="([^"]+)"', body)
         assert shelves, f"{page} rendered no shelves at all"

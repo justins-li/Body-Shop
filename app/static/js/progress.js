@@ -11,20 +11,29 @@
  *
  * What the marks mean, and what they deliberately do not:
  *
- *   size   — cumulative non-warmup sets in the window.
+ *   size   — either cumulative non-warmup sets, or your best estimated 1RM,
+ *            depending on the Size-by control. **Not a strength standard.**
+ *            The estimate is arithmetic on sets you logged yourself; nothing
+ *            here compares you to anyone, because the app stores no bodyweight
+ *            and has no business ranking people. A movement with no recorded
+ *            load has no estimate and draws as a hollow ring — an unmeasured
+ *            lift is not a light one.
  *   colour — the *current* weekly coverage of the movement's main muscle,
- *            straight from the same grading the body map uses. There is no
- *            invented benchmark here: the app stores no bodyweight and computes
- *            no 1RM, and pre-Phase-4 history has null weights, so anything
- *            strength-relative would be a guess. That is Phase 7's to add.
+ *            straight from the same grading the body map uses.
  *   edge   — the two movements were logged on the same day; opacity rises with
  *            how many days that happened on.
  *   outside — logged fewer than three times, or not in eight weeks.
+ *
+ * **The graph draws from the first logged movement.** Until Phase 6.7 it was
+ * hidden below fifteen, which meant a new user met a description of a picture
+ * they could not see, and the picture then arrived all at once. It now starts
+ * as one dot and fills in, which is the only way it becomes something to come
+ * back to.
  */
 
 import { fetchTrainingGraph } from "./api.js";
 import { bounds, fingerprint, simulate } from "./layout.js";
-import { $, formatDate, toast } from "./ui.js";
+import { $, formatDate, formatWeight, loadUnit, toast } from "./ui.js";
 
 let anchorIso;
 let graph = null;
@@ -36,6 +45,21 @@ let offsetX = 0;
 let offsetY = 0;
 
 let selectedId = null;
+
+/**
+ * What node size is measuring: `"volume"` (sets) or `"strength"` (your best).
+ *
+ * A reading preference, so it lives in `localStorage` beside the summary
+ * page's split rather than in `?date=`, which is shared state every page
+ * honours. It never reaches the API — both numbers are already in the payload,
+ * so switching view costs no request and, crucially, no re-simulation: the
+ * layout fingerprint deliberately ignores size for the same reason it ignores
+ * colour. A drawing that rearranged itself when you asked a different question
+ * of it could not become a mental map.
+ */
+const SIZE_KEY = "bodyshop:graph-size";
+const SIZE_MODES = ["volume", "strength"];
+let sizeMode = "volume";
 
 /** Node radius in CSS pixels, before zoom. */
 const MIN_RADIUS = 3;
@@ -119,9 +143,38 @@ function nodeColour(node) {
     : mix(theme.trainMin, theme.trainMax, level);
 }
 
-/** Sets → radius, on a square-root scale so area tracks volume. */
-function nodeRadius(node, maxSets) {
-  const share = maxSets > 0 ? Math.sqrt(node.sets / maxSets) : 0;
+/**
+ * What a node's size is measuring, or `null` when it cannot be measured.
+ *
+ * `null` is the important return. Under `strength` a movement with no recorded
+ * load — bodyweight work, anything logged as a bare count, every row from
+ * before Phase 4 added the weight column — has no estimate, and the drawing
+ * says so with a hollow ring rather than a small circle. Sizing it at zero
+ * would claim it is light, which is a different and false statement.
+ */
+function nodeMetric(node) {
+  if (sizeMode === "strength") return node.best ? node.best.one_rep_max : null;
+  return node.sets;
+}
+
+/** The largest measurable value on the canvas, for scaling everything else. */
+function maxMetric() {
+  return graph.nodes.reduce((most, node) => {
+    const value = nodeMetric(node);
+    return value === null ? most : Math.max(most, value);
+  }, 0);
+}
+
+/**
+ * Metric → radius, on a square-root scale so *area* tracks the quantity.
+ *
+ * An unmeasurable node takes the minimum radius, which is only ever drawn as a
+ * ring — see `draw`.
+ */
+function nodeRadius(node, max) {
+  const value = nodeMetric(node);
+  if (value === null) return MIN_RADIUS;
+  const share = max > 0 ? Math.sqrt(value / max) : 0;
   return MIN_RADIUS + share * (MAX_RADIUS - MIN_RADIUS);
 }
 
@@ -265,7 +318,7 @@ function draw() {
   context.clearRect(0, 0, width, height);
   if (!graph || !positions) return;
 
-  const maxSets = graph.nodes.reduce((most, node) => Math.max(most, node.sets), 0);
+  const max = maxMetric();
   const maxDays = graph.edges.reduce((most, edge) => Math.max(most, edge.days), 1);
   const bone = rgba(theme.bone);
 
@@ -305,7 +358,13 @@ function draw() {
     const point = positions.get(node.exercise_id);
     if (!point) continue;
     const { x, y } = toScreen(point);
-    const radius = nodeRadius(node, maxSets);
+    const radius = nodeRadius(node, max);
+    // Under the strength view, a movement whose sets carry no load cannot be
+    // sized. That is a different fact from an orphan, so it gets a different
+    // ring — in the muscle's own coverage colour, so you can still read what it
+    // feeds — but it is emphatically not filled. `graph.py` wrote this rule
+    // down before the data to break it existed.
+    const unmeasured = nodeMetric(node) === null;
 
     context.beginPath();
     context.arc(x, y, radius, 0, Math.PI * 2);
@@ -317,6 +376,12 @@ function draw() {
       context.fill();
       context.strokeStyle = rgba(theme.bone, 0.45);
       context.lineWidth = 1.25;
+      context.stroke();
+    } else if (unmeasured) {
+      context.fillStyle = rgba(theme.ground);
+      context.fill();
+      context.strokeStyle = rgba(nodeColour(node), 0.75);
+      context.lineWidth = 1.5;
       context.stroke();
     } else {
       // Lit from up and to the left rather than filled flat, so a node reads as
@@ -360,7 +425,7 @@ function draw() {
 /** The node under a point, or null. Nearest within `TAP_SLOP`, not first hit. */
 function nodeAt(x, y) {
   if (!graph || !positions) return null;
-  const maxSets = graph.nodes.reduce((most, node) => Math.max(most, node.sets), 0);
+  const max = maxMetric();
   let best = null;
   let bestDistance = Infinity;
 
@@ -369,7 +434,7 @@ function nodeAt(x, y) {
     if (!point) continue;
     const screen = toScreen(point);
     const distance = Math.hypot(screen.x - x, screen.y - y);
-    const reach = Math.max(nodeRadius(node, maxSets), TAP_SLOP);
+    const reach = Math.max(nodeRadius(node, max), TAP_SLOP);
     if (distance < reach && distance < bestDistance) {
       best = node;
       bestDistance = distance;
@@ -407,7 +472,40 @@ function showPanel(node) {
     ? `Mainly ${node.primary_muscle}, ${describeState(coverage.state)} this week.`
     : `Mainly ${node.primary_muscle}.`;
 
-  panel.append(name, meta, note);
+  panel.append(name, meta, note, bestLine(node));
+}
+
+/**
+ * The personal-best line: the estimate, and the set it came from.
+ *
+ * **It always shows its working.** An estimate printed alone is indistinguishable
+ * from a measurement, and this one is neither measured nor a benchmark — it is
+ * Epley's formula on a set the user typed in. Naming that set is what keeps the
+ * number checkable, and "est." is not decoration.
+ */
+function bestLine(node) {
+  const line = document.createElement("p");
+  line.className = "graph-panel-best type-data";
+  const unit = loadUnit();
+
+  if (!node.best) {
+    line.classList.add("is-unmeasured");
+    // Say *why* there is nothing, since the two reasons want different actions.
+    line.textContent = node.weight_mode === "bodyweight"
+      ? "No load recorded — bodyweight movement."
+      : "No load recorded on these sets.";
+    return line;
+  }
+
+  const { one_rep_max: estimate, weight, reps, achieved_on: on } = node.best;
+  const load = `${formatWeight(weight, unit)}${unit}`;
+  const when = formatDate(on, { month: "short", day: "numeric" });
+  // A logged single is not an estimate — it is the lift — so it is not
+  // dressed up as one.
+  line.textContent = reps === 1
+    ? `Best single ${load} on ${when}`
+    : `Est. 1RM ${formatWeight(estimate, unit)}${unit} — from ${load} × ${reps} on ${when}`;
+  return line;
 }
 
 /** The coverage states in the product's own words — never "optimal". */
@@ -588,15 +686,14 @@ async function load() {
   selectedId = null;
   showPanel(null);
 
-  if (!graph.graph_ready) {
-    // Degrade honestly rather than drawing a dozen dots and calling it a graph.
+  // Nothing at all is the one case with no drawing to make. Everything above
+  // zero draws: one node is a dot, and the point of Phase 6.7 is that it grows
+  // from there rather than switching on at a threshold.
+  if (!graph.nodes.length) {
     positions = null;
     glow = null;
     $("#graph-legend").hidden = true;
-    setStatus(
-      `${graph.nodes.length} of ${graph.min_nodes} movements — the graph draws once `
-      + "you have logged a few more. The list below works already.",
-    );
+    setStatus("Nothing logged in this window yet — log a workout and it starts here.");
     draw();
     return;
   }
@@ -624,9 +721,73 @@ async function load() {
   buildGlow();
 
   $("#graph-legend").hidden = false;
-  setStatus("");
+  setStatus(graphNote());
   fitToView();
   draw();
+}
+
+/**
+ * The line under the canvas: how far along the drawing is, in its own terms.
+ *
+ * This replaced the threshold. A count that climbs is a reason to come back; a
+ * gate that says "not yet" is a reason not to. Under the strength view it says
+ * how much of the picture is actually sized by load, because a canvas of rings
+ * should explain itself rather than look broken.
+ */
+function graphNote() {
+  const total = graph.nodes.length;
+
+  if (sizeMode === "strength") {
+    if (!graph.measured) {
+      return `No weights recorded in this window, so nothing can be sized by load — `
+        + "every movement is drawn as a ring. Log a weight and reps and they fill in.";
+    }
+    if (graph.measured < total) {
+      return `${graph.measured} of ${total} movements sized by your best lift; `
+        + "the rings are the ones with no weight recorded.";
+    }
+    return `All ${total} movements sized by your best lift in this window.`;
+  }
+
+  return graph.sparse
+    ? `${total} ${total === 1 ? "movement" : "movements"} so far — the shape fills in `
+      + `as you log more, and reads as a map from about ${graph.sparse_below}.`
+    : `${total} movements, sized by the sets they carried.`;
+}
+
+/** Keep the legend describing what size currently means. */
+function renderSizeKey() {
+  const strength = sizeMode === "strength";
+  $("#graph-size-key").textContent = strength
+    ? "size is your best lift"
+    : "size is sets logged";
+  // The ring key is nonsense under the volume view, where nothing is unsized.
+  $("#graph-key-load").hidden = !strength;
+}
+
+/** Switch what size means. No refetch and no re-simulation — see `sizeMode`. */
+function onSizeChange(event) {
+  sizeMode = SIZE_MODES.includes(event.target.value) ? event.target.value : "volume";
+  try {
+    localStorage.setItem(SIZE_KEY, sizeMode);
+  } catch {
+    // Private browsing. The choice holds for this page view.
+  }
+  renderSizeKey();
+  if (graph && graph.nodes.length) setStatus(graphNote());
+  // The selected movement's panel names its best, which is unchanged — but the
+  // ring under it may have just appeared or gone, so re-read it.
+  draw();
+}
+
+/** The stored size mode, if it is still one the page offers. */
+function storedSizeMode() {
+  try {
+    const stored = localStorage.getItem(SIZE_KEY);
+    return SIZE_MODES.includes(stored) ? stored : "volume";
+  } catch {
+    return "volume";
+  }
 }
 
 /**
@@ -638,6 +799,16 @@ export async function initProgress(initialIso) {
   readTheme();
 
   $("#window-select").addEventListener("change", load);
+
+  // Both numbers already ride on the payload, so this is a re-draw rather than
+  // a request — and never a re-simulation, so the arrangement holds still while
+  // you switch between the two questions.
+  sizeMode = storedSizeMode();
+  const sizeSelect = $("#size-select");
+  sizeSelect.value = sizeMode;
+  sizeSelect.addEventListener("change", onSizeChange);
+  renderSizeKey();
+
   bindGestures();
 
   // Refit on resize rather than re-simulating: the arrangement is in world

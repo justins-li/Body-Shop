@@ -5,7 +5,13 @@
       "Bash(docker info *)",
       "Bash(python -m pytest tests/test_ownership.py -q)",
       "Bash(python -c \"from app.exercises import MUSCLE_GROUPS; print\\(MUSCLE_GROUPS\\)\")",
-      "Bash(sed -i '' 's/\"quadriceps\"/\"quads\"/' tests/test_ownership.py)"
+      "Bash(sed -i '' 's/\"quadriceps\"/\"quads\"/' tests/test_ownership.py)",
+      "Bash(git checkout *)",
+      "Bash(python -m pytest tests/test_summary.py::test_weekly_summary_reports_the_profile_it_used tests/test_pages.py::test_auth_pages_never_appear_as_a_shelf -q)",
+      "Bash(python -m pytest tests/test_pages.py::test_auth_pages_never_appear_as_a_shelf -q)",
+      "Bash(python -c ' *)",
+      "Bash(python -m pytest)",
+      "Bash(grep -n \"only place \\\\`fetch\\\\`\\\\|only place .fetch.\\\\|No \\\\`user_id\\\\` yet\\\\|no auth\\\\|Two append-only tables\\\\|six server-side shells\" CLAUDE.md docs/ARCHITECTURE.md)"
     ]
   }
 }

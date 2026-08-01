@@ -12,6 +12,7 @@
  */
 
 import { accessToken, clearSession, refresh } from "./auth.js";
+import { profileQuery } from "./ui.js";
 
 const BASE = "/api";
 
@@ -34,11 +35,6 @@ function send(path, options, token) {
 
 /**
  * Perform a request against the API.
- *
- * On a 401 this refreshes **once** and replays the request. One retry, never a
- * loop: a refresh token that is genuinely dead must not spin, and the honest
- * end of that road is the login page.
- *
  * @param {string} path - Path below `/api`, e.g. `/entries`.
  * @param {RequestInit} [options]
  * @returns {Promise<any>} Parsed JSON body.
@@ -47,6 +43,8 @@ async function request(path, options = {}) {
   let response = await send(path, options, accessToken());
 
   if (response.status === 401) {
+    // One retry, never a loop: a refresh token that is genuinely dead must not
+    // spin, and the honest end of that road is the login page.
     try {
       const session = await refresh();
       response = await send(path, options, session.access_token);
@@ -56,8 +54,6 @@ async function request(path, options = {}) {
       throw new Error("Sign in to continue.");
     }
     if (response.status === 401) {
-      // The refresh succeeded and the API still says no. Nothing further to
-      // try — the token is valid and simply is not allowed here.
       clearSession();
       toLogin();
       throw new Error("Sign in to continue.");
@@ -98,6 +94,17 @@ export async function fetchExercises() {
 export async function fetchRecentExercises(limit = 12) {
   const data = await request(`/exercises/recent?limit=${limit}`);
   return data.exercises;
+}
+
+/**
+ * One routine with its exercises hydrated — images, instructions and all.
+ *
+ * One request rather than one per movement: the page shows every exercise at
+ * once, so six round trips would be six chances to render half a routine.
+ */
+export async function fetchRoutine(key) {
+  const data = await request(`/routines/${encodeURIComponent(key)}`);
+  return data.routine;
 }
 
 /** One exercise in full: instructions and absolute image URLs. */
@@ -160,18 +167,31 @@ export async function fetchMonth(year, month) {
   return data.days;
 }
 
-/** Weekly muscle-coverage summary for the week containing `isoDate`. */
+/**
+ * Weekly muscle-coverage summary for the week containing `isoDate`.
+ *
+ * Carries the trainer setup, which is what decides each group's target. The
+ * response echoes the profile the server resolved, so the page renders the
+ * targets it was actually graded against rather than its own idea of them.
+ */
 export async function fetchWeeklySummary(isoDate) {
-  return request(`/summary/week?date=${encodeURIComponent(isoDate)}`);
+  const query = `date=${encodeURIComponent(isoDate)}&${profileQuery()}`;
+  return request(`/summary/week?${query}`);
 }
 
 /**
  * The training graph: movements as nodes, same-day pairings as edges.
+ *
+ * The trainer setup rides along for the same reason it does above: node colour
+ * *is* the body map's grading, so a graph fetched without it would disagree
+ * with `/summary` about the same week.
+ *
  * @param {"8w"|"6m"|"all"} window
  * @param {string} isoDate - Anchors both the window and the colouring week.
  */
 export async function fetchTrainingGraph(window, isoDate) {
-  const query = `window=${encodeURIComponent(window)}&date=${encodeURIComponent(isoDate)}`;
+  const query = `window=${encodeURIComponent(window)}&date=${encodeURIComponent(isoDate)}`
+    + `&${profileQuery()}`;
   return request(`/progress/graph?${query}`);
 }
 

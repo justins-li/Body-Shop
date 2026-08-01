@@ -19,9 +19,13 @@
        nothing and fail on "Pick a date first". #}
     <div class="band flex items-center justify-between gap-3">
       <label class="type-label text-secondary" for="entry-date">Date</label>
+      {# `.field-date` gives the browser's own calendar picker a visible target.
+         Left to itself it renders as a faint glyph the same weight as the digits
+         beside it, so the one control on this row that opens something did not
+         look like a control at all. #}
       <input type="date" id="entry-date" name="date" required
              value="{{ selected_date.isoformat() }}"
-             class="field field-sm type-data">
+             class="field field-sm type-data field-date">
     </div>
 
     {#
@@ -109,21 +113,18 @@
       </div>
 
       {#
-        One row per set, built by log.js. The header names only the first tier's
-        columns — weight and reps are what you type every time, so they lead;
-        RPE and set type sit on a second tier that labels itself. The header is
-        here rather than in JS so the column names survive with no script, and
-        because Tailwind only sees classes it can read as literal text.
-      #}
-      <div class="set-grid-head type-label text-secondary" aria-hidden="true">
-        <span>#</span><span>Weight</span><span>Reps</span><span></span>
-      </div>
-      <div id="set-grid" class="grid gap-2"></div>
+        Phase 8.2. The grid is mounted here by `setgrid.js` — the header, the
+        weight-mode note, the added-weight toggle, the rows and the add/repeat
+        buttons are all its markup. It builds them rather than reading them out
+        of this template because a routine's quick-log mounts the same component
+        into a dialog, and a grid that needed a server-rendered shell could not
+        be the same grid in both places.
 
-      <div class="flex flex-wrap items-center gap-3 mt-3">
-        <button type="button" id="add-set" class="step-key">+ Add set</button>
-        <p class="picker-note m-0" id="prefill-note" hidden></p>
-      </div>
+        Everything about *what a set is* therefore has one implementation: the
+        weight column's name and whether a plate breakdown makes sense (Phase
+        6.5), the RPE gate (Phase 6), warm-ups, units, and the rest timer.
+      #}
+      <div id="set-grid-mount"></div>
     </div>
 
     {#

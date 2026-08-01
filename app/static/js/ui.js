@@ -68,6 +68,71 @@ export function saveUnit(unit) {
   if (WEIGHT_UNITS.includes(unit)) localStorage.setItem(UNIT_KEY, unit);
 }
 
+/**
+ * The trainer setup — Phase 6.
+ *
+ * Which experience level the user picked and how much time they intend to
+ * spend, which together decide every muscle group's weekly target. It lives
+ * beside the unit preference because it is the same kind of thing: a per-browser
+ * choice with no user to hang off until Phase 5 lands.
+ *
+ * **The client never computes a target from this.** It sends the three values
+ * with the request and the server sends back the targets it graded against
+ * (`profile.targets` on the weekly summary). Deriving them here as well would be
+ * two implementations of one rule, which is the disagreement this codebase's
+ * layering exists to prevent.
+ */
+const PROFILE_KEY = "bodyshop:trainer-profile";
+
+/** What a browser with no stored choice sends — the server's own default. */
+const DEFAULT_PROFILE = {
+  experience: "experienced",
+  sessions_per_week: 5,
+  minutes_per_session: 75,
+};
+
+/** The stored trainer setup, or the default. Never throws. */
+export function loadProfile() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
+    if (!stored || typeof stored !== "object") return { ...DEFAULT_PROFILE };
+    return {
+      experience: stored.experience || DEFAULT_PROFILE.experience,
+      sessions_per_week:
+        Number(stored.sessions_per_week) || DEFAULT_PROFILE.sessions_per_week,
+      minutes_per_session:
+        Number(stored.minutes_per_session) || DEFAULT_PROFILE.minutes_per_session,
+    };
+  } catch {
+    // Private browsing, storage disabled, or a value from an older shape.
+    return { ...DEFAULT_PROFILE };
+  }
+}
+
+/** Remember the trainer setup. Silently does nothing if storage is blocked. */
+export function saveProfile(profile) {
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  } catch {
+    // The choice just won't persist; this request still carries it.
+  }
+}
+
+/**
+ * The trainer setup as query parameters, for any endpoint that grades a week.
+ *
+ * Values are sent unvalidated on purpose — `resolve_profile` on the server
+ * clamps and falls back, so a stale key shows the usual targets rather than an
+ * error. Returns a `URLSearchParams`-ready string with no leading separator.
+ */
+export function profileQuery(profile = loadProfile()) {
+  return new URLSearchParams({
+    experience: profile.experience,
+    sessions: String(profile.sessions_per_week),
+    minutes: String(profile.minutes_per_session),
+  }).toString();
+}
+
 /** A displayed value in `unit` → kilograms, for sending to the API. */
 export function toKg(value, unit) {
   return unit === "lb" ? value / LB_PER_KG : value;
@@ -92,13 +157,60 @@ export function formatWeight(kg, unit = loadUnit()) {
 }
 
 /**
+ * How each `weight_mode` presents its weight — Phase 6.5.
+ *
+ * The rule that produces the mode is the server's (`EQUIPMENT_WEIGHT_MODES` in
+ * `app/exercises.py`); what a mode is *called* is presentation, so it lives
+ * here beside the other display vocabulary, the way `SET_TYPE_LABELS` does in
+ * `log.js`.
+ *
+ * - `label` heads the weight column in the set grid.
+ * - `note` is the one line under it saying what the number means.
+ * - `prefix` marks the value where the bare number would mislead: a weighted
+ *   pull-up's `20` is twenty kilos *added*, not twenty kilos lifted, and the
+ *   two must not read alike in a list of entries.
+ */
+export const WEIGHT_MODE_DISPLAY = {
+  barbell: { label: "Weight", note: "Total on the bar, bar included.", prefix: "" },
+  ez_bar: { label: "Weight", note: "Total on the EZ bar, bar included.", prefix: "" },
+  dumbbell: { label: "Weight", note: "Per dumbbell, not the pair.", prefix: "" },
+  kettlebell: { label: "Weight", note: "Per bell.", prefix: "" },
+  stack: { label: "Weight", note: "The stack setting, as marked on the machine.", prefix: "" },
+  bodyweight: {
+    label: "Added",
+    note: "Bodyweight — leave blank unless you added weight.",
+    prefix: "+",
+  },
+  implement: { label: "Weight", note: "Whatever the implement is marked as.", prefix: "" },
+  // No weight column at all — see `unweighted` in app/exercises.py. The note
+  // still speaks, because a missing column with no explanation reads as a bug.
+  unweighted: { label: "", note: "No weight to record — just sets and time.", prefix: "" },
+};
+
+/** The display rules for a mode, falling back to a plain weight column. */
+export function weightModeDisplay(mode) {
+  return WEIGHT_MODE_DISPLAY[mode] || WEIGHT_MODE_DISPLAY.implement;
+}
+
+/**
  * One set as a short line: `100kg × 5 @8.5`, degrading as fields are missing.
  * Returns `""` for a set that recorded nothing, so callers can skip it.
+ *
+ * `mode` is the entry's `weight_mode`. It only changes the weight's prefix —
+ * `+20kg × 8` for a weighted pull-up — but that prefix is load-bearing: the
+ * same stored number means "lifted" for a barbell and "hung off a belt" here.
  */
-export function describeSet(set, unit = loadUnit()) {
+export function describeSet(set, unit = loadUnit(), mode = "implement") {
   const parts = [];
   if (set.weight !== null && set.weight !== undefined) {
-    parts.push(`${formatWeight(set.weight, unit)}${unit}`);
+    // A bodyweight set recorded as 0 added weight is just a bodyweight set;
+    // "+0kg" is noise, and dropping it lets the reps carry the line.
+    const bare = weightModeDisplay(mode).prefix === "+" && set.weight === 0;
+    if (!bare) {
+      parts.push(
+        `${weightModeDisplay(mode).prefix}${formatWeight(set.weight, unit)}${unit}`,
+      );
+    }
   }
   if (set.reps !== null && set.reps !== undefined) {
     parts.push(parts.length ? `× ${set.reps}` : `${set.reps} reps`);
@@ -186,8 +298,12 @@ export function renderEntries(container, entries, opts = {}) {
     main.append(name, meta);
 
     // A line of "100kg × 5" per set, when there is anything to say. Entries
-    // logged as a bare count stay a single line, exactly as before.
-    const detail = entry.sets.map((set) => describeSet(set)).filter(Boolean);
+    // logged as a bare count stay a single line, exactly as before. The entry
+    // carries its own `weight_mode`, so a weighted pull-up reads "+20kg × 8"
+    // without this having to consult the catalog.
+    const detail = entry.sets
+      .map((set) => describeSet(set, loadUnit(), entry.weight_mode))
+      .filter(Boolean);
     if (detail.length) {
       const performed = document.createElement("div");
       performed.className = "entry-performed";

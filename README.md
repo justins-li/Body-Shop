@@ -1,15 +1,19 @@
 # Body Shop
 
-> Log your workouts on a calendar and see, at a glance, which muscle groups you actually trained this week.
+> Follow a routine or log your own sets, and see at a glance which muscle groups you actually trained this week.
 
 Body Shop is a small Flask + vanilla JS web app. You pick a date, log the sets you
 finished — with weight, reps and RPE if you want them — and the weekly summary paints a
 body outline: each muscle group **brightens toward green** as it works toward its weekly
 set target, then turns **red** for every set past it.
 
-Targets are 20 sets a week for the large groups (chest, back, shoulders, quads,
+Targets start at 20 sets a week for the large groups (chest, back, shoulders, quads,
 hamstrings, glutes) and 10 for the small ones (abs, biceps, triceps, forearms,
-traps, calves).
+traps, calves), and the **trainer setup** on `/summary` scales them: tell it whether you
+are a beginner, experienced or advanced, and how many sessions of how many minutes you
+intend to train, and every target moves together. Your target is the smaller of what
+your experience asks for and what your week can hold — nothing ever drops below four
+sets, the point at which a muscle stops responding at all.
 
 **873 movements**, each with two photographs that alternate to show the movement,
 are catalogued from [free-exercise-db](https://github.com/yuhonas/free-exercise-db).
@@ -34,20 +38,22 @@ on both, so the two outlines tell you different things.
 
 | Page | Route | What it does |
 | --- | --- | --- |
-| **Home** | `/` | What the app does, and the way in. Static — no API calls; the signed-in and signed-out actions are both in the markup and CSS shows one. |
-| **Calendar** | `/calendar` | Month grid of your training. Each day carries a bar as tall as the sets you logged; tap one to see what you did. |
-| **Log workout** | `/log` | Pick date → exercise → sets, with weight, reps, RPE and set type per row, prefilled from last time. The picker has three ways in: recent, browse by muscle, and search (`incl db` finds "Dumbbell Incline Bench Press"). Shows and deletes the entries for that day. |
-| **Weekly summary** | `/summary` | Front/back body map shaded by weekly volume, each group's sets against its target, and where inside six of them the work landed. |
-| **Training graph** | `/progress` | Every movement you have logged, joined to the ones you do on the same day. The movements that have fallen out ring the outside — and are named underneath. |
+| **Home** | `/` | What the app does, and the way in. Static — no API calls. |
+| **Routines** | `/routines` | Ten sessions worth following — five of ours, plus five `[experimental]` reconstructions of what has been published about how The Rock, Tom Brady, Michael Phelps, Usain Bolt and Serena Williams train (each names its source; nobody named has endorsed anything). Ours are push, pull, legs, a beginner full body and an athletic whole-body day. Each says how long it takes (derived from its sets, not typed), shows every movement's photographs and how to do it, and puts a **log button** beside each one that writes straight into the week. |
+| **Log workout** | `/log` | Pick date → exercise → sets, with weight, reps and set type per row (RPE too, on the advanced trainer setup), prefilled from last time. The weight column follows the equipment: a barbell gets a plate breakdown, a dumbbell asks per bell, a cable asks for the pin setting, and a pull-up asks for nothing unless you tick "Added weight". A repeat button copies the set you just entered. The picker has three ways in: recent, browse by muscle, and search (`incl db` finds "Dumbbell Incline Bench Press"). Shows and deletes the entries for that day. |
+| **Weekly summary** | `/summary` | Front/back body map shaded by weekly volume, each group's sets against its target, and where inside six of them the work landed. Also the trainer setup, and the calendar: seven boxes for this week, expanding to the month when you want it. |
+| **Training graph** | `/progress` | Every movement you have logged, joined to the ones you do on the same day. It draws from your very first workout and fills in as you train. Node size is either the sets a movement carried or your best lift on it, estimated from your own weight × reps — a movement with no load recorded stays a hollow ring rather than pretending to be small. The movements that have fallen out ring the outside, and are named underneath. |
 
-Plus five pages outside the book, which carry no navigation chrome: `/login`,
-`/signup`, `/reset-password`, `/verify` and `/account`.
+Every page shares a `?date=YYYY-MM-DD` query parameter, so navigating between them
+keeps the day you were looking at. `/calendar` was its own page until the month grid
+folded into the weekly summary; it still redirects, so old links land on the right week.
 
-All six chapters share a `?date=YYYY-MM-DD` query parameter, so navigating between
-them keeps the day you were looking at.
+Logging from a routine and logging on `/log` are **the same grid** — the weight column
+follows the equipment, bodyweight movements ask for nothing unless you tick "Added
+weight", and a set recorded either way reaches the summary identically.
 
-The interface is dense by design — it is read on a phone, mid-session, with a barbell
-in the other hand. The volume ramp is the only saturated colour in it.
+The interface is dark and dense by design — it is read on a phone, mid-session, with a
+barbell in the other hand. The volume ramp is the only saturated colour in it.
 
 ## Quick start
 
@@ -126,24 +132,6 @@ tools/tailwindcss -i app/static/css/input.css -o app/static/css/styles.css --wat
 
 Commit the rebuilt `styles.css` with your change; CI does not build it.
 
-## Accounts
-
-Authentication is Supabase's; Flask never sees a password. To run with accounts:
-
-1. Create a Supabase project. Under **Project Settings → API**, copy the project
-   URL, the `anon` key and the `service_role` key into `.env` (see `.env.example`).
-2. Under **Authentication → URL Configuration**, add `<origin>/verify` and
-   `<origin>/reset-password` to the redirect allow-list — for local development
-   that is `http://127.0.0.1:5000/verify` and `http://127.0.0.1:5000/reset-password`.
-   Point the confirmation and recovery email templates at them.
-3. Password rules, rate limiting, lockout and email-enumeration behaviour are all
-   Supabase dashboard settings. This app deliberately implements none of them.
-
-> **Upgrading an existing database deletes every workout in it.** Migration `0005`
-> adds an owner to each entry, and there is no honest owner for rows logged before
-> accounts existed — so it wipes rather than backfilling them onto a seed account.
-> `downgrade` restores the schema, not the data. Back up first if you care about it.
-
 ## Configuration
 
 Everything is environment-driven; nothing is required for local development. Values are
@@ -159,10 +147,6 @@ read from the environment and from a gitignored `.env` — see `.env.example`.
 | `BODYSHOP_WEEK_STARTS_ON` | `1` (Monday) | ISO weekday the summary week begins on. |
 | `BODYSHOP_EXERCISE_IMAGE_BASE` | jsDelivr, pinned | Origin serving `<exercise_id>/<0\|1>.jpg`. Set this to self-host the images. |
 | `BODYSHOP_HOST` / `BODYSHOP_PORT` | `127.0.0.1` / `5000` | Dev server bind address. |
-| `BODYSHOP_SUPABASE_URL` | — | Supabase project URL. Also the expected token issuer and the JWKS location. **Production refuses to boot without it.** |
-| `BODYSHOP_SUPABASE_ANON_KEY` | — | Public by design — rendered into every page. **Required in production.** |
-| `BODYSHOP_SUPABASE_JWT_SECRET` | — | Optional. Set → tokens verified as HS256 against it; unset → verified against the project's published JWKS. |
-| `BODYSHOP_SUPABASE_SERVICE_ROLE_KEY` | — | **Secret.** Used only by `DELETE /api/account`. **Required in production.** |
 
 `BODYSHOP_DATABASE` (a bare SQLite path) was replaced by `DATABASE_URL` in Phase 3.
 
@@ -187,20 +171,23 @@ Body-Shop/
 │   ├── config.py             # environment-driven settings
 │   ├── db.py                 # engine, request-scoped connection, migration CLI
 │   ├── tables.py             # the schema, as SQLAlchemy metadata
-│   ├── exercises.py          # catalog loader, muscle groups, targets, volume weights
+│   ├── exercises.py          # catalog loader, muscle groups, baseline targets, weight modes
+│   ├── routines.py           # suggested sessions, with derived time estimates
+│   ├── training.py           # trainer setups: how experience and time scale the targets
 │   ├── data/exercises.json   # 873 vendored movements — generated, never hand-edited
 │   ├── models.py             # all SQL lives here: validation + queries
-│   ├── views.py              # the four HTML page routes
+│   ├── views.py              # the six HTML page routes
 │   ├── api.py                # /api JSON endpoints
 │   ├── services/
 │   │   ├── weeks.py          # week/month boundary maths
 │   │   ├── summary.py        # weekly muscle-coverage aggregation
+│   │   ├── strength.py       # personal bests, estimated from your own sets
 │   │   └── graph.py          # training-graph windows, orphans, node colouring
 │   ├── templates/            # Jinja2: base + one per page + body-map partial
 │   └── static/
 │       ├── css/input.css     # design system — the file you edit
 │       ├── css/styles.css    # compiled output — generated, committed
-│       └── js/               # api.js, ui.js, one module per page, + layout.js
+│       └── js/               # api.js, ui.js, setgrid.js, one module per page, + layout.js
 ├── migrations/               # Alembic: env.py + versions/
 ├── alembic.ini
 ├── tools/                    # fetch_css_toolchain.py, build_exercise_catalog.py

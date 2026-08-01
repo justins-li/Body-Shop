@@ -7,7 +7,8 @@
   <h1 class="type-display text-[clamp(2rem,9vw,3.25rem)] mb-3">Where your training lives</h1>
   <p class="type-lede">
     Every movement you have logged, joined to the ones you do on the same day.
-    The ones drifting outside are the ones that have fallen out.
+    It starts at one dot and fills in as you train. The ones drifting outside
+    are the ones that have fallen out.
   </p>
 </div>
 
@@ -16,6 +17,17 @@
     <div class="band-head">
       <h2 id="graph-heading" class="type-label text-base-content">The graph</h2>
       <div class="flex items-center gap-2">
+        {#
+          What node size measures. Both numbers ride on the same payload, so
+          switching is a re-draw rather than a request — and never a
+          re-simulation, so the arrangement holds still while you ask the other
+          question of it.
+        #}
+        <label class="sr-only" for="size-select">What node size measures</label>
+        <select id="size-select" class="field field-sm">
+          <option value="volume">Size: sets</option>
+          <option value="strength">Size: best lift</option>
+        </select>
         <label class="sr-only" for="window-select">Time window</label>
         <select id="window-select" class="field field-sm">
           {% for key, label in windows.items() %}
@@ -47,8 +59,17 @@
       <span class="flex items-center gap-2">
         <span class="graph-key-orphan" aria-hidden="true"></span> dropped or rarely logged
       </span>
-      <span>size is sets logged</span>
+      {# Only meaningful under the strength view, where a ring means "no weight
+         recorded" rather than "a small lift". `progress.js` reveals it there. #}
+      <span class="flex items-center gap-2" id="graph-key-load" hidden>
+        <span class="graph-key-unmeasured" aria-hidden="true"></span> no load recorded
+      </span>
+      <span id="graph-size-key">size is sets logged</span>
     </p>
+
+    {# The status line does double duty: how far along the drawing is under the
+       volume view, and how much of it can be sized at all under strength. It
+       replaced the old "you need 15 movements" gate. #}
 
     {# Tapping a node fills this. It stays in the DOM at all times so landing on
        it from the canvas does not shift the page. #}

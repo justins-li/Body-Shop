@@ -29,10 +29,10 @@ import {
   fetchExercises, fetchLastSets, fetchRecentExercises,
 } from "./api.js";
 import {
-  $, formatDate, formatWeight, loadUnit, renderEntries, retargetLinks,
-  saveUnit, syncUrlDate, toKg, toast,
+  $, formatDate, loadUnit, renderEntries, retargetLinks, saveUnit,
+  syncUrlDate, toast,
 } from "./ui.js";
-import { DEFAULT_BAR, describePlates } from "./plates.js";
+import { createSetGrid } from "./setgrid.js";
 import { startRestTimer } from "./timer.js";
 
 let selectedIso;
@@ -43,14 +43,15 @@ let selectedId = null;
 /** The reader's display unit. Weight is kilograms everywhere else. */
 let unit = loadUnit();
 
-/** Last session's sets for the chosen movement — placeholders, never values. */
-let previousSets = [];
-
-const SET_TYPES = ["normal", "warmup", "drop", "failure"];
-const SET_TYPE_LABELS = {
-  normal: "Working", warmup: "Warm-up", drop: "Drop", failure: "To failure",
-};
-const MAX_SETS = 100;
+/**
+ * The shared set grid (Phase 8.2), mounted into the form.
+ *
+ * Everything about *what a set is* — weight modes, added weight, the RPE gate,
+ * plate hints, repeat, the rest timer — lives in `setgrid.js` and is identical
+ * here and in a routine's quick-log. This page's job is choosing the movement
+ * and the day.
+ */
+let grid = null;
 
 /** muscle slug → its movements, pre-sorted. Built once, after the one fetch. */
 let byMuscle = new Map();
@@ -334,213 +335,38 @@ async function renderChosenFor(id) {
  * empty — so it degrades to no placeholders rather than an error.
  */
 async function loadPreviousSets(id) {
-  const note = $("#prefill-note");
+  let previousSets = [];
+  let note = "";
   try {
     const data = await fetchLastSets(id);
     previousSets = data.sets || [];
-    note.hidden = !data.date;
     if (data.date) {
-      note.textContent = `Greyed values are what you did on ${formatDate(data.date, {
+      note = `Greyed values are what you did on ${formatDate(data.date, {
         month: "short", day: "numeric",
       })}.`;
     }
   } catch {
+    // Not worth a toast: the grid still works, it just starts with no
+    // placeholders rather than with an error over it.
     previousSets = [];
-    note.hidden = true;
-  }
-  renderSetGrid();
-}
-
-// ---- The set grid -----------------------------------------------------
-
-/**
- * A numeric field for the set grid.
- *
- * `inputmode` rather than `type="number"` alone is what raises the numeric
- * keypad on a phone, and selecting on focus means overwriting a prefilled
- * weight is one tap instead of a tap plus a careful drag over three digits —
- * the difference matters when this is done between sets.
- *
- * @param {string} className - The field's role class, e.g. `set-weight`.
- * @param {string} label - Accessible name; the grid header is `aria-hidden`.
- * @param {{step?: string, min?: string, max?: string, inputmode: string}} attrs
- */
-function numberField(className, label, attrs) {
-  const field = document.createElement("input");
-  field.type = "number";
-  field.className = `field field-sm type-data ${className}`;
-  field.setAttribute("aria-label", label);
-  field.inputMode = attrs.inputmode;
-  if (attrs.step) field.step = attrs.step;
-  if (attrs.min) field.min = attrs.min;
-  if (attrs.max) field.max = attrs.max;
-  field.addEventListener("focus", () => field.select());
-  return field;
-}
-
-/** A second-tier control with its own mono micro-label welded to it. */
-function subField(areaClass, label, control) {
-  const wrap = document.createElement("span");
-  wrap.className = `set-sub ${areaClass}`;
-  const tag = document.createElement("span");
-  tag.className = "type-label text-secondary";
-  tag.setAttribute("aria-hidden", "true");
-  tag.textContent = label;
-  wrap.append(tag, control);
-  return wrap;
-}
-
-/**
- * Build one row of the grid.
- *
- * `previous` is last session's set at this position, if there was one. It is
- * rendered as a **placeholder, not a value** — visible enough to aim at, absent
- * enough that an untouched row saves as NULL rather than silently re-logging
- * weights nobody lifted today.
- */
-function setRow(index, previous) {
-  const row = document.createElement("div");
-  row.className = "set-row";
-  row.dataset.index = String(index);
-
-  const number = document.createElement("span");
-  number.className = "set-row-index";
-  number.textContent = String(index);
-
-  const weight = numberField("set-weight", `Set ${index} weight in ${unit}`, {
-    step: "any", min: "0", inputmode: "decimal",
-  });
-  if (previous && previous.weight !== null && previous.weight !== undefined) {
-    weight.placeholder = formatWeight(previous.weight, unit);
   }
 
-  const reps = numberField("set-reps", `Set ${index} reps`, {
-    min: "1", max: "1000", inputmode: "numeric",
+  // The grid takes it from here — the mode off the catalog payload already in
+  // memory, and the rest (added weight, the RPE column) decided from history.
+  grid.setMovement({
+    weightMode: byId.get(id)?.weight_mode,
+    previousSets,
   });
-  if (previous && previous.reps !== null && previous.reps !== undefined) {
-    reps.placeholder = String(previous.reps);
-  }
-
-  const rpe = numberField("set-rpe", `Set ${index} RPE`, {
-    min: "1", max: "10", step: "0.5", inputmode: "decimal",
-  });
-
-  const type = document.createElement("select");
-  type.className = "field field-sm set-type";
-  type.setAttribute("aria-label", `Set ${index} type`);
-  SET_TYPES.forEach((value) => type.append(new Option(SET_TYPE_LABELS[value], value)));
-  if (previous && previous.set_type) type.value = previous.set_type;
-  type.addEventListener("change", () => {
-    row.classList.toggle("is-warmup", type.value === "warmup");
-  });
-  row.classList.toggle("is-warmup", type.value === "warmup");
-
-  const remove = document.createElement("button");
-  remove.type = "button";
-  remove.className = "set-row-remove";
-  remove.textContent = "×";
-  remove.setAttribute("aria-label", `Remove set ${index}`);
-  remove.addEventListener("click", () => {
-    row.remove();
-    renumberRows();
-  });
-
-  // What to load to make the number just typed. Pure arithmetic on the value
-  // in the box — it spans the row beneath the inputs, and stays empty (and so
-  // `display: none`) until there is something to say.
-  const hint = document.createElement("span");
-  hint.className = "plate-hint";
-  const updateHint = () => {
-    hint.textContent = weight.value.trim() === ""
-      ? ""
-      : describePlates(Number(weight.value), DEFAULT_BAR[unit], unit);
-  };
-  weight.addEventListener("input", updateHint);
-
-  // Rest happens *between* sets, but the entry is one POST at the end — so
-  // leaving a row you have filled in is the earliest honest signal that a set
-  // just finished. `focusout` with the check below fires when focus leaves the
-  // row entirely, not when it moves weight -> reps inside it.
-  row.addEventListener("focusout", (event) => {
-    if (row.contains(event.relatedTarget)) return;
-    if (rowHasData(row)) startRestTimer();
-  });
-
-  row.append(
-    number, weight, reps, remove,
-    subField("set-sub-rpe", "RPE", rpe),
-    subField("set-sub-type", "Type", type),
-    hint,
-  );
-  return row;
+  grid.setPrefillNote(note);
 }
 
-/** Keep the visible numbering contiguous after a removal. */
-function renumberRows() {
-  const rows = [...document.querySelectorAll("#set-grid .set-row")];
-  rows.forEach((row, position) => {
-    const index = position + 1;
-    row.dataset.index = String(index);
-    row.querySelector(".set-row-index").textContent = String(index);
-    row.querySelector(".set-row-remove")
-      .setAttribute("aria-label", `Remove set ${index}`);
-  });
-  // Never leave the grid empty: an entry needs at least one set.
-  if (!rows.length) addSetRow();
-}
+// ---- The set grid ---------------------------------------------------------
+//
+// Phase 8.2 moved every line of this into `setgrid.js`, because routines gave
+// the app a second place to record a set and a simpler grid there would have
+// been a second set of rules about weight modes, warm-ups and units. What is
+// left here is mounting it and reading it back.
 
-/** Append a row, seeded from last session's set at that position. */
-function addSetRow() {
-  const grid = $("#set-grid");
-  const index = grid.children.length + 1;
-  if (index > MAX_SETS) {
-    showError(`An entry can hold at most ${MAX_SETS} sets.`);
-    return;
-  }
-  // Reaching for another row means the one above it is done, so this is the
-  // other end of the same signal as the row's own `focusout`.
-  const last = grid.lastElementChild;
-  if (last && rowHasData(last)) startRestTimer();
-  grid.append(setRow(index, previousSets[index - 1]));
-}
-
-/** Whether a row records anything yet — a blank row is not a finished set. */
-function rowHasData(row) {
-  return ["set-weight", "set-reps", "set-rpe"].some(
-    (field) => row.querySelector(`.${field}`).value.trim() !== "",
-  );
-}
-
-/** Rebuild the grid from scratch, one row per remembered set (min 1). */
-function renderSetGrid() {
-  const grid = $("#set-grid");
-  grid.textContent = "";
-  const count = Math.max(1, Math.min(previousSets.length, MAX_SETS));
-  for (let index = 1; index <= count; index += 1) {
-    grid.append(setRow(index, previousSets[index - 1]));
-  }
-}
-
-/**
- * Read the grid into the API's shape.
- *
- * A blank field becomes `null`, not `0` — "not recorded" and "zero" are
- * different facts, and the schema keeps them apart. Weight is converted to
- * kilograms here, which is the only unit the API accepts.
- */
-function setGridValues() {
-  return [...document.querySelectorAll("#set-grid .set-row")].map((row) => {
-    const rawWeight = row.querySelector(".set-weight").value.trim();
-    const rawReps = row.querySelector(".set-reps").value.trim();
-    const rawRpe = row.querySelector(".set-rpe").value.trim();
-    return {
-      weight: rawWeight === "" ? null : toKg(Number(rawWeight), unit),
-      reps: rawReps === "" ? null : Number(rawReps),
-      rpe: rawRpe === "" ? null : Number(rawRpe),
-      set_type: row.querySelector(".set-type").value,
-    };
-  });
-}
 
 // ---- Panels ---------------------------------------------------------------
 
@@ -700,7 +526,7 @@ async function onSubmit(event) {
 
   const form = event.currentTarget;
   const data = new FormData(form);
-  const sets = setGridValues();
+  const sets = grid.values();
 
   if (!data.get("date")) return showError("Pick a date first.");
   if (!data.get("exercise_id")) return showError("Choose an exercise.");
@@ -735,21 +561,25 @@ export async function initLog(initialIso) {
     tab.addEventListener("click", () => showTab(tab.dataset.tab));
   });
 
+  // The grid builds its own markup, including the header and the added-weight
+  // toggle — see setgrid.js. Mounted before the catalog lands so the page has
+  // its shape immediately.
+  grid = createSetGrid($("#set-grid-mount"), { onError: showError });
+
   const unitSelect = $("#weight-unit");
   unitSelect.value = unit;
   unitSelect.addEventListener("change", () => {
     unit = unitSelect.value;
     saveUnit(unit);
-    // Rebuild so placeholders and aria-labels re-read in the new unit. Typed
-    // values are deliberately left alone: they are what the user just entered,
-    // and silently converting them under the cursor is worse than a mixed grid.
-    renderSetGrid();
+    // Placeholders, aria-labels and the plate hint's bar re-read in the new
+    // unit. Typed values are deliberately left alone: they are what the user
+    // just entered, and silently converting them under the cursor is worse than
+    // a mixed grid.
+    grid.setUnit(unit);
   });
-  $("#add-set").addEventListener("click", addSetRow);
+
   // The timer is booted from base.html — it runs on every page now, so binding
   // it again here would double up its listeners.
-  renderSetGrid();
-
   retargetNav(selectedIso);
 
   try {

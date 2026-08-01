@@ -87,6 +87,59 @@
     </div>
   </section>
 
+  {#
+    Who built it, and how to reach them.
+
+    The portraits live at `app/static/img/team/<slug>.jpg`. Each `<img>` carries
+    an `onerror` that removes it, so until the files are dropped in the frame
+    falls back to the initials underneath rather than showing a broken image —
+    this page runs no JS module, and one attribute is cheaper than making it.
+  #}
+  <section aria-labelledby="team-heading" class="mt-12">
+    <div class="band-head">
+      <p class="type-label" id="team-heading">Who made this</p>
+    </div>
+
+    <ul class="team-list list-none p-0 m-0">
+      {% for name, slug, initials, title in [
+        ("Justin Li",  "justin-li",  "JL", "Lead developer"),
+        ("Owen Zhang", "owen-zhang", "OZ", "Lead developer"),
+      ] %}
+        <li class="team-member">
+          <span class="team-portrait">
+            <span class="team-initials type-display" aria-hidden="true">{{ initials }}</span>
+            <img src="{{ url_for('static', filename='img/team/' ~ slug ~ '.jpg') }}"
+                 alt="{{ name }}" loading="lazy" onerror="this.remove()">
+          </span>
+          <span>
+            <span class="team-name">{{ name }}</span>
+            <span class="team-title type-label">{{ title }}</span>
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section aria-labelledby="contact-heading" class="mt-12">
+    <div class="band-head">
+      <p class="type-label" id="contact-heading">Contact</p>
+    </div>
+
+    <h2 class="chapter-subtitle text-2xl mb-3">Have questions?</h2>
+    <p class="text-secondary mb-5 max-w-[46ch] leading-relaxed">
+      Anything about how a number is worked out, a movement that is mapped
+      wrongly, or something the map is telling you that it should not be — write
+      to us.
+    </p>
+    {# Placeholder. `.example` is reserved precisely for this, so nothing sent
+       here can reach a stranger who happens to own the domain. Swap it for the
+       real address before launch. #}
+    <a class="contact-address" href="mailto:hello@bodyshop.example">
+      hello@bodyshop.example
+    </a>
+    <p class="type-label text-secondary mt-3">Placeholder address — not live yet</p>
+  </section>
+
   <section class="mt-12">
     <div class="band-head">
       <p class="type-label">Start</p>
