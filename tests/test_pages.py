@@ -675,3 +675,26 @@ def test_home_still_makes_no_api_call(client):
     body = client.get("/").data.decode()
     assert "js/api.js" not in body
     assert "js/summary.js" not in body
+
+
+def test_the_auth_split_rules_outrank_home_actions():
+    """The signed-in/out split must win the cascade against `.home-actions`.
+
+    A regression guard for a bug found only in a browser: both rules are
+    unlayered, so a bare `[data-auth-when]` selector ties `.home-actions` on
+    specificity (0,1,0) and loses on source order — rendering *both* halves of
+    the landing page at once, signed in or out. Qualifying with `:root[data-auth]`
+    takes it to 0,2,0 so source order stops mattering.
+
+    Asserted against the built stylesheet rather than the source, because the
+    stylesheet is what ships and CI does not rebuild it.
+    """
+    from pathlib import Path
+
+    css = Path("app/static/css/styles.css").read_text()
+    assert ":root[data-auth] [data-auth-when]{display:none}" in css, (
+        "the hide rule lost its :root qualifier — rebuild the stylesheet, and "
+        "check both halves of / are not visible at once"
+    )
+    assert ":root[data-auth=out] [data-auth-when=out]" in css
+    assert ":root[data-auth=in] [data-auth-when=in]" in css

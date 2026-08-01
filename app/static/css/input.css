@@ -117,11 +117,21 @@
      Unlayered styles outrank every layered one in the cascade no matter how
      specific the layered selector is, so the same rules inside the layer lost
      to `.home-actions { display: flex }` and rendered both halves at once. Any
-     rule overriding an unlayered one has to be unlayered too. */
-  [data-auth-when] {
+     rule overriding an unlayered one has to be unlayered too.
+
+     **Both selectors are qualified with `:root[data-auth]` for the same fight,
+     one round later.** Unlayering equalised the origin, which left a plain
+     `[data-auth-when]` tied with `.home-actions` on specificity (0,1,0) — and a
+     tie is broken by source order, which `.home-actions` wins by sitting nine
+     lines below. At 0,2,0 these stop depending on where they appear in the
+     file. Verified in a browser: without the `:root` qualifier both halves of
+     the landing page render at once, signed in or out. */
+  :root[data-auth] [data-auth-when] {
     display: none;
   }
 
+  /* `flex`, not `revert`: every consumer is a flex row, and `revert` would drop
+     to the user-agent's `block` and break the row it just un-hid. */
   :root[data-auth="out"] [data-auth-when="out"],
   :root[data-auth="in"] [data-auth-when="in"] {
     display: flex;
