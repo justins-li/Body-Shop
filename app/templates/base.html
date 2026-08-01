@@ -21,6 +21,15 @@
         href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&family=Noto+Serif:wght@300;400&display=swap">
 
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+
+  {#
+    Supabase's public identifiers, read by auth.js. `tojson` escapes for a
+    script context, so a key containing a quote or a `</script>` cannot break
+    out. The service-role key is never in this dict — see views.inject_globals.
+  #}
+  <script>
+    window.BODYSHOP_SUPABASE = {{ supabase | tojson }};
+  </script>
 </head>
 <body data-page="{{ page }}" class="min-h-screen flex flex-col has-tab-bar">
   <a class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[70]

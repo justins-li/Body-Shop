@@ -294,3 +294,17 @@ def test_the_chapter_mark_sits_directly_above_its_name(client):
     body = client.get("/log").data.decode()
     first = body.split('class="shelf-mid"')[1]
     assert first.index("shelf-index") < first.index("shelf-name")
+
+
+def test_every_page_carries_the_supabase_config(client):
+    """auth.js reads it off the window; it is public by design."""
+    body = client.get("/").data.decode()
+    assert "window.BODYSHOP_SUPABASE" in body
+    assert "https://test.supabase.co" in body
+    assert "test-anon-key" in body
+
+
+def test_the_service_role_key_is_never_rendered(client):
+    """The one Supabase credential Flask holds must never reach a browser."""
+    for path in ("/", "/log", "/summary", "/calendar", "/progress", "/how-to-use"):
+        assert "test-service-role-key" not in client.get(path).data.decode()

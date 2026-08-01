@@ -53,6 +53,13 @@ def inject_globals() -> dict:
         "muscle_regions": MUSCLE_REGIONS,
         "region_labels": REGION_LABELS,
         "today": date.today(),
+        # Public by design: the anon key identifies the project to GoTrue and
+        # grants nothing on its own. The service-role key is deliberately absent
+        # from this dict and must stay that way.
+        "supabase": {
+            "url": current_app.config.get("SUPABASE_URL") or "",
+            "anon_key": current_app.config.get("SUPABASE_ANON_KEY") or "",
+        },
     }
 
 
