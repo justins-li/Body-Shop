@@ -1,19 +1,28 @@
 """HTML page routes.
 
-Five pages:
+Eleven pages. Six are chapters of the book, numbered 00–05 and reachable from
+the shelves:
 
-* ``/``         — home: what the app is, and the way in
-* ``/calendar`` — month calendar of logged workouts
-* ``/log``      — input form for date / exercise / sets
-* ``/summary``  — weekly summary with the muscle-coverage body map
-* ``/progress`` — the training graph (Phase 4.5)
+* ``/``           — home: what the app is, and the way in
+* ``/how-to-use`` — the idea, and what the colours mean
+* ``/calendar``   — month calendar of logged workouts
+* ``/log``        — input form for date / exercise / sets
+* ``/summary``    — weekly summary with the muscle-coverage body map
+* ``/progress``   — the training graph (Phase 4.5)
+
+Five are outside it, rendered with ``bare=True`` so they carry no shelves, no
+tab bar and no rest dock: ``/login``, ``/signup``, ``/reset-password``,
+``/verify`` and ``/account``.
 
 Pages are server-rendered shells; the dynamic parts are filled in by the
-JavaScript modules in ``app/static/js`` talking to the JSON API. ``/`` is the
-exception — it is static, reads nothing, and is the one page that renders
-identically for a visitor and a user. When auth arrives it becomes the
-signed-out half of a split (see docs/ROADMAP.md, Phase 4); the calendar already
-lives at its own URL so that change stays additive.
+JavaScript modules in ``app/static/js`` talking to the JSON API. ``/`` and
+``/how-to-use`` are the exceptions — static, reading nothing.
+
+**Every shell is public, including the chapters.** Bearer tokens live in
+``localStorage``, and a browser does not send an ``Authorization`` header on a
+navigation, so Flask cannot gate a page render. The page's JS module redirects
+to ``/login`` when the API answers 401 (see ``static/js/api.js``). ``/`` renders
+a signed-in and a signed-out half and shows one, chosen before first paint.
 """
 
 from __future__ import annotations
@@ -163,4 +172,60 @@ def summary_page():
         muscle_schemes=MUSCLE_SCHEMES,
         default_scheme=DEFAULT_MUSCLE_SCHEME,
         scheme_buckets=scheme_map(),
+    )
+
+
+#: Pages outside the book. No chapter number, no shelf, no tab bar — they are
+#: not sections of the product, and `sections` in base.html never learns about
+#: them. All five are public shells: bearer tokens mean Flask cannot read an
+#: Authorization header on a navigation, so gating happens in the page's JS.
+@bp.get("/login")
+def login_page():
+    """Sign in. ``?next=`` carries where the browser was headed."""
+    return render_template(
+        "login.html", page="login", bare=True, selected_date=_requested_date()
+    )
+
+
+@bp.get("/signup")
+def signup_page():
+    """Create an account."""
+    return render_template(
+        "signup.html", page="signup", bare=True, selected_date=_requested_date()
+    )
+
+
+@bp.get("/reset-password")
+def reset_password_page():
+    """Both halves of the reset flow.
+
+    Which half renders is decided client-side: Supabase sends the recovery token
+    back in the URL **fragment**, which never reaches this function. That is the
+    point — the token stays out of the server's access log.
+    """
+    return render_template(
+        "reset_password.html",
+        page="reset-password",
+        bare=True,
+        selected_date=_requested_date(),
+    )
+
+
+@bp.get("/verify")
+def verify_page():
+    """Landing page for the email confirmation link."""
+    return render_template(
+        "verify.html", page="verify", bare=True, selected_date=_requested_date()
+    )
+
+
+@bp.get("/account")
+def account_page():
+    """Email, sign out, and delete account.
+
+    Deletion lives here rather than on ``/`` because ``/`` is one screen and new
+    content there has to earn its height or replace something.
+    """
+    return render_template(
+        "account.html", page="account", bare=True, selected_date=_requested_date()
     )

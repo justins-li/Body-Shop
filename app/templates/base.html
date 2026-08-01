@@ -31,7 +31,7 @@
     window.BODYSHOP_SUPABASE = {{ supabase | tojson }};
   </script>
 </head>
-<body data-page="{{ page }}" class="min-h-screen flex flex-col has-tab-bar">
+<body data-page="{{ page }}" class="min-h-screen flex flex-col{{ '' if bare else ' has-tab-bar' }}">
   <a class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[70]
             focus:border focus:border-base-content/25 focus:bg-base-100
             focus:px-4 focus:py-2 focus:text-sm focus:no-underline"
@@ -117,22 +117,31 @@
 
   <div class="shell">
     {# ---- Left: the chapters before this one, in order -------------------- #}
-    <nav class="shelf-stack shelf-stack-left" aria-label="Earlier sections">
-      {% for endpoint, key, label, chapter, blurb in left_shelves %}
-        {{ shelf(endpoint, key, label, chapter, blurb, home=(key == 'home')) }}
-      {% endfor %}
-    </nav>
+    {#
+      Auth pages are not chapters of the book — they have no number and never
+      enter the stack, which is also what keeps `sections` above untouched and
+      the chapter-ordering tests passing unchanged.
+    #}
+    {% if not bare %}
+      <nav class="shelf-stack shelf-stack-left" aria-label="Earlier sections">
+        {% for endpoint, key, label, chapter, blurb in left_shelves %}
+          {{ shelf(endpoint, key, label, chapter, blurb, home=(key == 'home')) }}
+        {% endfor %}
+      </nav>
+    {% endif %}
 
     <main id="main" class="shell-main">
       {% block content %}{% endblock %}
     </main>
 
     {# ---- Right: the chapters after it ------------------------------------ #}
-    <nav class="shelf-stack" aria-label="Later sections">
-      {% for endpoint, key, label, chapter, blurb in right_shelves %}
-        {{ shelf(endpoint, key, label, chapter, blurb) }}
-      {% endfor %}
-    </nav>
+    {% if not bare %}
+      <nav class="shelf-stack" aria-label="Later sections">
+        {% for endpoint, key, label, chapter, blurb in right_shelves %}
+          {{ shelf(endpoint, key, label, chapter, blurb) }}
+        {% endfor %}
+      </nav>
+    {% endif %}
   </div>
 
   {#
@@ -141,6 +150,7 @@
     `timer.js` persists a deadline rather than a count, and choosing a rest
     length stays on /log beside the sets.
   #}
+  {% if not bare %}
   <div class="rest-timer rest-dock" id="rest-timer">
     <span class="type-label text-secondary" aria-hidden="true">Rest</span>
     <span class="rest-timer-readout" data-timer-readout
@@ -155,6 +165,7 @@
       </svg>
     </button>
   </div>
+  {% endif %}
 
   {# Shown while a shelf navigation is in flight. Pages are server-rendered, so
      this covers the request, not a client-side route change. #}
@@ -163,6 +174,7 @@
   </div>
 
   {# Thumb-zone navigation. Hidden from `sm:` up, where the shelves take over. #}
+  {% if not bare %}
   <nav class="tab-bar sm:hidden" aria-label="Primary">
     {% for endpoint, key, label, chapter, blurb in sections if key not in ('home', 'how') %}
       <a href="{{ url_for(endpoint, date=selected_date.isoformat()) }}"
@@ -170,14 +182,17 @@
          {% if page == key %}aria-current="page"{% endif %}>{{ label.split(' ')[0] }}</a>
     {% endfor %}
   </nav>
+  {% endif %}
 
   <div id="toast" class="toast-bar" role="status" aria-live="polite"></div>
 
   {# The timer is on every page, so it boots from here rather than per-page. #}
+  {% if not bare %}
   <script type="module">
     import { initRestTimer } from "{{ url_for('static', filename='js/timer.js') }}";
     initRestTimer(document.getElementById("rest-timer"));
   </script>
+  {% endif %}
 
   {#
     Reveal the veil while a shelf request is in flight. Deliberately tiny and

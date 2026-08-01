@@ -348,6 +348,65 @@
 
    Static structure stays in the templates as utilities. */
 @layer components {
+  /* ---- Auth pages ------------------------------------------------------ */
+  /* One narrow column on the same continuous ground as everything else —
+     hairline rules, no card, no shadow, per the layout invariant. */
+  .auth-shell {
+    @apply mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center gap-6 px-6 py-12;
+  }
+
+  .auth-title {
+    @apply font-serif text-3xl font-light tracking-tight text-base-content;
+  }
+
+  .auth-field {
+    @apply flex flex-col gap-2;
+  }
+
+  /* 44pt clear, like every other target in the app. `.field-sm` elsewhere is a
+     typographic variant, never a smaller tap target, and the same rule holds
+     here. */
+  .auth-input {
+    @apply min-h-[44px] w-full border border-base-content/25 bg-base-100 px-3 py-2
+           text-base text-base-content outline-none;
+  }
+
+  .auth-input:focus {
+    @apply border-base-content/60;
+  }
+
+  /* Hairline-outlined, never filled. Red *area* means volume past target; red
+     outline or text means an action. */
+  .auth-submit {
+    @apply min-h-[44px] w-full border border-primary bg-transparent px-4 py-2
+           text-primary;
+  }
+
+  .auth-submit:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .auth-note {
+    @apply text-sm text-secondary;
+  }
+
+  .auth-error {
+    @apply border border-primary/40 px-3 py-2 text-sm text-primary;
+  }
+
+  /* The signed-in / signed-out split on `/`. An inline script in base.html
+     stamps `data-auth` on <html> before first paint, so neither block ever
+     flashes. Hand-written rather than a utility because the attribute is
+     toggled at runtime and Tailwind would purge an interpolated class. */
+  [data-auth-when] {
+    display: none;
+  }
+
+  :root[data-auth="out"] [data-auth-when="out"],
+  :root[data-auth="in"] [data-auth-when="in"] {
+    display: revert;
+  }
+
   /* -- Typography voices ------------------------------------------------
      Four named voices, three faces. The rule survives from Phase 1 — no
      ad-hoc size/weight/tracking stacks in templates — but the data voice is

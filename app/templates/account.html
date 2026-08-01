@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Your account — Body Shop{% endblock %}
+
+{% block content %}
+<div class="auth-shell">
+  <h1 class="auth-title">Your account</h1>
+
+  <div class="auth-field">
+    <span class="type-label">Signed in as</span>
+    <p id="account-email" class="type-data">…</p>
+  </div>
+
+  <p id="account-status" class="auth-note"></p>
+
+  <button id="sign-out" type="button" class="auth-submit type-label">Sign out</button>
+
+  <div class="flex flex-col gap-3 border-t border-base-content/15 pt-6">
+    <span class="type-label">Delete account</span>
+    <p class="auth-note">
+      This removes your account and every workout in it. It cannot be undone.
+    </p>
+    <label class="auth-field">
+      <span class="type-label">Type your email to confirm</span>
+      <input id="delete-confirm" class="auth-input" type="email"
+             autocomplete="off" spellcheck="false">
+    </label>
+    <button id="delete-account" type="button" class="auth-submit type-label" disabled>
+      Delete my account
+    </button>
+  </div>
+
+  <p class="auth-note"><a href="{{ url_for('views.home_page') }}">Back to Body Shop</a></p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { signOut } from "{{ url_for('static', filename='js/auth.js') }}";
+  // Goes through api.js rather than fetch directly, so it inherits the bearer
+  // header and the refresh-once behaviour like every other call in the app.
+  import { deleteAccount, fetchMe }
+    from "{{ url_for('static', filename='js/api.js') }}";
+
+  const email = document.getElementById("account-email");
+  const out = document.getElementById("sign-out");
+  const del = document.getElementById("delete-account");
+  const confirmField = document.getElementById("delete-confirm");
+  const status = document.getElementById("account-status");
+
+  try {
+    const me = await fetchMe();
+    email.textContent = me.email;
+  } catch {
+    // api.js has already redirected to /login.
+  }
+
+  out.addEventListener("click", async () => {
+    await signOut();
+    location.assign("/");
+  });
+
+  // Typing the address is the confirmation. This is the only irreversible
+  // action in the app, so it asks for something you have to mean.
+  confirmField.addEventListener("input", () => {
+    del.disabled = confirmField.value.trim() !== email.textContent.trim();
+  });
+
+  del.addEventListener("click", async () => {
+    del.disabled = true;
+    try {
+      const result = await deleteAccount();
+      if (!result.auth_record_removed) {
+        status.textContent =
+          "Your workouts are deleted. The sign-in record could not be removed — " +
+          "contact support and it will be.";
+      }
+      await signOut();
+      location.assign("/");
+    } catch (err) {
+      status.textContent = err.message;
+      del.disabled = false;
+    }
+  });
+</script>
+{% endblock %}

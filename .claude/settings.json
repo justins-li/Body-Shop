@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(python -m pytest tests/test_migrations.py -q)",
-      "Bash(docker info *)"
+      "Bash(docker info *)",
+      "Bash(python -m pytest tests/test_ownership.py -q)",
+      "Bash(python -c \"from app.exercises import MUSCLE_GROUPS; print\\(MUSCLE_GROUPS\\)\")",
+      "Bash(sed -i '' 's/\"quadriceps\"/\"quads\"/' tests/test_ownership.py)"
     ]
   }
 }

@@ -308,3 +308,47 @@ def test_the_service_role_key_is_never_rendered(client):
     """The one Supabase credential Flask holds must never reach a browser."""
     for path in ("/", "/log", "/summary", "/calendar", "/progress", "/how-to-use"):
         assert "test-service-role-key" not in client.get(path).data.decode()
+
+
+AUTH_PAGES = [
+    ("/login", b"Sign in"),
+    ("/signup", b"Create an account"),
+    ("/reset-password", b"Reset your password"),
+    ("/verify", b"Confirming your email"),
+    ("/account", b"Your account"),
+]
+
+
+@pytest.mark.parametrize(("path", "marker"), AUTH_PAGES)
+def test_auth_pages_render(client, path, marker):
+    response = client.get(path)
+    assert response.status_code == 200
+    assert marker in response.data
+
+
+@pytest.mark.parametrize(("path", "_marker"), AUTH_PAGES)
+def test_auth_pages_carry_no_chrome(client, path, _marker):
+    """They are not chapters of the book, so they get no shelves and no tabs.
+
+    This is also what keeps the chapter-ordering assertions untouched:
+    `sections` in base.html never learns about these pages.
+    """
+    body = client.get(path).data.decode()
+    assert "shelf-stack" not in body
+    assert "tab-bar" not in body
+    assert "rest-dock" not in body
+
+
+@pytest.mark.parametrize(("path", "_marker"), AUTH_PAGES)
+def test_auth_pages_are_reachable_signed_out(app, path, _marker):
+    """Shells are public — a signed-out browser must be able to load /login."""
+    assert app.test_client().get(path).status_code == 200
+
+
+def test_auth_pages_never_appear_as_a_shelf(client):
+    """A shelf for /login would renumber the book."""
+    for page in ("/calendar", "/log", "/summary", "/progress", "/how-to-use"):
+        body = client.get(page).data.decode()
+        shelves = re.findall(r'class="shelf[^"]*"\s+data-nav\s+href="([^"]+)"', body)
+        assert shelves, f"{page} rendered no shelves at all"
+        assert all("/login" not in href and "/account" not in href for href in shelves)
