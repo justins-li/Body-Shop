@@ -352,3 +352,30 @@ def test_auth_pages_never_appear_as_a_shelf(client):
         shelves = re.findall(r'class="shelf[^"]*"\s+data-nav\s+href="([^"]+)"', body)
         assert shelves, f"{page} rendered no shelves at all"
         assert all("/login" not in href and "/account" not in href for href in shelves)
+
+
+def test_home_carries_both_halves_of_the_auth_split(client):
+    """One screen, and the signed-in state *swaps* the action rather than adding.
+
+    Both blocks are in the markup; CSS shows one. That is what makes the split
+    free of a flash and free of an API call — `/` still fetches nothing.
+    """
+    body = client.get("/").data.decode()
+    assert 'data-auth-when="out"' in body
+    assert 'data-auth-when="in"' in body
+
+
+def test_the_auth_attribute_is_set_before_paint(client):
+    """A blocking script in <head>, not a module: a module is deferred, and a
+    deferred toggle is a visible flash of the wrong state."""
+    body = client.get("/").data.decode()
+    head = body.split("</head>")[0]
+    assert "data-auth" in head
+    assert "bodyshop.auth" in head
+
+
+def test_home_still_makes_no_api_call(client):
+    """The one-screen invariant's other half: `/` reads nothing."""
+    body = client.get("/").data.decode()
+    assert "js/api.js" not in body
+    assert "js/summary.js" not in body

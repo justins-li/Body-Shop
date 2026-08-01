@@ -107,6 +107,26 @@
     }
   }
 
+  /* The signed-in / signed-out split on `/`. An inline script in base.html
+     stamps `data-auth` on <html> before first paint, so neither block ever
+     flashes. Hand-written rather than a utility because the attribute is
+     toggled at runtime, and Tailwind purges a class it cannot read as literal
+     text.
+
+     **These live here, beside `.home-actions`, and not in `@layer components`.**
+     Unlayered styles outrank every layered one in the cascade no matter how
+     specific the layered selector is, so the same rules inside the layer lost
+     to `.home-actions { display: flex }` and rendered both halves at once. Any
+     rule overriding an unlayered one has to be unlayered too. */
+  [data-auth-when] {
+    display: none;
+  }
+
+  :root[data-auth="out"] [data-auth-when="out"],
+  :root[data-auth="in"] [data-auth-when="in"] {
+    display: flex;
+  }
+
   .home-actions {
     display: flex;
     flex-wrap: wrap;
@@ -392,19 +412,6 @@
 
   .auth-error {
     @apply border border-primary/40 px-3 py-2 text-sm text-primary;
-  }
-
-  /* The signed-in / signed-out split on `/`. An inline script in base.html
-     stamps `data-auth` on <html> before first paint, so neither block ever
-     flashes. Hand-written rather than a utility because the attribute is
-     toggled at runtime and Tailwind would purge an interpolated class. */
-  [data-auth-when] {
-    display: none;
-  }
-
-  :root[data-auth="out"] [data-auth-when="out"],
-  :root[data-auth="in"] [data-auth-when="in"] {
-    display: revert;
   }
 
   /* -- Typography voices ------------------------------------------------

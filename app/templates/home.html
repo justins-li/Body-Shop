@@ -107,7 +107,25 @@
       </dl>
     </figure>
 
-    <div class="home-actions">
+    {#
+      Two rows, one shown. The masthead is height:100vh from `lg:` and only the
+      specimen may flex, so the signed-in state *swaps* the actions rather than
+      adding to them — both blocks are one .btn-brick plus one .btn-ghost-line,
+      which is what keeps the row's height identical either way.
+
+      `data-auth` is stamped on <html> by the blocking script in base.html, so
+      neither block ever flashes and `/` still makes no API call.
+    #}
+    <div class="home-actions" data-auth-when="out">
+      <a class="btn-brick" href="{{ url_for('views.signup_page') }}">
+        Create an account
+      </a>
+      <a class="btn-ghost-line" href="{{ url_for('views.login_page') }}">
+        Sign in
+      </a>
+    </div>
+
+    <div class="home-actions" data-auth-when="in">
       <a class="btn-brick" href="{{ url_for('views.log_page', date=selected_date.isoformat()) }}">
         Log a workout
       </a>
