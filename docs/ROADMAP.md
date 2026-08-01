@@ -702,7 +702,7 @@ The home page's sequence is `how-*`. Worth checking any new class name against
 
 ---
 
-## Phase 5 — Secure user login
+## Phase 5 — Secure user login ✅ *done*
 
 **Depends on:** Phase 3 (migrations + Postgres), Phase 1 (login/signup pages styled once).
 
@@ -775,6 +775,57 @@ The **signed-out/signed-in split** lands here. Phase 1 already built `/` as a st
 landing page and moved the calendar to `/calendar`, so this is now a branch inside
 `home.html` — swap the hero's "Log a workout" CTA for a link into the app when a session
 exists — rather than a new route.
+
+### What shipped, and where it diverged
+
+Implemented from [the design spec](superpowers/specs/2026-07-31-phase-5-secure-user-login-design.md).
+**Supabase Auth with bearer tokens**, as recommended. The browser calls GoTrue
+directly; Flask never sees a password and only verifies the token.
+
+**Three divergences from the SQL sketch above**, all forced by the provider choice
+— that sketch assumed self-hosting:
+
+| Sketched | Shipped | Why |
+| --- | --- | --- |
+| `id INTEGER PRIMARY KEY` | `Uuid(as_uuid=False)` | It is not our id. It is `auth.users.id`, which is a UUID. |
+| `password_hash TEXT NOT NULL` | absent | Supabase holds it. A local copy is a credential we chose not to own. |
+| `verified_at TEXT` | absent | Supabase's `email_confirmed_at` is the truth, and a mirrored copy drifts invisibly until someone is wrongly let in or wrongly kept out. |
+
+**One cost the "roughly halves the phase" estimate had not priced in:** the whole
+suite runs offline against per-test SQLite files, and putting an external issuer in
+the middle of every authenticated test would have ended that. Bought back with the
+dual key resolver — testing config pins `SUPABASE_JWT_SECRET`, so the suite always
+takes the HS256 branch and mints its own tokens in-process. **No test reaches the
+network.** The resolver is worth having anyway: newer Supabase projects sign ES256
+against a published JWKS, older ones use the shared secret, and committing to one
+would have meant either being unable to verify a token or stubbing HTTP in tests.
+
+**The `user_id` sweep** put `user_id` first and positional on all ten `models.py`
+functions touching `workout_entry`, so a missed call site is a `TypeError` rather
+than a silent cross-user query. `tests/test_ownership.py` walks two users across
+every endpoint; it was mutation-checked by deleting one `WHERE` clause and
+confirming it failed.
+
+**Migration `0005` wiped existing rows** (open decision 5). `batch_alter_table`
+unconditionally, with `copy_from` so the SQLite rebuild does not lose
+`sqlite_autoincrement` — SQLite refuses `ADD COLUMN` for a `NOT NULL` column
+carrying a `REFERENCES` clause even on an empty table, so wiping first does not
+rescue a plain `ALTER`.
+
+**Deliberately not built:** Flask-Limiter and Redis (Supabase rate-limits the
+credential endpoints; our API is bearer-only with no credential to brute-force,
+and the Redis question belongs to Phase 6), CSRF (dissolved by the token choice —
+no cookies anywhere), server-side page gating (a browser sends no `Authorization`
+header on a navigation, so shells stay public and the page module redirects on
+401), and enumeration hygiene, lockout and password strength (all Supabase
+dashboard settings).
+
+**Phases 7 and 8 inherit the cascade**: an FK to `"user"(id)` with `ON DELETE
+CASCADE` means `DELETE /api/account` keeps working with no change to the endpoint.
+
+One follow-up left open: the phase was verified against SQLite only. The Postgres
+job in CI covers the reserved-word `"user"` table and the UUID foreign key against
+a real dialect.
 
 ---
 
@@ -1316,25 +1367,25 @@ A phase whose gating decisions are still open has not started — it is being im
 
 1. ~~**Image licensing**~~ — **answered: adopt free-exercise-db.** Public domain, images
    included, which collapsed Phase 9 into Phase 2 exactly as predicted.
-2. **Mobile approach — PWA, Capacitor shell, or React Native?** The "before Phase 4"
-   deadline slipped; Phase 4's design spec answered the set-id slice (server-minted
-   UUIDs, buying the client-id option without exercising it). The remaining halves —
-   token auth and in-app account deletion — are **Phase 5 entry gates**, and Phase 5's
-   recommendation (Supabase Auth with bearer tokens) satisfies both whichever route
-   wins. Note that route C also retires the Phase 6 Next.js question permanently: Flask
+2. **Mobile approach — PWA, Capacitor shell, or React Native?** **Both Phase 5 gates
+   are now satisfied and closed:** token auth shipped (bearer tokens, no cookies
+   anywhere) and in-app account deletion shipped (`DELETE /api/account`). Whichever
+   route eventually wins, neither has to be retrofitted. The route choice itself is
+   still open and belongs to Phase 10. Note that route C also retires the Phase 6 Next.js question permanently: Flask
    stays the API and the Jinja + vanilla-JS web app becomes the *permanent* lightweight
    web surface, not a placeholder awaiting a rewrite.
-3. **Auth: self-hosted or provider?** Recommendation recorded under Phase 5: **Supabase
-   Auth, with bearer tokens.** Barely open — the database is already Supabase, Phase 10
-   requires tokens and mobile SDKs, and most of Phase 5's requirements table exists only
-   to support the self-hosted option. Confirm before Phase 5 starts; it roughly halves
-   the phase.
+3. ~~**Auth: self-hosted or provider?**~~ — **answered: Supabase Auth, with bearer
+   tokens**, shipped in Phase 5. The database was already Supabase, Phase 10 requires
+   tokens and mobile SDKs, and most of the phase's requirements table existed only to
+   support the self-hosted option. It did roughly halve the phase — the one cost not
+   priced in was keeping the test suite offline, solved by the dual key resolver.
 4. **Secondary-muscle weighting** — **shipped at 0.5, with fractional counting in the UI.**
    Still open as a refinement: one flat number stands in for a spectrum, and per-exercise
    weights are possible once there is evidence for them.
-5. **Existing data on migration** — wipe, or backfill to a seed account? *(Phase 2's four
-   retired ids are handled by revision `0002`; this is now only about Phase 5's
-   `user_id`.)*
+5. ~~**Existing data on migration**~~ — **answered: wipe**, in revision `0005`. A
+   backfill onto a seed account would have carried single-user development history
+   into the multi-user world as one account's workouts and left a permanent "who is
+   user 1" question. `downgrade()` restores the schema, not the rows, and says so.
 6. ~~**Delt granularity**~~ — **answered: one `shoulders` group.** The facets preserve
    front/side/rear, so splitting later is a data change plus SVG paths, not a re-model.
 7. **AI feature scope** — per-user custom exercises only, or a review queue that promotes

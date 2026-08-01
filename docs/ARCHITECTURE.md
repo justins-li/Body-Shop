@@ -8,7 +8,12 @@ summary page, and eventually any export). So the code is organised around keepin
 that rule in exactly one place, with thin layers on either side of it.
 
 ```
-browser  ──fetch──▶  app/api.py        (HTTP: parse, serialise, status codes)
+browser  ──fetch──▶  Supabase GoTrue   (credentials; never touches Flask)
+   │                      │
+   │                      └──▶ bearer token, stored in localStorage
+   ▼
+browser  ──fetch──▶  app/api.py        (HTTP: parse, serialise, status codes,
+   (with the token)                     token verification, g.user_id)
                           │
                           ▼
                      app/services/     (rules: week boundaries, muscle coverage)
@@ -28,13 +33,21 @@ Which backend is in use is decided entirely by `DATABASE_URL`, and nothing above
 `lastrowid` versus `RETURNING`, `AUTOINCREMENT` versus `IDENTITY`, and how a
 `DATE` is stored, so `models.py` expresses queries once.
 
-`app/views.py` renders five server-side shells; everything dynamic is fetched by
-the page's JavaScript module from the same `/api` the tests exercise. That means the
-HTML never diverges from the API, and the API is testable without a browser.
+`app/views.py` renders eleven server-side shells — six chapters and five bare auth
+pages; everything dynamic is fetched by the page's JavaScript module from the same
+`/api` the tests exercise. That means the HTML never diverges from the API, and the
+API is testable without a browser.
 
-`/` is the exception: a static landing page with no JS module and no API calls. It is
-the one page that will render identically for a visitor and a signed-in user, which is
-why it is worth having before auth exists.
+`/` and `/how-to-use` are the exceptions: static pages with no JS module and no API
+calls. As of Phase 5 `/` carries both a signed-out and a signed-in block and shows
+one, chosen from `localStorage` by a blocking script before first paint — so it still
+makes no request, and neither half flashes.
+
+**Every shell is public, including the chapters.** Bearer tokens live in
+`localStorage`, and a browser does not send an `Authorization` header on a
+navigation, so Flask cannot gate a page render. The page's JS module redirects to
+`/login` when the API answers 401. The cost is one unauthenticated frame; the benefit
+is that the web app consumes exactly the API a mobile client will.
 
 ## Layer responsibilities
 
@@ -47,6 +60,7 @@ why it is worth having before auth exists.
 | `migrations/` | How a database reaches the schema `tables.py` describes. Revisions are append-only history. | Import app constants that a later commit could change. |
 | `app/db.py` | The engine, request-scoped connections, and the migration commands. | Contain queries. |
 | `app/models.py` | Every SQL statement, plus input validation. | Know about HTTP or Jinja, or know which dialect it is on. |
+| `app/services/auth.py` | Verifying a Supabase JWT (signature, expiry, audience, issuer) against either the shared HS256 secret or the project's JWKS, and deleting a Supabase auth record. | Import Flask. `require_user`, `g.user_id` and the 401 live in `api.py`, because they touch `request` and `g`. |
 | `app/services/weeks.py` | Week/month boundary maths. | Query the database. |
 | `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses. |
 | `app/services/graph.py` | The training graph's rules: what a window means, what makes a movement an orphan, and joining this week's coverage onto the nodes. | Query the database, or invent a strength benchmark (see below). |
@@ -54,6 +68,8 @@ why it is worth having before auth exists.
 | `app/views.py` | Page shells and template context. | Contain business rules. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
 | `app/static/js/timer.js` | The rest countdown, booted from `base.html` on every page. Pure client state, persisted as a *deadline* so it survives navigation and tab throttling. | Touch the API, or persist anything but its duration and that deadline. |
+| `app/static/js/auth.js` | The token store, and every call to Supabase GoTrue — signup, the password grant, refresh, recover, update. | Call our own API, or import an SDK. |
+| `app/static/js/api.js` | Every call to our own API: the bearer header, and one silent refresh-and-retry on a 401. | Call Supabase, or retry more than once. |
 | `app/static/js/plates.js` | Plate arithmetic — a pure function of weight and bar. | Store anything, or fetch. |
 | `app/static/js/layout.js` | The force-directed layout — a pure, deterministic function of the graph. | Touch the canvas, the DOM, or `Math.random`. |
 | `app/static/js/progress.js` | The canvas, the gestures and the detail panel on `/progress`. | Contain layout maths, or re-simulate on a render. |
@@ -423,15 +439,33 @@ because the new edges had no colours yet.
 
 ## Data model
 
-Two tables, defined in [`app/tables.py`](../app/tables.py). Entries are append-only
-rows; there is no per-day "workout" record, which keeps logging a single insert
-and makes range queries trivial.
+Three tables, defined in [`app/tables.py`](../app/tables.py). Entries are
+append-only rows; there is no per-day "workout" record, which keeps logging a
+single insert and makes range queries trivial.
 
 ```sql
-workout_entry(id, entry_date DATE, exercise_id TEXT, created_at TIMESTAMPTZ)
+user(id UUID, email TEXT UNIQUE, created_at TIMESTAMPTZ)
+workout_entry(id, user_id -> user ON DELETE CASCADE, entry_date DATE,
+              exercise_id TEXT, created_at TIMESTAMPTZ)
 workout_set(id UUID, entry_id -> workout_entry ON DELETE CASCADE,
             set_index INTEGER, weight REAL, reps INTEGER, rpe REAL, set_type TEXT)
 ```
+
+`user` is a **mirror** of Supabase's `auth.users`, not a source of truth. It
+exists because `user_id` has to be a real foreign key on both dialects and
+SQLite has no `auth.users` to point at, and it deliberately carries no
+`password_hash` (Supabase owns the credential) and no `verified_at` (a mirrored
+verification flag drifts invisibly until someone is wrongly let in or wrongly
+kept out). Rows appear just-in-time on the first authenticated request; there is
+no signup webhook.
+
+Both foreign keys cascade, so deleting an account is one `DELETE FROM "user"`
+with no cascade handling in Python — and Phase 7's `body_metric` and Phase 8's
+`custom_exercise` inherit that simply by declaring the same FK.
+
+`idx_workout_entry_user_date` is ordered `(user_id, entry_date)` because that is
+the order every query in `models.py` uses: filter to one user, then range over
+dates.
 
 `workout_entry.sets` was an integer column until Phase 4. It is now **derived**:
 `WorkoutEntry.sets` counts child rows whose `set_type` is not `warmup`. A
@@ -531,17 +565,20 @@ which is the difference between seconds and minutes against a hosted database.
 
 ## Deliberate limitations
 
-- **Single user.** There is no auth and no `user_id` column; the database is
-  whoever's machine it runs on. Adding accounts means a `user` table and a foreign
-  key on `workout_entry`.
+- **No per-user preferences.** The kg/lb choice still lives in `localStorage`, not
+  on the `user` row, so it does not follow you between devices. Moving it is a
+  Phase 7 nicety, not a blocker.
+- **No rate limiting of our own.** Supabase rate-limits the credential endpoints,
+  and our API is bearer-only with no credential to brute-force against it. Revisit
+  if Phase 6's host does not provide it.
 - **No connection pooling of our own on Postgres.** `NullPool` is deliberate: both
   Supabase and Neon put a pooler in front, and a second pool inside a serverless
   function exhausts connection limits at trivial traffic. Under a long-lived
   process (gunicorn) this trades a little latency for that safety.
-- **Sets only.** No weight or reps — `workout_entry` stores a bare count, so 3 sets at
-  60kg and 3 sets at 140kg are the same row. This blocks 1RM estimates, PR detection,
-  progress graphs and plate calculators, and is scheduled as
-  [Phase 4](ROADMAP.md) rather than a to-do.
+- **No strength-relative marks.** Weight, reps and RPE are stored per set as of
+  Phase 4, but nothing computes a 1RM or a PR: no bodyweight is stored and
+  pre-Phase-4 history has `NULL` weights, so any such mark would be a guess. See
+  [Phase 7](ROADMAP.md).
 - **One `shoulders` group.** The catalog distinguishes front, side and rear raises in
   its facets, but the map shades a single deltoid region. Splitting into three is a
   data change plus SVG paths, not a re-model — see [ROADMAP.md](ROADMAP.md).

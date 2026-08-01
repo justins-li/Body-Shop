@@ -6,6 +6,36 @@ All notable changes to Body Shop are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+
+- **Accounts, and an owner for every workout** (Phase 5). Authentication is Supabase
+  Auth; the browser talks to GoTrue directly, so Flask never sees a password and only
+  verifies the bearer token.
+  - **Tokens, not cookies.** Which dissolves CSRF entirely and means the web app
+    consumes exactly the API a mobile client will.
+  - **`user_id` is now the first positional parameter** of every query touching
+    `workout_entry`. Positional-and-first is the safety property: a call site that was
+    not updated fails as a `TypeError` rather than silently querying across all users.
+    `tests/test_ownership.py` walks two accounts across every endpoint.
+  - **Another user's entry returns 404, not 403.** A 403 would confirm the id is real.
+  - **Five new pages**, outside the chapter navigation: `/login`, `/signup`,
+    `/reset-password`, `/verify` and `/account`.
+  - **`GET /api/me`** so a client can confirm a token server-side, and
+    **`DELETE /api/account`** for in-app account deletion — local rows first, the
+    Supabase auth record second, reporting honestly if the second step fails.
+  - **`/` swaps its primary action when signed in** rather than adding to it, so the
+    one-screen invariant holds. Chosen before first paint, so neither half flashes.
+  - New runtime dependency: `PyJWT[crypto]`. Tokens verify against either the shared
+    HS256 secret or the project's published JWKS, depending on the project's age.
+
+### Removed
+
+- **Every existing workout, on upgrade.** Migration `0005` wipes `workout_entry` and
+  `workout_set` before adding the owner column. There is no honest owner for rows
+  logged before accounts existed, and backfilling them onto a seed account would have
+  left a permanent "who is user 1" question. **`downgrade` restores the schema, not
+  the rows.**
+
 ### Changed
 
 - **The whole front end is rebuilt against a reference design** (glukhovsky.com), and it

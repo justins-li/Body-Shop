@@ -34,17 +34,20 @@ on both, so the two outlines tell you different things.
 
 | Page | Route | What it does |
 | --- | --- | --- |
-| **Home** | `/` | What the app does, and the way in. Static — no API calls. |
+| **Home** | `/` | What the app does, and the way in. Static — no API calls; the signed-in and signed-out actions are both in the markup and CSS shows one. |
 | **Calendar** | `/calendar` | Month grid of your training. Each day carries a bar as tall as the sets you logged; tap one to see what you did. |
 | **Log workout** | `/log` | Pick date → exercise → sets, with weight, reps, RPE and set type per row, prefilled from last time. The picker has three ways in: recent, browse by muscle, and search (`incl db` finds "Dumbbell Incline Bench Press"). Shows and deletes the entries for that day. |
 | **Weekly summary** | `/summary` | Front/back body map shaded by weekly volume, each group's sets against its target, and where inside six of them the work landed. |
 | **Training graph** | `/progress` | Every movement you have logged, joined to the ones you do on the same day. The movements that have fallen out ring the outside — and are named underneath. |
 
-All five pages share a `?date=YYYY-MM-DD` query parameter, so navigating between
+Plus five pages outside the book, which carry no navigation chrome: `/login`,
+`/signup`, `/reset-password`, `/verify` and `/account`.
+
+All six chapters share a `?date=YYYY-MM-DD` query parameter, so navigating between
 them keeps the day you were looking at.
 
-The interface is dark and dense by design — it is read on a phone, mid-session, with a
-barbell in the other hand. The volume ramp is the only saturated colour in it.
+The interface is dense by design — it is read on a phone, mid-session, with a barbell
+in the other hand. The volume ramp is the only saturated colour in it.
 
 ## Quick start
 
@@ -123,6 +126,24 @@ tools/tailwindcss -i app/static/css/input.css -o app/static/css/styles.css --wat
 
 Commit the rebuilt `styles.css` with your change; CI does not build it.
 
+## Accounts
+
+Authentication is Supabase's; Flask never sees a password. To run with accounts:
+
+1. Create a Supabase project. Under **Project Settings → API**, copy the project
+   URL, the `anon` key and the `service_role` key into `.env` (see `.env.example`).
+2. Under **Authentication → URL Configuration**, add `<origin>/verify` and
+   `<origin>/reset-password` to the redirect allow-list — for local development
+   that is `http://127.0.0.1:5000/verify` and `http://127.0.0.1:5000/reset-password`.
+   Point the confirmation and recovery email templates at them.
+3. Password rules, rate limiting, lockout and email-enumeration behaviour are all
+   Supabase dashboard settings. This app deliberately implements none of them.
+
+> **Upgrading an existing database deletes every workout in it.** Migration `0005`
+> adds an owner to each entry, and there is no honest owner for rows logged before
+> accounts existed — so it wipes rather than backfilling them onto a seed account.
+> `downgrade` restores the schema, not the data. Back up first if you care about it.
+
 ## Configuration
 
 Everything is environment-driven; nothing is required for local development. Values are
@@ -138,6 +159,10 @@ read from the environment and from a gitignored `.env` — see `.env.example`.
 | `BODYSHOP_WEEK_STARTS_ON` | `1` (Monday) | ISO weekday the summary week begins on. |
 | `BODYSHOP_EXERCISE_IMAGE_BASE` | jsDelivr, pinned | Origin serving `<exercise_id>/<0\|1>.jpg`. Set this to self-host the images. |
 | `BODYSHOP_HOST` / `BODYSHOP_PORT` | `127.0.0.1` / `5000` | Dev server bind address. |
+| `BODYSHOP_SUPABASE_URL` | — | Supabase project URL. Also the expected token issuer and the JWKS location. **Production refuses to boot without it.** |
+| `BODYSHOP_SUPABASE_ANON_KEY` | — | Public by design — rendered into every page. **Required in production.** |
+| `BODYSHOP_SUPABASE_JWT_SECRET` | — | Optional. Set → tokens verified as HS256 against it; unset → verified against the project's published JWKS. |
+| `BODYSHOP_SUPABASE_SERVICE_ROLE_KEY` | — | **Secret.** Used only by `DELETE /api/account`. **Required in production.** |
 
 `BODYSHOP_DATABASE` (a bare SQLite path) was replaced by `DATABASE_URL` in Phase 3.
 
