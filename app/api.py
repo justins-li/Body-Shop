@@ -16,6 +16,7 @@ from .models import (
     ValidationError,
     add_entry,
     delete_entry,
+    delete_user,
     ensure_user,
     get_user,
     last_sets_for_exercise,
@@ -24,7 +25,7 @@ from .models import (
     recent_exercise_usage,
     sets_by_date,
 )
-from .services.auth import AuthError, decode_token
+from .services.auth import AuthError, decode_token, delete_auth_user
 from .services.graph import DEFAULT_WINDOW, training_graph
 from .services.summary import weekly_summary
 from .services.weeks import month_bounds, week_bounds
@@ -273,3 +274,43 @@ def get_me():
     runs — ``require_user`` provisioned it.
     """
     return jsonify({"user": get_user(g.user_id)})
+
+
+@bp.delete("/account")
+@require_user
+def remove_account():
+    """Delete the signed-in account: local rows first, then the auth record.
+
+    **The order is deliberate.** If the Supabase call fails, the account
+    survives with no data — recoverable, retryable, and the response says so.
+    Supabase-first would risk the opposite: the auth record gone and the rows
+    orphaned behind an account that can never sign in again to delete them.
+
+    This is the one place Flask holds a Supabase credential. The login path
+    holds none — the browser talks to GoTrue directly — but a user cannot delete
+    their own auth record with the anon key, and there is no way around that.
+    """
+    service_key = current_app.config.get("SUPABASE_SERVICE_ROLE_KEY")
+    if not service_key:
+        # Checked before touching anything, so a misconfigured deployment
+        # refuses rather than half-deleting an account.
+        return jsonify(
+            {"error": "Account deletion is not configured on this server."}
+        ), 503
+
+    user_id = g.user_id
+    # One statement: workout_entry and workout_set both cascade from here.
+    delete_user(user_id)
+
+    try:
+        delete_auth_user(
+            user_id,
+            supabase_url=current_app.config.get("SUPABASE_URL") or "",
+            service_role_key=service_key,
+        )
+    except AuthError:
+        # The data is gone, which is the part the user asked for and the part
+        # that matters for privacy. Say plainly that the sign-in record is not.
+        return jsonify({"deleted": True, "auth_record_removed": False})
+
+    return jsonify({"deleted": True, "auth_record_removed": True})
