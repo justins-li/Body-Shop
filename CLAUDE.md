@@ -138,5 +138,5 @@ Full layer-ownership table and rationale live in [docs/ARCHITECTURE.md](docs/ARC
 - **Never add attribution trailers.** No `Co-Authored-By:`, no "Generated with" footers — GitHub renders co-authors as contributors on the PR, and the user does not want that.
 - **Work directly on `main`.** Justin asked for this on 2026-07-29; don't create a feature branch or open a PR unless he asks for one.
 - **Run the suite before committing.** CI only runs `pytest -q`, so a green local run is the whole signal.
-- **`gh` is not installed**, so PRs, issues and reviews cannot be created from here — say so rather than improvising, and offer `brew install gh` (macOS) or `winget install --id GitHub.cli` (Windows). Plain `git` works normally; `origin` is set.
+- **`gh` is installed** (2.96.0, verified 2026-07-31), so PRs, issues and reviews can be created from here. `origin` is `justins-li/Body-Shop`. This line previously said it was absent; that was stale.
 - Rewriting published history needs the user's approval — the permission rules block it by default.
