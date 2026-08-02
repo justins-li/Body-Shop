@@ -16,7 +16,9 @@ from .routines import all_routines, get_routine
 from .models import (
     delete_user,
     ensure_user,
+    get_trainer_setup,
     get_user,
+    set_trainer_setup,
     ValidationError,
     add_entry,
     delete_entry,
@@ -55,19 +57,25 @@ def _image_base() -> str:
     return str(current_app.config.get("EXERCISE_IMAGE_BASE", ""))
 
 
-def _query_profile() -> TrainerProfile:
-    """Read the trainer setup off the query string.
+def _user_profile() -> TrainerProfile:
+    """The signed-in account's trainer setup.
 
-    Phase 5 moves this onto the user row; until there is a user, the choice is a
-    client preference and arrives with the request. Bad values fall back to the
-    default rather than 400-ing — same reasoning as ``window`` on the graph
-    endpoint. A stale ``localStorage`` key should show the usual targets, not
-    blank the summary page.
+    The Phase 5 carryover: this used to read three query parameters, because
+    Phase 6 shipped before there was a user row to hang the setup off. There is
+    one now, and it is the only source — a client cannot override the targets it
+    is graded against, so the summary and the graph cannot be made to disagree
+    about one week.
+
+    An account that has never chosen resolves to the default profile, which is
+    the pre-Phase-6 grading exactly. ``resolve_profile`` clamps and falls back
+    rather than raising, so a value stored before a bound was tuned shows the
+    usual targets rather than blanking the page.
     """
+    stored = get_trainer_setup(g.user_id) or {}
     return resolve_profile(
-        request.args.get("experience"),
-        request.args.get("sessions"),
-        request.args.get("minutes"),
+        stored.get("experience"),
+        stored.get("sessions_per_week"),
+        stored.get("minutes_per_session"),
     )
 
 
@@ -296,12 +304,12 @@ def get_calendar():
 def get_weekly_summary():
     """Weekly muscle-coverage summary for the week containing ``date``.
 
-    ``experience``, ``sessions`` and ``minutes`` carry the Phase 6 trainer setup
-    and decide what each group's target is. The resolved profile comes back in
-    the payload, so the page renders the targets it was graded against.
+    Targets come from the account's stored trainer setup — see
+    ``GET /api/profile``. The resolved profile comes back in the payload, so the
+    page renders the targets it was graded against rather than deriving its own.
     """
     day = _query_date("date")
-    return jsonify(weekly_summary(g.user_id, day, _week_start(), _query_profile()))
+    return jsonify(weekly_summary(g.user_id, day, _week_start(), _user_profile()))
 
 
 @bp.get("/progress/graph")
@@ -320,7 +328,7 @@ def get_progress_graph():
             request.args.get("window", DEFAULT_WINDOW),
             _query_date("date"),
             _week_start(),
-            _query_profile(),
+            _user_profile(),
         )
     )
 
@@ -342,6 +350,50 @@ def get_me():
     runs — ``require_user`` provisioned it.
     """
     return jsonify({"user": get_user(g.user_id)})
+
+
+@bp.get("/profile")
+@require_user
+def get_profile():
+    """The account's trainer setup, resolved, with its targets.
+
+    ``configured`` says whether the account has ever chosen one. It is a fact
+    about storage rather than about training, which is why it rides beside the
+    profile instead of inside it — ``TrainerProfile`` describes a week's targets
+    and has no business knowing where its inputs came from. The first-run dialog
+    is the one reader: an account that has answered is never asked again, on any
+    device.
+    """
+    configured = get_trainer_setup(g.user_id) is not None
+    return jsonify({"profile": _user_profile().to_dict(), "configured": configured})
+
+
+@bp.put("/profile")
+@require_user
+def put_profile():
+    """Store the account's trainer setup.
+
+    **Clamps rather than 400s**, for the reason the query string did: these
+    arrive from a settings control, and the honest response to an out-of-range
+    number is the nearest one that works. The *resolved* values are what get
+    stored, so the column can never hold a setup the app would refuse to use,
+    and the echoed profile is what the controls settle on — a value corrected on
+    the way in corrects itself on screen rather than sitting there disagreeing
+    with the bars it produced.
+    """
+    body = request.get_json(silent=True) or {}
+    profile = resolve_profile(
+        body.get("experience"),
+        body.get("sessions_per_week"),
+        body.get("minutes_per_session"),
+    )
+    set_trainer_setup(
+        g.user_id,
+        profile.experience.key,
+        profile.plan.sessions_per_week,
+        profile.plan.minutes_per_session,
+    )
+    return jsonify({"profile": profile.to_dict(), "configured": True})
 
 
 @bp.delete("/account")

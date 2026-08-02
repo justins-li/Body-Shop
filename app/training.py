@@ -45,11 +45,12 @@ such. There is no evidence that a beginner needs 60% of an intermediate's
 volume; there is evidence that beginners grow on less, and 0.6 is a calibration
 you may tune (see :data:`ExperienceLevel.volume_scale`).
 
-**No ownership yet.** Phase 5 adds ``user_id`` and this becomes a column on the
-user row; until then the choice is a client preference sent with the request, so
-:func:`resolve_profile` treats every input as untrusted and falls back rather
-than raising — the same discipline ``window`` follows in
-:mod:`app.services.graph`.
+**Where the setup lives.** On the user row, as of the Phase 5 carryover — three
+nullable columns, all NULL meaning the account has never chosen. It reaches this
+module through ``api._user_profile``, and :func:`resolve_profile` still treats
+every input as untrusted: a stored value predates any tuning of the bounds above,
+and a settings control can send anything. It falls back rather than raising, the
+same discipline ``window`` follows in :mod:`app.services.graph`.
 """
 
 from __future__ import annotations

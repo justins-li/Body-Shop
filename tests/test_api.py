@@ -365,34 +365,78 @@ def test_progress_graph_excludes_warmup_only_movements(client, add):
     assert data["edges"] == []
 
 
-# ---- The trainer setup on the wire (Phase 6) -------------------------------
+# ---- The trainer setup, on the user row (Phase 5 carryover) ----------------
 
 
-def test_weekly_summary_defaults_to_the_baseline_targets(client):
-    """No profile in the query is the pre-Phase-6 grading, exactly."""
+def test_the_profile_starts_unconfigured_at_the_baseline(client):
+    """An account that has never chosen grades exactly as it did before Phase 6."""
+    payload = client.get("/api/profile").get_json()
+    assert payload["configured"] is False
+    assert payload["profile"]["experience"] == "experienced"
+    assert payload["profile"]["volume_scale"] == 1.0
+    assert payload["profile"]["targets"]["chest"] == 20
+
+
+def test_putting_a_profile_stores_it_and_echoes_it(client):
+    payload = client.put(
+        "/api/profile",
+        json={"experience": "beginner", "sessions_per_week": 6,
+              "minutes_per_session": 90},
+    ).get_json()
+    assert payload["configured"] is True
+    assert payload["profile"]["experience"] == "beginner"
+    # The week is roomy, so the beginner level is what binds: 0.6 of baseline.
+    assert payload["profile"]["limited_by"] == "experience"
+    assert payload["profile"]["targets"]["chest"] == 12
+
+    # And it survives the request that wrote it.
+    assert client.get("/api/profile").get_json() == payload
+
+
+def test_a_bad_profile_is_clamped_rather_than_400ing(client):
+    """It arrives from a settings control, so the honest answer to an
+    out-of-range number is the nearest one that works — and the *resolved*
+    values are what get stored, so the column can never hold a setup the app
+    would refuse to use."""
+    response = client.put(
+        "/api/profile",
+        json={"experience": "wizard", "sessions_per_week": 400,
+              "minutes_per_session": -9},
+    )
+    assert response.status_code == 200
+    stored = response.get_json()["profile"]
+    assert stored["experience"] == "experienced"
+    assert stored["sessions_per_week"] == 14
+    assert stored["minutes_per_session"] == 15
+    assert client.get("/api/profile").get_json()["profile"] == stored
+
+
+def test_the_weekly_summary_defaults_to_the_baseline_targets(client):
     payload = client.get("/api/summary/week?date=2026-07-28").get_json()
     assert payload["muscles"]["chest"]["target"] == 20
     assert payload["muscles"]["abs"]["target"] == 10
     assert payload["profile"]["experience"] == "experienced"
-    assert payload["profile"]["volume_scale"] == 1.0
 
 
-def test_weekly_summary_scales_targets_to_the_trainer_setup(client):
-    payload = client.get(
-        "/api/summary/week?date=2026-07-28"
-        "&experience=beginner&sessions=6&minutes=90"
-    ).get_json()
-    # The week is roomy, so the beginner level is what binds: 0.6 of baseline.
+def test_the_weekly_summary_grades_against_the_stored_setup(client):
+    client.put(
+        "/api/profile",
+        json={"experience": "beginner", "sessions_per_week": 6,
+              "minutes_per_session": 90},
+    )
+    payload = client.get("/api/summary/week?date=2026-07-28").get_json()
     assert payload["profile"]["limited_by"] == "experience"
     assert payload["muscles"]["chest"]["target"] == 12
     assert payload["muscles"]["abs"]["target"] == 6
 
 
 def test_a_short_week_lowers_the_targets(client):
-    payload = client.get(
-        "/api/summary/week?date=2026-07-28"
-        "&experience=advanced&sessions=2&minutes=30"
-    ).get_json()
+    client.put(
+        "/api/profile",
+        json={"experience": "advanced", "sessions_per_week": 2,
+              "minutes_per_session": 30},
+    )
+    payload = client.get("/api/summary/week?date=2026-07-28").get_json()
     assert payload["profile"]["limited_by"] == "plan"
     assert payload["muscles"]["chest"]["target"] < 20
 
@@ -400,23 +444,24 @@ def test_a_short_week_lowers_the_targets(client):
 def test_the_profile_echoes_the_targets_it_graded_against(client):
     """The page renders these rather than re-deriving them, so the two halves of
     the payload must agree."""
-    payload = client.get(
-        "/api/summary/week?date=2026-07-28&experience=beginner"
-    ).get_json()
+    client.put("/api/profile", json={"experience": "beginner",
+                                     "sessions_per_week": 5,
+                                     "minutes_per_session": 75})
+    payload = client.get("/api/summary/week?date=2026-07-28").get_json()
     targets = payload["profile"]["targets"]
     for muscle, info in payload["muscles"].items():
         assert info["target"] == targets[muscle], muscle
 
 
-def test_a_bad_trainer_setup_falls_back_rather_than_400ing(client):
-    """It arrives from a view control. A stale localStorage key should show the
-    usual targets, not blank the summary page."""
-    response = client.get(
+def test_the_query_string_can_no_longer_set_the_targets(client):
+    """One source of truth. A stale client sending the old parameters must be
+    graded against the account's setup, not its own idea of one."""
+    payload = client.get(
         "/api/summary/week?date=2026-07-28"
-        "&experience=wizard&sessions=banana&minutes=-9"
-    )
-    assert response.status_code == 200
-    assert response.get_json()["profile"]["experience"] == "experienced"
+        "&experience=beginner&sessions=2&minutes=30"
+    ).get_json()
+    assert payload["profile"]["experience"] == "experienced"
+    assert payload["muscles"]["chest"]["target"] == 20
 
 
 def test_grading_scales_so_a_week_can_cross_its_target(client, add):
@@ -427,20 +472,28 @@ def test_grading_scales_so_a_week_can_cross_its_target(client, add):
     baseline = client.get("/api/summary/week?date=2026-07-28").get_json()
     assert baseline["muscles"]["chest"]["state"] == "trained"
 
-    scaled = client.get(
-        "/api/summary/week?date=2026-07-28&experience=beginner&sessions=6&minutes=90"
-    ).get_json()
+    client.put(
+        "/api/profile",
+        json={"experience": "beginner", "sessions_per_week": 6,
+              "minutes_per_session": 90},
+    )
+    scaled = client.get("/api/summary/week?date=2026-07-28").get_json()
     assert scaled["muscles"]["chest"]["state"] == "over"
 
 
 def test_the_graph_colours_against_the_same_setup(client, add):
     """Node colour *is* the body map's grading, so the two pages must not
-    disagree about the same week."""
+    disagree about the same week — and now they cannot, because neither is
+    told the setup by its caller."""
     add("2026-07-28", BENCH, sets=14)
-    query = "date=2026-07-28&experience=beginner&sessions=6&minutes=90"
+    client.put(
+        "/api/profile",
+        json={"experience": "beginner", "sessions_per_week": 6,
+              "minutes_per_session": 90},
+    )
 
-    graph = client.get(f"/api/progress/graph?{query}").get_json()
-    summary = client.get(f"/api/summary/week?{query}").get_json()
+    graph = client.get("/api/progress/graph?date=2026-07-28").get_json()
+    summary = client.get("/api/summary/week?date=2026-07-28").get_json()
     assert graph["coverage"]["chest"]["state"] == summary["muscles"]["chest"]["state"]
     assert graph["coverage"]["chest"]["state"] == "over"
 

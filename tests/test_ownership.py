@@ -61,6 +61,25 @@ class TestReadsAreScoped:
         assert mine["muscles"]["chest"]["sets"] == 0.0
         assert theirs["muscles"]["quads"]["sets"] == 0.0
 
+    def test_the_trainer_setup(self, client, other_client):
+        """One account's setup must never grade another's week."""
+        client.put(
+            "/api/profile",
+            json={"experience": "beginner", "sessions_per_week": 3,
+                  "minutes_per_session": 45},
+        )
+        mine = client.get("/api/profile").get_json()
+        theirs = other_client.get("/api/profile").get_json()
+
+        assert mine["configured"] is True
+        assert theirs["configured"] is False
+        assert theirs["profile"]["experience"] == "experienced"
+        assert theirs["profile"]["targets"]["chest"] == 20
+
+        # And the grading follows the account, not the request.
+        their_week = other_client.get(f"/api/summary/week?date={DAY}").get_json()
+        assert their_week["muscles"]["chest"]["target"] == 20
+
     def test_the_training_graph(self, client, other_client, two_users):
         mine = client.get("/api/progress/graph?window=all").get_json()
         theirs = other_client.get("/api/progress/graph?window=all").get_json()
