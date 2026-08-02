@@ -25,7 +25,9 @@
       "Bash(git check-ignore *)",
       "mcp__plugin_playwright_playwright__browser_fill_form",
       "Bash(ps -o lstart=,command= -p 44359 -p 45334)",
-      "mcp__plugin_playwright_playwright__browser_close"
+      "mcp__plugin_playwright_playwright__browser_close",
+      "Bash(grep -n \"^#\\\\{2,3\\\\} \" docs/ARCHITECTURE.md)",
+      "Bash(pytest -q)"
     ]
   }
 }

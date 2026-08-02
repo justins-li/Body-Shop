@@ -28,16 +28,22 @@ Which backend is in use is decided entirely by `DATABASE_URL`, and nothing above
 `lastrowid` versus `RETURNING`, `AUTOINCREMENT` versus `IDENTITY`, and how a
 `DATE` is stored, so `models.py` expresses queries once.
 
-`app/views.py` renders six server-side shells (`/`, `/how-to-use`, `/routines`, `/log`,
-`/summary`, `/progress`); everything dynamic is fetched by the page's JavaScript module
-from the same `/api` the tests exercise. That means the HTML never diverges from the
-API, and the API is testable without a browser. `/calendar` was a seventh until Phase
-8.3 folded it into `/summary`; it survives as a 301 so shared `?date=` links still land
-on the right week.
+`app/views.py` renders eleven server-side shells — six chapters (`/`, `/how-to-use`,
+`/routines`, `/log`, `/summary`, `/progress`) and, since Phase 5, five bare auth pages
+(`/login`, `/signup`, `/reset-password`, `/verify`, `/account`); everything dynamic is
+fetched by the page's JavaScript module from the same `/api` the tests exercise. That
+means the HTML never diverges from the API, and the API is testable without a browser.
+`/calendar` was a seventh chapter until Phase 8.3 folded it into `/summary`; it survives
+as a 301 so shared `?date=` links still land on the right week.
 
 `/` and `/how-to-use` are the exceptions: static pages with no JS module and no API
-calls. `/` is the one page that will render identically for a visitor and a signed-in
-user, which is why it is worth having before auth exists.
+calls. `/` renders identically for a visitor and a signed-in user apart from which
+action its masthead offers, which is what keeps it to one screen for everybody.
+
+**Every page shell is public, including the chapters, and gating is the page module's
+job.** A browser sends no `Authorization` header on a navigation, so Flask cannot decide
+whether to render `/log` for you; `api.js` gets the 401 instead, refreshes the token
+once, and on a second 401 redirects to `/login?next=<path>`. One retry, never a loop.
 
 ## Layer responsibilities
 
@@ -50,7 +56,8 @@ user, which is why it is worth having before auth exists.
 | `app/tables.py` | The schema, as SQLAlchemy `MetaData`. Source of truth for both dialects. | Change any existing database — that needs a migration. |
 | `migrations/` | How a database reaches the schema `tables.py` describes. Revisions are append-only history. | Import app constants that a later commit could change. |
 | `app/db.py` | The engine, request-scoped connections, and the migration commands. | Contain queries. |
-| `app/models.py` | Every SQL statement, plus input validation. | Know about HTTP or Jinja, or know which dialect it is on. |
+| `app/models.py` | Every SQL statement, plus input validation. Every function touching `workout_entry` takes `user_id` first and positionally. | Know about HTTP or Jinja, know which dialect it is on, or query an entry without an owner. |
+| `app/services/auth.py` | Verifying a Supabase bearer token — HS256 against the shared secret, or the project's JWKS — and raising one `AuthError` for every failure. | Hold a password, mint a token, or explain *why* a token failed. |
 | `app/services/weeks.py` | Week/month boundary maths. | Query the database. |
 | `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses, or decide what a target *is*. |
 | `app/services/graph.py` | The training graph's rules: what a window means, what makes a movement an orphan, and joining this week's coverage and personal bests onto the nodes. | Query the database, or invent a strength *standard* (see below). |
@@ -59,6 +66,8 @@ user, which is why it is worth having before auth exists.
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
 | `app/views.py` | Page shells and template context. | Contain business rules. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
+| `app/static/js/api.js` | The only place *our own* API is called: attaching the bearer token, one silent refresh-and-retry on a 401, then `/login?next=…`. | Talk to Supabase, or retry twice. |
+| `app/static/js/auth.js` | The only place Supabase is called — sign-in, sign-up, reset, verify, sign-out, and the stored session. | Talk to our API, or let a password reach Flask. |
 | `app/static/js/timer.js` | The rest countdown, booted from `base.html` on every page. Pure client state, persisted as a *deadline* so it survives navigation and tab throttling. | Touch the API, or persist anything but its duration and that deadline. |
 | `app/static/js/plates.js` | Plate arithmetic — a pure function of weight and bar. | Store anything, or fetch. |
 | `app/static/js/layout.js` | The force-directed layout — a pure, deterministic function of the graph. | Touch the canvas, the DOM, or `Math.random`. |
@@ -433,11 +442,13 @@ What is sourced and what is convention:
 | `SESSION_OVERHEAD_MINUTES = 10` | Judgement. Fixed per session, which is why 2 × 30 holds fewer working sets than 1 × 60 |
 | `REFERENCE_PLAN` (5 × 75) | Derived, and the arithmetic is in the docstring: 180 weighted units ÷ ~2.0 per set ≈ 90 sets ≈ 315 working minutes |
 
-**No ownership yet.** Phase 5 makes this a column on the user row; until then it is a
-`localStorage` preference sent with each request (`experience`/`sessions`/`minutes`), and
+**Still no ownership, and this is the one thing Phase 5 did not finish.** Accounts exist,
+but the setup is a `localStorage` preference sent with each request
+(`experience`/`sessions`/`minutes`), so it is per-browser rather than per-account.
 `resolve_profile` treats every input as untrusted — falling back and clamping rather than
-raising, the same discipline `window` follows on the graph. The API shape does not change
-when Phase 5 lands.
+raising, the same discipline `window` follows on the graph. Moving it onto the user row is
+a column, a default and a migration; the API shape does not change, which is why it could
+be deferred. See the carryover item at the top of [ROADMAP.md](ROADMAP.md).
 
 **The client never computes a target.** It sends the three values and renders
 `profile.targets` from the response. `/progress` sends them too, because node colour *is*
@@ -685,15 +696,39 @@ because the new edges had no colours yet.
 
 ## Data model
 
-Two tables, defined in [`app/tables.py`](../app/tables.py). Entries are append-only
+Three tables, defined in [`app/tables.py`](../app/tables.py). Entries are append-only
 rows; there is no per-day "workout" record, which keeps logging a single insert
 and makes range queries trivial.
 
 ```sql
-workout_entry(id, entry_date DATE, exercise_id TEXT, created_at TIMESTAMPTZ)
+user(id UUID, email TEXT UNIQUE, created_at TIMESTAMPTZ)
+workout_entry(id, user_id -> user ON DELETE CASCADE,
+              entry_date DATE, exercise_id TEXT, created_at TIMESTAMPTZ)
 workout_set(id UUID, entry_id -> workout_entry ON DELETE CASCADE,
             set_index INTEGER, weight REAL, reps INTEGER, rpe REAL, set_type TEXT)
 ```
+
+**`user` is a mirror, not a source of truth.** Its id *is* `auth.users.id` — the JWT's
+`sub` — and the row is created just-in-time on the first authenticated request, which
+makes `ensure_user` the only place in the app where a GET writes. There is no signup
+webhook to keep in sync, and deliberately no `password_hash` and no `verified_at`:
+Supabase owns both, and a mirrored verification flag drifts invisibly until someone is
+wrongly let in or wrongly kept out.
+
+Both foreign keys cascade, and [`db.py`](../app/db.py) enables SQLite foreign keys per
+connection, so deleting an account is one `DELETE FROM "user"` and `delete_entry` needs
+no cascade handling. `DELETE /api/account` removes local rows **first** and the Supabase
+auth record second, using the service-role key — the one Supabase credential Flask holds,
+and used nowhere else. If the second step fails the account survives with no data, which
+is recoverable, and the response says `auth_record_removed: false` rather than claiming
+success.
+
+Ownership is enforced by shape rather than by discipline: `user_id` is the **first
+positional parameter** of every `models.py` function that touches `workout_entry`, so a
+call site nobody updated fails as a `TypeError` instead of quietly querying across all
+users. `_sets_for` is the single exception, and its docstring says what a new caller must
+do instead. Because `get_entry` and `delete_entry` return nothing for another user's row,
+the API answers **404, not 403** — a 403 would confirm the id exists.
 
 `workout_entry.sets` was an integer column until Phase 4. It is now **derived**:
 `WorkoutEntry.sets` counts child rows whose `set_type` is not `warmup`. A
@@ -708,7 +743,7 @@ body map the moment anyone logged properly.
 
 **`weight` is kilograms, always** — at rest and over the wire. The kg/lb choice is
 a display preference in `localStorage`, converted only in
-[`ui.js`](../app/static/js/ui.js), so Phase 7's charts aggregate over one unit.
+[`ui.js`](../app/static/js/ui.js), so Phase 8.7's charts aggregate over one unit.
 `weight`, `reps` and `rpe` are nullable: "not recorded" and "zero" are different
 facts, and revision `0004`'s backfill produces rows that know a set happened and
 nothing else.
@@ -736,6 +771,8 @@ own autogenerate diff and fails if a revision is missing.
 | `0001` | The schema as the original hand-written `schema.sql` built it. A database predating Alembic is `stamp-db 0001`'d onto the chain rather than rebuilt. |
 | `0002` | Moves the four pre-Phase-2 exercise ids onto the catalog. Replaced the `remap-exercises` command. |
 | `0003` | `entry_date` → `DATE`, `created_at` → `TIMESTAMPTZ`. |
+| `0004` | Splits the `sets` integer column into `workout_set` rows, backfilling one row per counted set. |
+| `0005` | Adds `user` and `workout_entry.user_id`. **Destructive and irreversible** — it deletes every existing entry and set first, rather than backfilling development history onto a seed account and leaving a permanent "who is user 1" behind. `downgrade()` restores the schema, never the rows. |
 
 `0003` is worth reading before writing another type change. It **cannot** use
 Alembic's `batch_alter_table`: `SQLiteImpl.cast_for_batch_migrate` adds a `CAST` to
@@ -782,9 +819,22 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
   where it must **refuse**: no weight, no reps, a set too long to extrapolate from. An
   unmeasurable movement drawing as a small node instead of a ring is the failure the
   whole module is arranged to prevent.
-- `tests/test_pages.py` — the five pages render and contain every muscle region, and
-  `/log` ships a picker shell rather than the catalog. Page markers are chosen to be
-  unique to their page, since the nav links appear on all four.
+- `tests/test_pages.py` — the pages render and contain every muscle region, `/log` ships
+  a picker shell rather than the catalog, and every submitted control sits inside
+  `#entry-form`. Page markers are chosen to be unique to their page, since the shelves
+  appear on all of them.
+- `tests/test_auth.py` — token verification: the HS256 and JWKS branches, and that every
+  failure mode renders as the same 401 with the same message. A 401 that says *why* is an
+  oracle.
+- `tests/test_ownership.py` — two users walked across every endpoint. **A failure here is
+  a data leak**, so the fix is the query, never the test. It also pins the 404-not-403
+  answer for another user's entry id.
+- `tests/test_account.py` — `GET /api/me`, the just-in-time mirror row, and that deletion
+  removes local rows before the auth record and reports `auth_record_removed` honestly.
+- `tests/test_routines.py` — the editorial content's import-time contract: every id
+  resolves, no movement listed twice, no empty routine, the duration derived from the
+  sets rather than typed, and the `[experimental]` tag enforced in both directions
+  against attribution.
 - `tests/test_migrations.py` — that the migration chain builds exactly what
   `tables.py` describes, that the data migration moves every retired id, that the
   `DATE` conversion preserves real dates, and that the chain downgrades.
@@ -793,6 +843,11 @@ Weeks start Monday (ISO), configurable via `BODYSHOP_WEEK_STARTS_ON`.
 
 Each test gets a fresh SQLite file in pytest's `tmp_path`, so tests are isolated and
 run in any order.
+
+**The suite stays offline, and that was bought deliberately.** An external issuer in the
+middle of every authenticated test would have ended it, so the testing config pins
+`SUPABASE_JWT_SECRET`: the HS256 branch always wins, tokens are minted in-process, and no
+test resolves a JWKS document.
 
 Setting `BODYSHOP_TEST_DATABASE_URL` runs the same suite against a real Postgres
 instead, where the schema is built by the migrations rather than from the metadata —
@@ -804,10 +859,15 @@ which is the difference between seconds and minutes against a hosted database.
 ## Deliberate limitations
 
 - ~~**Single user.**~~ **Reversed by Phase 5.** Every row carries a `user_id`
-  and the account lives in a mirrored `user` table. What follows described the
-  pre-Phase-5 shape: there was no auth and no `user_id` column; the database was
-  whoever's machine it runs on. Adding accounts means a `user` table and a foreign
-  key on `workout_entry`.
+  and the account lives in a mirrored `user` table. What it replaced: there was no
+  auth and no `user_id` column, and the database was whoever's machine it ran on.
+- **The trainer setup is per-browser, not per-account.** It is still the
+  `localStorage` preference Phase 6 shipped, so signing in on a second device shows
+  the default targets and clearing site data resets them. The carryover at the top
+  of [ROADMAP.md](ROADMAP.md).
+- **No rate limiting of our own.** Supabase rate-limits the endpoints that take a
+  credential; ours are bearer-only, with nothing to brute-force. Deliberate, and
+  worth revisiting only if the API itself becomes the target.
 - **No connection pooling of our own on Postgres.** `NullPool` is deliberate: both
   Supabase and Neon put a pooler in front, and a second pool inside a serverless
   function exhausts connection limits at trivial traffic. Under a long-lived
@@ -818,9 +878,10 @@ which is the difference between seconds and minutes against a hosted database.
   "that is intermediate". Whether it ever should is a product question, not a missing
   feature.
 - **No PR detection.** The best is recomputed per window rather than recorded when it
-  happens, so nothing notices or announces a new one. That is [Phase 8](ROADMAP.md).
+  happens, so nothing notices or announces a new one. That is [Phase 8.5](ROADMAP.md).
 - **No editing.** Entries and sets are append-only; a mistake is deleted and
-  re-logged. Also Phase 8.
+  re-logged. That is [Phase 8.4](ROADMAP.md), and the surface already exists — the
+  set grid renders values rather than placeholders when asked.
 - **One `shoulders` group.** The catalog distinguishes front, side and rear raises in
   its facets, but the map shades a single deltoid region. Splitting into three is a
   data change plus SVG paths, not a re-model — see [ROADMAP.md](ROADMAP.md).
