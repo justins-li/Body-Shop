@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Create an account — Body Shop{% endblock %}
+
+{% block content %}
+<div class="auth-shell">
+  <div>
+    <h1 class="auth-title">Create an account</h1>
+    <p class="auth-note mt-2">Free, and your workouts are yours.</p>
+  </div>
+
+  <form id="signup-form" class="flex flex-col gap-4" novalidate>
+    <p id="signup-error" class="auth-error" hidden></p>
+
+    <label class="auth-field">
+      <span class="type-label">Email</span>
+      <input class="auth-input" type="email" name="email" autocomplete="email" required>
+    </label>
+
+    <label class="auth-field">
+      <span class="type-label">Password</span>
+      <input class="auth-input" type="password" name="password"
+             autocomplete="new-password" required>
+    </label>
+
+    <button class="auth-submit type-label" type="submit">Create account</button>
+  </form>
+
+  {# Password rules, lockout and enumeration hygiene are all Supabase's, set in
+     its dashboard rather than here — so this page states no rule it does not
+     enforce. #}
+  <p id="signup-done" class="auth-note" hidden>
+    Check your email — we have sent you a link to confirm the address.
+  </p>
+
+  <p class="auth-note">
+    Already have one? <a href="{{ url_for('views.login_page') }}">Sign in</a>
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { signUp } from "{{ url_for('static', filename='js/auth.js') }}";
+
+  const form = document.getElementById("signup-form");
+  const error = document.getElementById("signup-error");
+  const done = document.getElementById("signup-done");
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    error.hidden = true;
+    const button = form.querySelector("button");
+    button.disabled = true;
+    try {
+      const data = new FormData(form);
+      const result = await signUp(data.get("email"), data.get("password"));
+      if (result.needsConfirmation) {
+        // Not a failure. The project requires email confirmation, so there is
+        // no session yet and the next step is in their inbox.
+        form.hidden = true;
+        done.hidden = false;
+        return;
+      }
+      location.assign("/summary");
+    } catch (err) {
+      error.textContent = err.message;
+      error.hidden = false;
+      button.disabled = false;
+    }
+  });
+</script>
+{% endblock %}

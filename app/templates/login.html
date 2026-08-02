@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Sign in — Body Shop{% endblock %}
+
+{% block content %}
+<div class="auth-shell">
+  <div>
+    <h1 class="auth-title">Sign in</h1>
+    <p class="auth-note mt-2">Your training, on every device you use.</p>
+  </div>
+
+  <form id="signin-form" class="flex flex-col gap-4" novalidate>
+    <p id="signin-error" class="auth-error" hidden></p>
+
+    <label class="auth-field">
+      <span class="type-label">Email</span>
+      <input class="auth-input" type="email" name="email" autocomplete="email" required>
+    </label>
+
+    <label class="auth-field">
+      <span class="type-label">Password</span>
+      <input class="auth-input" type="password" name="password"
+             autocomplete="current-password" required>
+    </label>
+
+    <button class="auth-submit type-label" type="submit">Sign in</button>
+  </form>
+
+  <p class="auth-note">
+    <a href="{{ url_for('views.reset_password_page') }}">Forgot your password?</a>
+    &nbsp;·&nbsp;
+    <a href="{{ url_for('views.signup_page') }}">Create an account</a>
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { signIn } from "{{ url_for('static', filename='js/auth.js') }}";
+
+  const form = document.getElementById("signin-form");
+  const error = document.getElementById("signin-error");
+  // Same-origin paths only. An open redirect here would let a crafted link
+  // bounce someone off the app right after they signed in.
+  const raw = new URLSearchParams(location.search).get("next") || "/summary";
+  const next = raw.startsWith("/") && !raw.startsWith("//") ? raw : "/summary";
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    error.hidden = true;
+    const button = form.querySelector("button");
+    button.disabled = true;
+    try {
+      const data = new FormData(form);
+      await signIn(data.get("email"), data.get("password"));
+      location.assign(next);
+    } catch (err) {
+      error.textContent = err.message;
+      error.hidden = false;
+      button.disabled = false;
+    }
+  });
+</script>
+{% endblock %}

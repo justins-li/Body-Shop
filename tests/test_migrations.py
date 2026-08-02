@@ -22,9 +22,12 @@ from alembic.migration import MigrationContext
 
 from app import create_app
 from app.db import downgrade_db, get_engine, init_db, upgrade_db
-from app.tables import metadata, workout_entry, workout_set
+from app.tables import metadata, user, workout_entry, workout_set
 
 from conftest import TEST_DATABASE_URL
+
+#: An owner id for the tests that need one. Any UUID does.
+OWNER = "11111111-1111-4111-8111-111111111111"
 
 RETIRED = {
     "bench_press": "Barbell_Bench_Press_-_Medium_Grip",
@@ -123,16 +126,102 @@ def test_revision_0002_remaps_every_retired_id(migrated):
 
 
 def test_revision_0002_is_safe_on_a_database_that_never_held_old_ids(migrated):
+    """Pinned to 0004, not head: revision 0005 wipes every row on its way past.
+
+    What this test is about is 0002 leaving an un-retired id alone, which is a
+    statement about 0002 — running it through the Phase 5 wipe would assert
+    nothing except that the wipe works, which its own test covers.
+    """
     application, to = migrated
     engine = to("0001")
     insert_legacy(engine, "Barbell_Squat")
 
-    to("head")
+    to("0004")
 
     with engine.connect() as connection:
         assert connection.execute(
             sa.text("SELECT exercise_id FROM workout_entry")
         ).scalars().all() == ["Barbell_Squat"]
+
+
+def test_revision_0005_wipes_existing_history(migrated):
+    """The destructive step, asserted rather than left implicit.
+
+    A backfill onto a seed account would have carried single-user development
+    history into the multi-user world and left a permanent "who is user 1"
+    question. The wipe is the decision; this is the test that says so out loud,
+    so nobody later "fixes" it as a bug.
+    """
+    application, to = migrated
+    engine = to("0004")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "INSERT INTO workout_entry (entry_date, exercise_id) "
+                "VALUES ('2026-07-28', 'Barbell_Squat')"
+            )
+        )
+
+    to("0005")
+
+    with engine.connect() as connection:
+        assert connection.execute(
+            sa.select(sa.func.count()).select_from(workout_entry)
+        ).scalar() == 0
+        assert connection.execute(
+            sa.select(sa.func.count()).select_from(workout_set)
+        ).scalar() == 0
+
+
+def test_revision_0005_requires_an_owner_for_every_entry(migrated):
+    """The column is NOT NULL and the foreign key is real on both dialects."""
+    application, to = migrated
+    engine = to("head")
+
+    with pytest.raises(sa.exc.IntegrityError):
+        with engine.begin() as connection:
+            connection.execute(
+                sa.insert(workout_entry).values(
+                    user_id="99999999-9999-4999-8999-999999999999",
+                    entry_date=date(2026, 7, 28),
+                    exercise_id="Barbell_Squat",
+                )
+            )
+
+
+def test_revision_0005_cascades_from_the_user(migrated):
+    """Deleting an account is one DELETE; the cascade does the rest."""
+    application, to = migrated
+    engine = to("head")
+
+    with engine.begin() as connection:
+        connection.execute(sa.insert(user).values(id=OWNER, email="o@example.com"))
+        result = connection.execute(
+            sa.insert(workout_entry).values(
+                user_id=OWNER,
+                entry_date=date(2026, 7, 28),
+                exercise_id="Barbell_Squat",
+            )
+        )
+        connection.execute(
+            sa.insert(workout_set).values(
+                id="0" * 32,
+                entry_id=int(result.inserted_primary_key[0]),
+                set_index=1,
+                set_type="normal",
+            )
+        )
+
+    with engine.begin() as connection:
+        connection.execute(sa.delete(user).where(user.c.id == OWNER))
+
+    with engine.connect() as connection:
+        assert connection.execute(
+            sa.select(sa.func.count()).select_from(workout_entry)
+        ).scalar() == 0
+        assert connection.execute(
+            sa.select(sa.func.count()).select_from(workout_set)
+        ).scalar() == 0
 
 
 def test_revision_0003_preserves_dates_across_the_type_change(migrated):
@@ -183,9 +272,16 @@ def test_the_chain_downgrades_to_base(migrated):
     application, to = migrated
     engine = to("head")
     with engine.begin() as connection:
+        # An entry needs an owner from 0005 on, and the foreign key is enforced
+        # on SQLite too — app/db.py turns it on per connection.
+        connection.execute(
+            sa.insert(user).values(id=OWNER, email="owner@example.com")
+        )
         connection.execute(
             sa.insert(workout_entry).values(
-                entry_date=date(2026, 7, 28), exercise_id="Barbell_Squat"
+                user_id=OWNER,
+                entry_date=date(2026, 7, 28),
+                exercise_id="Barbell_Squat",
             )
         )
 
@@ -194,6 +290,7 @@ def test_the_chain_downgrades_to_base(migrated):
     inspector = sa.inspect(engine)
     assert not inspector.has_table("workout_entry")
     assert not inspector.has_table("workout_set")
+    assert not inspector.has_table("user")
 
 
 def test_revision_0004_backfills_one_set_per_counted_set(migrated):
@@ -304,6 +401,14 @@ def test_revision_0004_preserves_dates_through_the_sqlite_rebuild(migrated):
 
     to("0004")
 
+    # Pinned to 0004, so a local typed handle rather than the metadata's — which
+    # now carries the user_id column revision 0005 adds. Same reason the 0003
+    # test declares its own handle.
+    entry_at_0004 = sa.table(
+        "workout_entry",
+        sa.column("entry_date", sa.Date),
+        sa.column("exercise_id"),
+    )
     with engine.connect() as connection:
-        row = connection.execute(sa.select(workout_entry)).one()
+        row = connection.execute(sa.select(entry_at_0004)).one()
     assert row.entry_date == date(2026, 7, 28)

@@ -107,6 +107,36 @@
     }
   }
 
+  /* The signed-in / signed-out split on `/`. An inline script in base.html
+     stamps `data-auth` on <html> before first paint, so neither block ever
+     flashes. Hand-written rather than a utility because the attribute is
+     toggled at runtime, and Tailwind purges a class it cannot read as literal
+     text.
+
+     **These live here, beside `.home-actions`, and not in `@layer components`.**
+     Unlayered styles outrank every layered one in the cascade no matter how
+     specific the layered selector is, so the same rules inside the layer lost
+     to `.home-actions { display: flex }` and rendered both halves at once. Any
+     rule overriding an unlayered one has to be unlayered too.
+
+     **Both selectors are qualified with `:root[data-auth]` for the same fight,
+     one round later.** Unlayering equalised the origin, which left a plain
+     `[data-auth-when]` tied with `.home-actions` on specificity (0,1,0) — and a
+     tie is broken by source order, which `.home-actions` wins by sitting nine
+     lines below. At 0,2,0 these stop depending on where they appear in the
+     file. Verified in a browser: without the `:root` qualifier both halves of
+     the landing page render at once, signed in or out. */
+  :root[data-auth] [data-auth-when] {
+    display: none;
+  }
+
+  /* `flex`, not `revert`: every consumer is a flex row, and `revert` would drop
+     to the user-agent's `block` and break the row it just un-hid. */
+  :root[data-auth="out"] [data-auth-when="out"],
+  :root[data-auth="in"] [data-auth-when="in"] {
+    display: flex;
+  }
+
   .home-actions {
     display: flex;
     flex-wrap: wrap;
@@ -423,6 +453,52 @@
 
    Static structure stays in the templates as utilities. */
 @layer components {
+  /* ---- Auth pages ------------------------------------------------------ */
+  /* One narrow column on the same continuous ground as everything else —
+     hairline rules, no card, no shadow, per the layout invariant. */
+  .auth-shell {
+    @apply mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center gap-6 px-6 py-12;
+  }
+
+  .auth-title {
+    @apply font-serif text-3xl font-light tracking-tight text-base-content;
+  }
+
+  .auth-field {
+    @apply flex flex-col gap-2;
+  }
+
+  /* 44pt clear, like every other target in the app. `.field-sm` elsewhere is a
+     typographic variant, never a smaller tap target, and the same rule holds
+     here. */
+  .auth-input {
+    @apply min-h-[44px] w-full border border-base-content/25 bg-base-100 px-3 py-2
+           text-base text-base-content outline-none;
+  }
+
+  .auth-input:focus {
+    @apply border-base-content/60;
+  }
+
+  /* Hairline-outlined, never filled. Red *area* means volume past target; red
+     outline or text means an action. */
+  .auth-submit {
+    @apply min-h-[44px] w-full border border-primary bg-transparent px-4 py-2
+           text-primary;
+  }
+
+  .auth-submit:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .auth-note {
+    @apply text-sm text-secondary;
+  }
+
+  .auth-error {
+    @apply border border-primary/40 px-3 py-2 text-sm text-primary;
+  }
+
   /* -- Typography voices ------------------------------------------------
      Four named voices, three faces. The rule survives from Phase 1 — no
      ad-hoc size/weight/tracking stacks in templates — but the data voice is
@@ -912,6 +988,46 @@
   /* Theme toggle. Docked bottom-left with the rest readout — the reference
      puts its language selector in the same corner, and with no header these
      are the only two persistent controls in the app. */
+  /* Account and sign out, stacked above the theme toggle. The bottom-left
+     column reads rest dock (1rem) → theme toggle (4rem) → account (7rem), so
+     nothing overlaps and the order is stable across pages.
+
+     **No `display` here on purpose.** `:root[data-auth] [data-auth-when]` owns
+     it: the dock is `display: none` signed out and `flex` signed in, stamped
+     before first paint. Setting `display: flex` here would tie that rule on
+     specificity and re-open the bug the landing page just had. */
+  .account-dock {
+    position: fixed;
+    left: 1rem;
+    bottom: 7rem;
+    z-index: 60;
+    flex-direction: column;
+    gap: 0.35rem;
+    align-items: stretch;
+  }
+
+  /* Outlined, never filled — a filled red area means volume past target, and
+     an action must not borrow that. 44pt like every other target in the app. */
+  .dock-link {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+  .dock-link:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+  .dock-link:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   .theme-toggle {
     position: fixed;
     left: 1rem;
@@ -943,6 +1059,9 @@
 
   @media (width < 64rem) {
     .theme-toggle { bottom: 7.75rem; }
+    /* Keeps the same 3rem rhythm above the toggle once the tab bar claims the
+       bottom of the screen. */
+    .account-dock { bottom: 10.75rem; }
   }
 
   /* The rest timer used to sit in the header. With the header gone it docks in

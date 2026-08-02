@@ -42,9 +42,46 @@
   <link rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;600&family=Noto+Serif:wght@300;400&display=swap">
 
+  {#
+    Stamp the signed-in state on <html> before anything paints. Deliberately
+    inline, blocking and tiny, exactly like the theme script above: a module
+    script is deferred, and a deferred toggle is a visible flash of the wrong
+    half of the landing page.
+
+    The key is duplicated from auth.js's STORAGE_KEY rather than imported —
+    importing would make this a module, which is what it must not be. Keep the
+    two literals in step.
+  #}
+  <script>
+    (function () {
+      var signedIn = false;
+      try {
+        signedIn = Boolean(JSON.parse(localStorage.getItem("bodyshop.auth")));
+      } catch (e) {
+        signedIn = false;
+      }
+      document.documentElement.setAttribute("data-auth", signedIn ? "in" : "out");
+    })();
+  </script>
+
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+
+  {#
+    Supabase's public identifiers, read by auth.js. `tojson` escapes for a
+    script context, so a key containing a quote or a `</script>` cannot break
+    out. The service-role key is never in this dict — see views.inject_globals.
+  #}
+  <script>
+    window.BODYSHOP_SUPABASE = {{ supabase | tojson }};
+  </script>
 </head>
-<body data-page="{{ page }}" class="min-h-screen flex flex-col has-tab-bar">
+{#
+  `bare` is set by the five auth pages. They are not chapters of the book, so
+  they get no shelves, no tab bar, no rest dock and no first-run dialog — and
+  `sections` above never learns about them, which is what leaves the
+  chapter-ordering tests untouched.
+#}
+<body data-page="{{ page }}" class="min-h-screen flex flex-col{{ '' if bare else ' has-tab-bar' }}">
   <a class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[70]
             focus:border focus:border-base-content/25 focus:bg-base-100
             focus:px-4 focus:py-2 focus:text-sm focus:no-underline"
@@ -140,24 +177,29 @@
 
   <div class="shell">
     {# ---- Left: the chapters before this one, in order -------------------- #}
-    <nav class="shelf-stack shelf-stack-left" aria-label="Earlier sections">
-      {% for endpoint, key, label, chapter, blurb in left_shelves %}
-        {{ shelf(endpoint, key, label, chapter, blurb, home=(key == 'home')) }}
-      {% endfor %}
-    </nav>
+    {% if not bare %}
+      <nav class="shelf-stack shelf-stack-left" aria-label="Earlier sections">
+        {% for endpoint, key, label, chapter, blurb in left_shelves %}
+          {{ shelf(endpoint, key, label, chapter, blurb, home=(key == 'home')) }}
+        {% endfor %}
+      </nav>
+    {% endif %}
 
     <main id="main" class="shell-main">
       {% block content %}{% endblock %}
     </main>
 
     {# ---- Right: the chapters after it ------------------------------------ #}
-    <nav class="shelf-stack" aria-label="Later sections">
-      {% for endpoint, key, label, chapter, blurb in right_shelves %}
-        {{ shelf(endpoint, key, label, chapter, blurb) }}
-      {% endfor %}
-    </nav>
+    {% if not bare %}
+      <nav class="shelf-stack" aria-label="Later sections">
+        {% for endpoint, key, label, chapter, blurb in right_shelves %}
+          {{ shelf(endpoint, key, label, chapter, blurb) }}
+        {% endfor %}
+      </nav>
+    {% endif %}
   </div>
 
+  {% if not bare %}
   {#
     The rest countdown. It used to live in the header; with the header gone it
     docks bottom-left, but the contract is unchanged — it runs on every page,
@@ -178,6 +220,23 @@
       </svg>
     </button>
   </div>
+  {% endif %}
+
+  {#
+    Account and sign out. Docked above the theme toggle, and **only rendered on
+    the chapters** — the bare auth pages have nothing to sign out of.
+
+    `data-auth-when="in"` hides the whole dock for a signed-out reader, using
+    the same before-first-paint stamp the landing page's split uses, so it never
+    flashes. Without this, `/account` was unreachable from anywhere in the UI:
+    sign-out and delete-account both lived on a page with no link to it.
+  #}
+  {% if not bare %}
+    <div class="account-dock" data-auth-when="in">
+      <a class="dock-link type-label" href="{{ url_for('views.account_page') }}">Account</a>
+      <button type="button" class="dock-link type-label" id="sign-out">Sign out</button>
+    </div>
+  {% endif %}
 
   {# Light/dark. The label names the *current* theme; the icon shows it too, so
      the control reads correctly whether you scan the word or the glyph. #}
@@ -217,6 +276,7 @@
     <span class="page-veil-mark type-label">Body Shop</span>
   </div>
 
+  {% if not bare %}
   {# Thumb-zone navigation. Hidden from `sm:` up, where the shelves take over. #}
   <nav class="tab-bar sm:hidden" aria-label="Primary">
     {% for endpoint, key, label, chapter, blurb in sections if key not in ('home', 'how') %}
@@ -225,7 +285,9 @@
          {% if page == key %}aria-current="page"{% endif %}>{{ label.split(' ')[0] }}</a>
     {% endfor %}
   </nav>
+  {% endif %}
 
+  {% if not bare %}
   {#
     First run. The trainer setup decides every weekly target in the app, and its
     default is a guess about a stranger — so it is worth one question before the
@@ -284,6 +346,7 @@
       </div>
     </form>
   </dialog>
+  {% endif %}
 
   <div id="toast" class="toast-bar" role="status" aria-live="polite"></div>
 
@@ -295,10 +358,25 @@
     import { initThemeToggle } from "{{ url_for('static', filename='js/theme.js') }}";
     import { initOnboarding } from "{{ url_for('static', filename='js/onboarding.js') }}";
     import { initPageTurn } from "{{ url_for('static', filename='js/pageturn.js') }}";
+    // The rest dock and the first-run dialog are not rendered on the bare auth
+    // pages, so their elements are null there. The theme toggle and the page
+    // turn are on every page.
     initRestTimer(document.getElementById("rest-timer"));
     initThemeToggle(document.getElementById("theme-toggle"));
     initOnboarding(document.getElementById("first-run"), {{ page | tojson }});
     initPageTurn(document.getElementById("page-veil"));
+
+    // Sign out clears the session whatever Supabase says — a failed revoke must
+    // not leave someone still signed in on the device in front of them.
+    const signOutButton = document.getElementById("sign-out");
+    if (signOutButton) {
+      const { signOut } = await import("{{ url_for('static', filename='js/auth.js') }}");
+      signOutButton.addEventListener("click", async () => {
+        signOutButton.disabled = true;
+        await signOut();
+        window.location.assign("/");
+      });
+    }
   </script>
 
   {#

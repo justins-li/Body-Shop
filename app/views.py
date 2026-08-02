@@ -75,6 +75,13 @@ def inject_globals() -> dict:
         "muscle_regions": MUSCLE_REGIONS,
         "region_labels": REGION_LABELS,
         "today": date.today(),
+        # Public by design: the anon key identifies the project to GoTrue and
+        # grants nothing on its own. The service-role key is deliberately absent
+        # from this dict and must stay that way.
+        "supabase": {
+            "url": current_app.config.get("SUPABASE_URL") or "",
+            "anon_key": current_app.config.get("SUPABASE_ANON_KEY") or "",
+        },
     }
 
 
@@ -218,4 +225,60 @@ def summary_page():
         muscle_schemes=MUSCLE_SCHEMES,
         default_scheme=DEFAULT_MUSCLE_SCHEME,
         scheme_buckets=scheme_map(),
+    )
+
+
+#: Pages outside the book. No chapter number, no shelf, no tab bar — they are
+#: not sections of the product, and `sections` in base.html never learns about
+#: them. All five are public shells: bearer tokens mean Flask cannot read an
+#: Authorization header on a navigation, so gating happens in the page's JS.
+@bp.get("/login")
+def login_page():
+    """Sign in. ``?next=`` carries where the browser was headed."""
+    return render_template(
+        "login.html", page="login", bare=True, selected_date=_requested_date()
+    )
+
+
+@bp.get("/signup")
+def signup_page():
+    """Create an account."""
+    return render_template(
+        "signup.html", page="signup", bare=True, selected_date=_requested_date()
+    )
+
+
+@bp.get("/reset-password")
+def reset_password_page():
+    """Both halves of the reset flow.
+
+    Which half renders is decided client-side: Supabase sends the recovery token
+    back in the URL **fragment**, which never reaches this function. That is the
+    point — the token stays out of the server's access log.
+    """
+    return render_template(
+        "reset_password.html",
+        page="reset-password",
+        bare=True,
+        selected_date=_requested_date(),
+    )
+
+
+@bp.get("/verify")
+def verify_page():
+    """Landing page for the email confirmation link."""
+    return render_template(
+        "verify.html", page="verify", bare=True, selected_date=_requested_date()
+    )
+
+
+@bp.get("/account")
+def account_page():
+    """Email, sign out, and delete account.
+
+    Deletion lives here rather than on ``/`` because ``/`` is one screen and new
+    content there has to earn its height or replace something.
+    """
+    return render_template(
+        "account.html", page="account", bare=True, selected_date=_requested_date()
     )

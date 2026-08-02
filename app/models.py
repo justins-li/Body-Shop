@@ -27,7 +27,7 @@ import sqlalchemy as sa
 
 from .db import get_db
 from .exercises import DEFAULT_WEIGHT_MODE, get_exercise
-from .tables import workout_entry, workout_set
+from .tables import user, workout_entry, workout_set
 
 #: The four set types. Only ``warmup`` is excluded from weekly volume.
 SET_TYPES = ("normal", "warmup", "drop", "failure")
@@ -132,6 +132,62 @@ def parse_date(value: str | date | None, *, field: str = "date") -> date:
         raise ValidationError(
             f"'{field}' must be an ISO date such as 2026-07-28."
         ) from exc
+
+
+def ensure_user(user_id: str, email: str) -> None:
+    """Create the mirror row for ``user_id`` if it is not there, or refresh it.
+
+    Called on **every** authenticated request, which makes this the only place
+    in the app where a GET writes. Worth knowing before anyone adds a read
+    replica or wonders why a summary request opened a transaction.
+
+    The insert catches ``IntegrityError`` rather than using an upsert, because
+    ``on_conflict_do_nothing()`` is spelled differently per dialect and this
+    layer serves both. Two concurrent first requests therefore race safely: one
+    inserts, the other rolls back and carries on.
+
+    The email is written through on change — Supabase owns the address, so a
+    stale mirror is simply wrong.
+    """
+    db = get_db()
+    row = db.execute(sa.select(user.c.email).where(user.c.id == user_id)).first()
+
+    if row is None:
+        try:
+            db.execute(sa.insert(user).values(id=user_id, email=email))
+            db.commit()
+        except sa.exc.IntegrityError:
+            # Lost the race, or the address belongs to another sub. Either way
+            # the row we needed exists; a failed mirror must not fail the request.
+            db.rollback()
+        return
+
+    if row.email != email:
+        db.execute(sa.update(user).where(user.c.id == user_id).values(email=email))
+        db.commit()
+
+
+def get_user(user_id: str) -> dict | None:
+    """Return ``{"id", "email"}`` for ``user_id``, or ``None``."""
+    row = get_db().execute(sa.select(user).where(user.c.id == user_id)).first()
+    if row is None:
+        return None
+    # str() for the same reason WorkoutSet.id does it: Postgres hands back a
+    # UUID object where SQLite hands back the hyphenated string.
+    return {"id": str(row.id), "email": row.email}
+
+
+def delete_user(user_id: str) -> bool:
+    """Delete an account and, by cascade, everything it owns.
+
+    One statement. ``workout_entry.user_id`` and ``workout_set.entry_id`` are
+    both ``ON DELETE CASCADE`` and app/db.py enables SQLite foreign keys per
+    connection, so there is no cascade handling to write here.
+    """
+    db = get_db()
+    result = db.execute(sa.delete(user).where(user.c.id == user_id))
+    db.commit()
+    return result.rowcount > 0
 
 
 def validate_entry(entry_date, exercise_id) -> tuple[date, str]:
@@ -250,6 +306,12 @@ def _sets_for(entry_ids: list[int]) -> dict[int, list[WorkoutSet]]:
     One batched query rather than one per entry: the day panel renders every
     entry's sets, and a per-entry fetch would be an N+1 the moment anyone logs
     a full session.
+
+    **This is the one query in the module that does not filter by ``user_id``,
+    and that is safe only because of who calls it.** Every caller passes ids
+    that came out of an already-filtered query, so the join would be redundant.
+    A new caller that sources entry ids any other way **must** join back through
+    ``workout_entry`` and filter there, or it is an IDOR.
     """
     if not entry_ids:
         return {}
@@ -278,7 +340,9 @@ def _entries_from(rows) -> list[WorkoutEntry]:
     ]
 
 
-def add_entry(entry_date, exercise_id: str, sets: list[dict]) -> WorkoutEntry:
+def add_entry(
+    user_id: str, entry_date, exercise_id: str, sets: list[dict]
+) -> WorkoutEntry:
     """Insert an entry and its sets after validating both."""
     parsed_date, parsed_exercise = validate_entry(entry_date, exercise_id)
     rows = validate_sets(sets)
@@ -286,7 +350,7 @@ def add_entry(entry_date, exercise_id: str, sets: list[dict]) -> WorkoutEntry:
     db = get_db()
     result = db.execute(
         sa.insert(workout_entry).values(
-            entry_date=parsed_date, exercise_id=parsed_exercise
+            user_id=user_id, entry_date=parsed_date, exercise_id=parsed_exercise
         )
     )
     # The dialect supplies this from lastrowid on SQLite and RETURNING on
@@ -300,26 +364,33 @@ def add_entry(entry_date, exercise_id: str, sets: list[dict]) -> WorkoutEntry:
 
     # Re-read rather than rebuilding in Python, so the returned ids are in the
     # same canonical form every other read produces.
-    stored = get_entry(entry_id)
+    stored = get_entry(user_id, entry_id)
     if stored is None:  # pragma: no cover - the insert just succeeded
         raise ValidationError("Entry could not be stored.")
     return stored
 
 
-def get_entry(entry_id: int) -> WorkoutEntry | None:
+def get_entry(user_id: str, entry_id: int) -> WorkoutEntry | None:
     """Return a single entry with its sets, or ``None``."""
     rows = (
         get_db()
-        .execute(sa.select(workout_entry).where(workout_entry.c.id == entry_id))
+        .execute(
+            sa.select(workout_entry).where(
+                workout_entry.c.id == entry_id,
+                workout_entry.c.user_id == user_id,
+            )
+        )
         .all()
     )
     entries = _entries_from(rows)
     return entries[0] if entries else None
 
 
-def list_entries(start: date | None = None, end: date | None = None) -> list[WorkoutEntry]:
+def list_entries(
+    user_id: str, start: date | None = None, end: date | None = None
+) -> list[WorkoutEntry]:
     """Return entries within the inclusive ``start``–``end`` range, with sets."""
-    query = sa.select(workout_entry)
+    query = sa.select(workout_entry).where(workout_entry.c.user_id == user_id)
     if start is not None:
         query = query.where(workout_entry.c.entry_date >= start)
     if end is not None:
@@ -330,17 +401,20 @@ def list_entries(start: date | None = None, end: date | None = None) -> list[Wor
     return _entries_from(get_db().execute(query).all())
 
 
-def delete_entry(entry_id: int) -> bool:
+def delete_entry(user_id: str, entry_id: int) -> bool:
     """Delete an entry. Returns ``True`` if a row was removed."""
     db = get_db()
     result = db.execute(
-        sa.delete(workout_entry).where(workout_entry.c.id == entry_id)
+        sa.delete(workout_entry).where(
+            workout_entry.c.id == entry_id,
+            workout_entry.c.user_id == user_id,
+        )
     )
     db.commit()
     return result.rowcount > 0
 
 
-def recent_exercise_usage(limit: int = 12) -> list[tuple[str, int]]:
+def recent_exercise_usage(user_id: str, limit: int = 12) -> list[tuple[str, int]]:
     """Return ``(exercise_id, times logged)`` pairs, most recently used first.
 
     Backs the picker's default view on ``/log``. Ordering is recency of last
@@ -357,6 +431,7 @@ def recent_exercise_usage(limit: int = 12) -> list[tuple[str, int]]:
         get_db()
         .execute(
             sa.select(workout_entry.c.exercise_id, last_used, uses)
+            .where(workout_entry.c.user_id == user_id)
             .group_by(workout_entry.c.exercise_id)
             .order_by(last_used.desc(), uses.desc())
             .limit(limit)
@@ -366,12 +441,14 @@ def recent_exercise_usage(limit: int = 12) -> list[tuple[str, int]]:
     return [(row.exercise_id, int(row.uses)) for row in rows]
 
 
-def recent_exercise_ids(limit: int = 12) -> list[str]:
+def recent_exercise_ids(user_id: str, limit: int = 12) -> list[str]:
     """Return recently-logged exercise ids, most recently used first."""
-    return [exercise_id for exercise_id, _uses in recent_exercise_usage(limit)]
+    return [exercise_id for exercise_id, _uses in recent_exercise_usage(user_id, limit)]
 
 
-def last_sets_for_exercise(exercise_id: str) -> tuple[date | None, list[WorkoutSet]]:
+def last_sets_for_exercise(
+    user_id: str, exercise_id: str
+) -> tuple[date | None, list[WorkoutSet]]:
     """The most recent entry's sets for ``exercise_id`` — the /log prefill.
 
     **Joins back through ``workout_entry`` rather than reading ``workout_set``
@@ -383,7 +460,10 @@ def last_sets_for_exercise(exercise_id: str) -> tuple[date | None, list[WorkoutS
         get_db()
         .execute(
             sa.select(workout_entry.c.id, workout_entry.c.entry_date)
-            .where(workout_entry.c.exercise_id == exercise_id)
+            .where(
+                workout_entry.c.exercise_id == exercise_id,
+                workout_entry.c.user_id == user_id,
+            )
             .order_by(
                 workout_entry.c.entry_date.desc(), workout_entry.c.id.desc()
             )
@@ -396,7 +476,7 @@ def last_sets_for_exercise(exercise_id: str) -> tuple[date | None, list[WorkoutS
     return row.entry_date, _sets_for([row.id]).get(row.id, [])
 
 
-def _counted_sessions(start: date, end: date):
+def _counted_sessions(user_id: str, start: date, end: date):
     """Distinct ``(entry_date, exercise_id)`` pairs that carry real volume.
 
     The building block both graph queries share, and the reason they cannot
@@ -411,7 +491,8 @@ def _counted_sessions(start: date, end: date):
             )
         )
         .where(
-            workout_entry.c.entry_date.between(start, end),
+            workout_entry.c.user_id == user_id,
+                workout_entry.c.entry_date.between(start, end),
             workout_set.c.set_type != "warmup",
         )
         .distinct()
@@ -419,7 +500,9 @@ def _counted_sessions(start: date, end: date):
     )
 
 
-def exercise_activity(start: date, end: date) -> list[tuple[str, int, int, date]]:
+def exercise_activity(
+    user_id: str, start: date, end: date
+) -> list[tuple[str, int, int, date]]:
     """Return ``(exercise_id, sets, sessions, last_logged)`` over a date range.
 
     Backs the nodes of the training graph on ``/progress``. Warm-ups are
@@ -442,6 +525,7 @@ def exercise_activity(start: date, end: date) -> list[tuple[str, int, int, date]
                 )
             )
             .where(
+                workout_entry.c.user_id == user_id,
                 workout_entry.c.entry_date.between(start, end),
                 workout_set.c.set_type != "warmup",
             )
@@ -456,7 +540,9 @@ def exercise_activity(start: date, end: date) -> list[tuple[str, int, int, date]
     ]
 
 
-def exercise_co_occurrence(start: date, end: date) -> list[tuple[str, str, int]]:
+def exercise_co_occurrence(
+    user_id: str, start: date, end: date
+) -> list[tuple[str, str, int]]:
     """Return ``(a, b, days)`` for movements logged on the same day.
 
     The graph's edges. A self-join on ``entry_date`` over the distinct
@@ -464,8 +550,8 @@ def exercise_co_occurrence(start: date, end: date) -> list[tuple[str, str, int]]
     and drops the self-pair, so the result is an undirected edge list with no
     duplicates and no loops.
     """
-    left = _counted_sessions(start, end).alias("a")
-    right = _counted_sessions(start, end).alias("b")
+    left = _counted_sessions(user_id, start, end).alias("a")
+    right = _counted_sessions(user_id, start, end).alias("b")
     days = sa.func.count().label("days")
 
     rows = (
@@ -484,7 +570,9 @@ def exercise_co_occurrence(start: date, end: date) -> list[tuple[str, str, int]]
     return [(row[0], row[1], int(row.days)) for row in rows]
 
 
-def loaded_sets(start: date, end: date) -> list[tuple[str, float, int, date]]:
+def loaded_sets(
+    user_id: str, start: date, end: date
+) -> list[tuple[str, float, int, date]]:
     """Return ``(exercise_id, weight, reps, entry_date)`` for every scored set.
 
     Backs the personal bests on ``/progress``. Only rows carrying **both** a
@@ -514,6 +602,7 @@ def loaded_sets(start: date, end: date) -> list[tuple[str, float, int, date]]:
                 )
             )
             .where(
+                workout_entry.c.user_id == user_id,
                 workout_entry.c.entry_date.between(start, end),
                 workout_set.c.set_type != "warmup",
                 workout_set.c.weight.is_not(None),
@@ -529,7 +618,7 @@ def loaded_sets(start: date, end: date) -> list[tuple[str, float, int, date]]:
     ]
 
 
-def sets_by_date(start: date, end: date) -> dict[str, int]:
+def sets_by_date(user_id: str, start: date, end: date) -> dict[str, int]:
     """Return ``{iso_date: total_sets}`` for the inclusive range (calendar dots).
 
     Counts child rows rather than summing a column, and excludes warm-ups for
@@ -548,6 +637,7 @@ def sets_by_date(start: date, end: date) -> dict[str, int]:
                 )
             )
             .where(
+                workout_entry.c.user_id == user_id,
                 workout_entry.c.entry_date.between(start, end),
                 workout_set.c.set_type != "warmup",
             )

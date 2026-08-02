@@ -588,3 +588,164 @@ def test_the_tag_is_explained_on_the_page(client):
     body = client.get("/routines").data.decode()
     assert "reconstructed from published coverage" in body.lower()
     assert "Nobody named has endorsed these" in body
+
+
+def test_every_page_carries_the_supabase_config(client):
+    """auth.js reads it off the window; it is public by design."""
+    body = client.get("/").data.decode()
+    assert "window.BODYSHOP_SUPABASE" in body
+    assert "https://test.supabase.co" in body
+    assert "test-anon-key" in body
+
+
+def test_the_service_role_key_is_never_rendered(client):
+    """The one Supabase credential Flask holds must never reach a browser."""
+    for path in ("/", "/log", "/summary", "/calendar", "/progress", "/how-to-use"):
+        assert "test-service-role-key" not in client.get(path).data.decode()
+
+
+AUTH_PAGES = [
+    ("/login", b"Sign in"),
+    ("/signup", b"Create an account"),
+    ("/reset-password", b"Reset your password"),
+    ("/verify", b"Confirming your email"),
+    ("/account", b"Your account"),
+]
+
+
+@pytest.mark.parametrize(("path", "marker"), AUTH_PAGES)
+def test_auth_pages_render(client, path, marker):
+    response = client.get(path)
+    assert response.status_code == 200
+    assert marker in response.data
+
+
+@pytest.mark.parametrize(("path", "_marker"), AUTH_PAGES)
+def test_auth_pages_carry_no_chrome(client, path, _marker):
+    """They are not chapters of the book, so they get no shelves and no tabs.
+
+    This is also what keeps the chapter-ordering assertions untouched:
+    `sections` in base.html never learns about these pages.
+    """
+    body = client.get(path).data.decode()
+    assert "shelf-stack" not in body
+    assert "tab-bar" not in body
+    assert "rest-dock" not in body
+
+
+@pytest.mark.parametrize(("path", "_marker"), AUTH_PAGES)
+def test_auth_pages_are_reachable_signed_out(app, path, _marker):
+    """Shells are public — a signed-out browser must be able to load /login."""
+    assert app.test_client().get(path).status_code == 200
+
+
+def test_auth_pages_never_appear_as_a_shelf(client):
+    """A shelf for /login would renumber the book."""
+    # /calendar retired in Phase 8.3 and is now a 301 to /summary, so it renders
+    # no shelves at all. Routines took chapter 02.
+    for page in ("/routines", "/log", "/summary", "/progress", "/how-to-use"):
+        body = client.get(page).data.decode()
+        shelves = re.findall(r'class="shelf[^"]*"\s+data-nav\s+href="([^"]+)"', body)
+        assert shelves, f"{page} rendered no shelves at all"
+        assert all("/login" not in href and "/account" not in href for href in shelves)
+
+
+def test_home_carries_both_halves_of_the_auth_split(client):
+    """One screen, and the signed-in state *swaps* the action rather than adding.
+
+    Both blocks are in the markup; CSS shows one. That is what makes the split
+    free of a flash and free of an API call — `/` still fetches nothing.
+    """
+    body = client.get("/").data.decode()
+    assert 'data-auth-when="out"' in body
+    assert 'data-auth-when="in"' in body
+
+
+def test_the_auth_attribute_is_set_before_paint(client):
+    """A blocking script in <head>, not a module: a module is deferred, and a
+    deferred toggle is a visible flash of the wrong state."""
+    body = client.get("/").data.decode()
+    head = body.split("</head>")[0]
+    assert "data-auth" in head
+    assert "bodyshop.auth" in head
+
+
+def test_home_still_makes_no_api_call(client):
+    """The one-screen invariant's other half: `/` reads nothing."""
+    body = client.get("/").data.decode()
+    assert "js/api.js" not in body
+    assert "js/summary.js" not in body
+
+
+def test_the_auth_split_rules_outrank_home_actions():
+    """The signed-in/out split must win the cascade against `.home-actions`.
+
+    A regression guard for a bug found only in a browser: both rules are
+    unlayered, so a bare `[data-auth-when]` selector ties `.home-actions` on
+    specificity (0,1,0) and loses on source order — rendering *both* halves of
+    the landing page at once, signed in or out. Qualifying with `:root[data-auth]`
+    takes it to 0,2,0 so source order stops mattering.
+
+    Asserted against the built stylesheet rather than the source, because the
+    stylesheet is what ships and CI does not rebuild it.
+    """
+    from pathlib import Path
+
+    css = Path("app/static/css/styles.css").read_text()
+    assert ":root[data-auth] [data-auth-when]{display:none}" in css, (
+        "the hide rule lost its :root qualifier — rebuild the stylesheet, and "
+        "check both halves of / are not visible at once"
+    )
+    assert ":root[data-auth=out] [data-auth-when=out]" in css
+    assert ":root[data-auth=in] [data-auth-when=in]" in css
+
+
+def test_chapters_carry_a_reachable_account_and_sign_out(client):
+    """`/account` must be linked from somewhere, or sign-out is unreachable.
+
+    It shipped with no link to it at all: both sign-out and delete-account lived
+    on a page nothing pointed at. The dock is hidden for a signed-out reader by
+    `data-auth-when`, but it has to be *in the markup* so the stamp can reveal it
+    without a round trip.
+    """
+    for page in ("/routines", "/log", "/summary", "/progress"):
+        body = client.get(page).data.decode()
+        assert 'class="account-dock" data-auth-when="in"' in body, page
+        assert 'href="/account"' in body, page
+        assert 'id="sign-out"' in body, page
+
+
+def test_auth_pages_carry_no_account_dock(client):
+    """There is nothing to sign out of on the sign-in page."""
+    for path in ("/login", "/signup", "/reset-password", "/verify", "/account"):
+        body = client.get(path).data.decode()
+        assert "account-dock" not in body, path
+
+
+def test_the_account_dock_never_sets_its_own_display():
+    """`data-auth-when` owns the dock's display, and a tie would re-open the bug.
+
+    `.account-dock` setting `display: flex` would tie `:root[data-auth]
+    [data-auth-when]` on specificity and win on source order, showing the dock
+    to signed-out readers — exactly what went wrong on the landing page.
+    """
+    from pathlib import Path
+
+    css = Path("app/static/css/styles.css").read_text()
+    rule = css.split(".account-dock{")[1].split("}")[0]
+    assert "display:" not in rule, f"account-dock must not set display: {rule}"
+
+
+def test_auth_js_refuses_to_run_unconfigured():
+    """An empty Supabase URL made `BASE` relative, so signup 404'd against Flask.
+
+    The 404 named Flask, which is the one place the bug was not. Guarded at call
+    time rather than module load: a module-level throw would take base.html's
+    boot script down and break pages needing no Supabase at all.
+    """
+    from pathlib import Path
+
+    js = Path("app/static/js/auth.js").read_text()
+    assert "function requireConfig()" in js
+    # Both request helpers must be guarded, not just one.
+    assert js.count("requireConfig();") == 2, "every fetch helper needs the guard"

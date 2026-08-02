@@ -12,6 +12,59 @@ wire.
 
 ---
 
+## Authentication
+
+**Every endpoint below that reads or writes workout data requires a bearer
+token:**
+
+```
+Authorization: Bearer <supabase access token>
+```
+
+Tokens come from **Supabase Auth (GoTrue), which the browser calls directly**.
+Login, signup, token refresh, password reset and email verification are
+therefore *not* Flask endpoints and are not documented here — see
+[app/static/js/auth.js](../app/static/js/auth.js) and Supabase's own GoTrue
+reference. Flask only verifies the token's signature, expiry, audience and
+issuer.
+
+A missing, malformed, expired or foreign token returns:
+
+```
+401  {"error": "Sign in to continue."}
+```
+
+with `WWW-Authenticate: Bearer`. **The message never varies by cause.** A 401
+that distinguishes "expired" from "forged" is a small oracle, and no client needs
+the distinction — the only useful response to any of them is to refresh once and
+then sign in again.
+
+The account is mirrored into the local `user` table on the first authenticated
+request carrying a `sub` we have not seen; there is no signup webhook.
+
+| Endpoint | Auth |
+| --- | --- |
+| `GET /api/exercises` | **public** |
+| `GET /api/exercises/<id>` | **public** |
+| `GET /api/summary/week/bounds` | **public** |
+| `GET /api/exercises/recent` | bearer |
+| `GET /api/exercises/<id>/last-sets` | bearer |
+| `GET /api/entries` | bearer |
+| `POST /api/entries` | bearer |
+| `DELETE /api/entries/<id>` | bearer |
+| `GET /api/calendar` | bearer |
+| `GET /api/summary/week` | bearer |
+| `GET /api/progress/graph` | bearer |
+| `GET /api/me` | bearer |
+| `DELETE /api/account` | bearer |
+
+The three public endpoints are public deliberately: the catalog is public-domain
+data that ships in the repo, and week bounds are calendar arithmetic over a query
+parameter. Gating them would buy nothing and would leave `/login` unable to
+render anything.
+
+---
+
 ## `GET /api/exercises`
 
 The whole catalog — 873 movements, ordered by name.
@@ -427,6 +480,10 @@ Delete one entry.
 
 ---
 
+**Another user's entry returns `404`, not `403`** — identical to an id that does
+not exist. A 403 would confirm the id is real, which is the IDOR wearing a
+politeness mask.
+
 ## `GET /api/calendar`
 
 Total sets per day for a month — what the calendar dots are drawn from.
@@ -762,3 +819,54 @@ fetching a whole summary.
 ```
 
 Week start day is configurable with `BODYSHOP_WEEK_STARTS_ON` (1 = Monday).
+
+---
+
+## `GET /api/me`
+
+The signed-in user. Exists so a client can confirm a token server-side rather
+than trusting its own decode of it.
+
+```json
+{
+  "user": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "email": "you@example.com"
+  }
+}
+```
+
+`id` is the Supabase `auth.users` id — the token's `sub` — and the value every
+`workout_entry` row is owned by.
+
+---
+
+## `DELETE /api/account`
+
+Deletes the account and, by cascade, every entry and set in it. **Irreversible.**
+
+Local rows go first, the Supabase auth record second. That order is deliberate:
+if the Supabase call fails, the account survives with no data, which is
+recoverable and retryable. The reverse order risks the auth record being gone
+while the rows are orphaned behind an account that can never sign in again to
+delete them.
+
+```json
+{"deleted": true, "auth_record_removed": true}
+```
+
+```json
+{"deleted": true, "auth_record_removed": false}
+```
+
+The second shape is still `200`: the workouts *are* deleted. It says Supabase
+would not remove the sign-in record, and the client tells the user so rather than
+claiming a clean success.
+
+```
+503  {"error": "Account deletion is not configured on this server."}
+```
+
+Returned when `SUPABASE_SERVICE_ROLE_KEY` is unset, and checked **before**
+anything is deleted, so a misconfigured deployment refuses rather than
+half-deleting an account.

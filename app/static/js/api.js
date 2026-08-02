@@ -4,11 +4,34 @@
  * Every function returns parsed JSON and throws an `Error` carrying the
  * server's message when the response is not 2xx, so callers can simply
  * `try { ... } catch (err) { toast(err.message) }`.
+ *
+ * **The only place our own API is called.** `auth.js` is the only place
+ * Supabase is. Every request from here carries the bearer token; a 401 is
+ * retried exactly once behind a refresh, and then becomes a redirect to
+ * `/login`.
  */
 
+import { accessToken, clearSession, refresh } from "./auth.js";
 import { profileQuery } from "./ui.js";
 
 const BASE = "/api";
+
+/** Send the browser to sign in, remembering where it was. */
+function toLogin() {
+  const here = window.location.pathname + window.location.search;
+  window.location.assign(`/login?next=${encodeURIComponent(here)}`);
+}
+
+function send(path, options, token) {
+  return fetch(`${BASE}${path}`, {
+    ...options,
+    headers: {
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+}
 
 /**
  * Perform a request against the API.
@@ -17,10 +40,25 @@ const BASE = "/api";
  * @returns {Promise<any>} Parsed JSON body.
  */
 async function request(path, options = {}) {
-  const response = await fetch(`${BASE}${path}`, {
-    headers: { Accept: "application/json", ...(options.headers || {}) },
-    ...options,
-  });
+  let response = await send(path, options, accessToken());
+
+  if (response.status === 401) {
+    // One retry, never a loop: a refresh token that is genuinely dead must not
+    // spin, and the honest end of that road is the login page.
+    try {
+      const session = await refresh();
+      response = await send(path, options, session.access_token);
+    } catch {
+      clearSession();
+      toLogin();
+      throw new Error("Sign in to continue.");
+    }
+    if (response.status === 401) {
+      clearSession();
+      toLogin();
+      throw new Error("Sign in to continue.");
+    }
+  }
 
   let payload = null;
   try {
@@ -155,4 +193,21 @@ export async function fetchTrainingGraph(window, isoDate) {
   const query = `window=${encodeURIComponent(window)}&date=${encodeURIComponent(isoDate)}`
     + `&${profileQuery()}`;
   return request(`/progress/graph?${query}`);
+}
+
+/** The signed-in user. Confirms the token server-side rather than trusting a
+ *  local decode of it. */
+export async function fetchMe() {
+  const data = await request("/me");
+  return data.user;
+}
+
+/**
+ * Delete the account and everything in it. Irreversible.
+ * @returns {Promise<{deleted: boolean, auth_record_removed: boolean}>}
+ *   `auth_record_removed: false` means the workouts are gone but Supabase
+ *   would not remove the sign-in record — say so rather than claiming success.
+ */
+export async function deleteAccount() {
+  return request("/account", { method: "DELETE" });
 }

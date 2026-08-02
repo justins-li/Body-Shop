@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Confirming your email — Body Shop{% endblock %}
+
+{% block content %}
+<div class="auth-shell">
+  <h1 class="auth-title">Confirming your email</h1>
+  <p id="verify-status" class="auth-note">One moment…</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module">
+  import { sessionFromHash, setSession }
+    from "{{ url_for('static', filename='js/auth.js') }}";
+
+  const status = document.getElementById("verify-status");
+  const session = sessionFromHash();
+
+  if (session) {
+    setSession(session);
+    status.textContent = "You are signed in. Taking you to your week…";
+    location.assign("/summary");
+  } else {
+    // Either the link was already used, or it expired. Both look the same from
+    // here, and both have the same next step.
+    status.innerHTML =
+      'That link has expired or has already been used. ' +
+      '<a href="/login">Sign in</a> instead.';
+  }
+</script>
+{% endblock %}

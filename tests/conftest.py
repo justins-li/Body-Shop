@@ -21,12 +21,17 @@ That database is truncated between tests, so point it at a scratch one.
 from __future__ import annotations
 
 import os
+import time
 
+import jwt
 import pytest
 import sqlalchemy as sa
+from flask.testing import FlaskClient
+from werkzeug.datastructures import Headers
 
 from app import create_app
 from app.db import get_engine, init_db
+from app.models import ensure_user
 from app.tables import metadata
 
 TEST_DATABASE_URL = os.environ.get("BODYSHOP_TEST_DATABASE_URL")
@@ -51,8 +56,12 @@ def app(tmp_path, request):
             engine = get_engine(application)
             with engine.begin() as connection:
                 connection.execute(
+                    # `user` is a reserved word in Postgres, and this is the one
+                    # place in the project that writes raw SQL — so it is the one
+                    # place the quoting has to be done by hand.
                     sa.text(
-                        "TRUNCATE TABLE workout_set, workout_entry RESTART IDENTITY CASCADE"
+                        'TRUNCATE TABLE workout_set, workout_entry, "user" '
+                        "RESTART IDENTITY CASCADE"
                     )
                 )
             yield application
@@ -67,10 +76,75 @@ def app(tmp_path, request):
         get_engine(application).dispose()
 
 
+#: The user every test is signed in as, unless it says otherwise.
+TEST_USER_ID = "11111111-1111-4111-8111-111111111111"
+TEST_USER_EMAIL = "tester@example.com"
+
+#: A second account, for tests/test_ownership.py.
+OTHER_USER_ID = "22222222-2222-4222-8222-222222222222"
+OTHER_USER_EMAIL = "other@example.com"
+
+
+def make_token(app, user_id=TEST_USER_ID, email=TEST_USER_EMAIL, **overrides) -> str:
+    """Mint an HS256 token the app will accept.
+
+    Signed with the testing config's pinned ``SUPABASE_JWT_SECRET``, which is
+    what keeps the suite offline: no test resolves a JWKS document, and no test
+    reaches Supabase. ``overrides`` replaces any claim, which is how
+    tests/test_auth.py builds its rejected tokens.
+    """
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "aud": "authenticated",
+        "iss": f"{app.config['SUPABASE_URL']}/auth/v1",
+        "exp": int(time.time()) + 3600,
+    }
+    payload.update(overrides)
+    return jwt.encode(payload, app.config["SUPABASE_JWT_SECRET"], algorithm="HS256")
+
+
+class AuthedClient(FlaskClient):
+    """A test client that signs every request as :data:`token`'s user.
+
+    Injecting the header here rather than at each call site is what let the
+    whole pre-Phase-5 suite survive the sweep unedited. A request that sets its
+    own ``Authorization`` wins, so a test can still be anonymous by using
+    ``app.test_client()`` directly.
+    """
+
+    token: str | None = None
+
+    def open(self, *args, **kwargs):
+        headers = Headers(kwargs.get("headers") or {})
+        if self.token and "Authorization" not in headers:
+            headers["Authorization"] = f"Bearer {self.token}"
+        kwargs["headers"] = headers
+        return super().open(*args, **kwargs)
+
+
+def _signed_in_client(app, user_id, email) -> AuthedClient:
+    app.test_client_class = AuthedClient
+    client = app.test_client()
+    client.token = make_token(app, user_id=user_id, email=email)
+    # Seeded rather than left to just-in-time provisioning, because tests that
+    # call models.add_entry directly never go through require_user and would
+    # otherwise trip the foreign key.
+    with app.app_context():
+        ensure_user(user_id, email)
+    return client
+
+
 @pytest.fixture
 def client(app):
-    """A Flask test client for the app fixture."""
-    return app.test_client()
+    """A Flask test client signed in as :data:`TEST_USER_ID`."""
+    return _signed_in_client(app, TEST_USER_ID, TEST_USER_EMAIL)
+
+
+@pytest.fixture
+def other_client(app):
+    """A second signed-in client, for the ownership tests."""
+    return _signed_in_client(app, OTHER_USER_ID, OTHER_USER_EMAIL)
 
 
 @pytest.fixture

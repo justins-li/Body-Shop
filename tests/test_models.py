@@ -14,6 +14,7 @@ import sqlalchemy as sa
 
 from app.db import get_db
 from app.models import loaded_sets, recent_exercise_ids
+from conftest import TEST_USER_ID
 from app.tables import workout_entry, workout_set
 
 SQUAT = "Barbell_Squat"
@@ -24,7 +25,9 @@ def log_entry(exercise_id: str, sets: int = 3, day: str = "2026-07-28") -> None:
     db = get_db()
     result = db.execute(
         sa.insert(workout_entry).values(
-            entry_date=date.fromisoformat(day), exercise_id=exercise_id
+            user_id=TEST_USER_ID,
+            entry_date=date.fromisoformat(day),
+            exercise_id=exercise_id,
         )
     )
     entry_id = int(result.inserted_primary_key[0])
@@ -46,7 +49,7 @@ def log_entry(exercise_id: str, sets: int = 3, day: str = "2026-07-28") -> None:
     db.commit()
 
 
-def test_recent_ids_are_capped_by_limit(app):
+def test_recent_ids_are_capped_by_limit(app, client):
     with app.app_context():
         for day, exercise in [
             ("2026-07-26", "Sit-Up"),
@@ -55,15 +58,15 @@ def test_recent_ids_are_capped_by_limit(app):
         ]:
             log_entry(exercise, 3, day=day)
 
-        assert recent_exercise_ids(2) == [SQUAT, "Pullups"]
+        assert recent_exercise_ids(TEST_USER_ID, 2) == [SQUAT, "Pullups"]
 
 
-def test_recent_ids_deduplicate_by_exercise(app):
+def test_recent_ids_deduplicate_by_exercise(app, client):
     with app.app_context():
         log_entry(SQUAT, 3, day="2026-07-27")
         log_entry(SQUAT, 4, day="2026-07-28")
 
-        assert recent_exercise_ids() == [SQUAT]
+        assert recent_exercise_ids(TEST_USER_ID) == [SQUAT]
 
 
 # ---- loaded_sets: the personal-best query (Phase 6.7) ----------------------
@@ -80,7 +83,7 @@ def test_loaded_sets_returns_only_rows_that_carry_both_numbers(app, add):
     ])
 
     with app.app_context():
-        rows = loaded_sets(date(2026, 7, 1), date(2026, 7, 31))
+        rows = loaded_sets(TEST_USER_ID, date(2026, 7, 1), date(2026, 7, 31))
 
     assert rows == [("Barbell_Squat", 100.0, 5, date(2026, 7, 28))]
 
@@ -92,7 +95,7 @@ def test_loaded_sets_excludes_warm_ups(app, add):
     ])
 
     with app.app_context():
-        rows = loaded_sets(date(2026, 7, 1), date(2026, 7, 31))
+        rows = loaded_sets(TEST_USER_ID, date(2026, 7, 1), date(2026, 7, 31))
 
     assert [row[1] for row in rows] == [100.0]
 
@@ -102,6 +105,6 @@ def test_loaded_sets_respects_the_range(app, add):
     add("2026-07-28", "Barbell_Squat", [{"weight": 100, "reps": 5}])
 
     with app.app_context():
-        rows = loaded_sets(date(2026, 7, 1), date(2026, 7, 31))
+        rows = loaded_sets(TEST_USER_ID, date(2026, 7, 1), date(2026, 7, 31))
 
     assert [row[1] for row in rows] == [100.0]

@@ -196,7 +196,10 @@ def _finish_regions(bucket: dict) -> None:
 
 
 def weekly_summary(
-    day: date, week_starts_on: int = 1, profile: TrainerProfile | None = None
+    user_id: str,
+    day: date,
+    week_starts_on: int = 1,
+    profile: TrainerProfile | None = None,
 ) -> dict:
     """Build the full payload backing the weekly summary page for ``day``.
 
@@ -206,7 +209,7 @@ def weekly_summary(
     """
     profile = profile or DEFAULT_PROFILE
     start, end = week_bounds(day, week_starts_on)
-    entries = list_entries(start, end)
+    entries = list_entries(user_id, start, end)
     muscles = summarise_entries(entries, profile)
 
     per_day = {d.isoformat(): 0 for d in week_days(start)}

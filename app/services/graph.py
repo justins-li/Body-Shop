@@ -109,6 +109,7 @@ def is_orphan(sessions: int, last_logged: date, today: date) -> bool:
 
 
 def training_graph(
+    user_id: str,
     window: str = DEFAULT_WINDOW,
     today: date | None = None,
     week_starts_on: int = 1,
@@ -132,12 +133,12 @@ def training_graph(
     # `all` still needs a lower bound for the query; the catalog predates no
     # plausible training history, so the epoch is safe and keeps one code path.
     floor = start or date(1970, 1, 1)
-    activity = exercise_activity(floor, end)
+    activity = exercise_activity(user_id, floor, end)
     # Personal bests are read over the same window as the nodes, so "your best
     # in the last 8 weeks" is what the drawing sizes by — a lifetime best would
     # keep a movement large long after it was dropped, which is exactly the
     # signal the orphan ring exists to give.
-    bests = best_from_sets(loaded_sets(floor, end))
+    bests = best_from_sets(loaded_sets(user_id, floor, end))
 
     nodes = []
     for exercise_id, sets, sessions, last_logged in activity:
@@ -169,13 +170,15 @@ def training_graph(
     known = {node["exercise_id"] for node in nodes}
     edges = [
         {"source": a, "target": b, "days": days}
-        for a, b, days in exercise_co_occurrence(start or date(1970, 1, 1), end)
+        for a, b, days in exercise_co_occurrence(
+            user_id, start or date(1970, 1, 1), end
+        )
         if a in known and b in known
     ]
 
     # Colour comes from the *current* week, not the window: the question the
     # graph answers is what this training is feeding now.
-    week = weekly_summary(today, week_starts_on, profile)
+    week = weekly_summary(user_id, today, week_starts_on, profile)
     coverage = {
         muscle: {"state": info["state"], "intensity": info["intensity"]}
         for muscle, info in week["muscles"].items()

@@ -33,10 +33,44 @@ NAMING_CONVENTION = {
 
 metadata = sa.MetaData(naming_convention=NAMING_CONVENTION)
 
+#: The account. **A mirror row, not the source of truth.**
+#:
+#: Supabase owns credentials; this table exists because ``user_id`` has to be a
+#: real foreign key on both dialects and SQLite has no ``auth.users`` to point
+#: at. It therefore carries no ``password_hash`` (a credential we chose not to
+#: own) and no ``verified_at`` (Supabase's ``email_confirmed_at`` is the truth,
+#: and a mirrored copy drifts invisibly until someone is wrongly let in or
+#: wrongly kept out).
+#:
+#: Rows appear just-in-time, on the first authenticated request carrying a
+#: ``sub`` we have not seen — there is no signup webhook. See
+#: ``models.ensure_user``.
+#:
+#: ``user`` is a reserved word in Postgres. SQLAlchemy quotes identifiers
+#: automatically in both dialects, so this is safe — but it is why the name must
+#: never be interpolated into a string query.
+user = sa.Table(
+    "user",
+    metadata,
+    # The Supabase auth.users id, which is the JWT's `sub`. Not minted here.
+    # as_uuid=False stores 32-char hex and returns the hyphenated 36-char form,
+    # exactly as workout_set.id does — compare with uuid.UUID(...), never with
+    # string equality against a `.hex`.
+    sa.Column("id", sa.Uuid(as_uuid=False), primary_key=True),
+    sa.Column("email", sa.Text, nullable=False, unique=True),
+    sa.Column(
+        "created_at",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("CURRENT_TIMESTAMP"),
+    ),
+)
+
 #: One logged movement on a given day; its sets live in ``workout_set``.
 #:
 #: Append-only, and there is no per-day "workout" parent row, which keeps logging
-#: a single insert and range queries trivial. No ``user_id`` yet — see Phase 5.
+#: a single insert and range queries trivial. Every row belongs to exactly one
+#: user as of Phase 5.
 workout_entry = sa.Table(
     "workout_entry",
     metadata,
@@ -48,6 +82,15 @@ workout_entry = sa.Table(
     sa.Column("entry_date", sa.Date, nullable=False),
     #: Catalog id from app/exercises.py, e.g. ``Barbell_Squat``.
     sa.Column("exercise_id", sa.Text, nullable=False),
+    #: The owning account. ``ON DELETE CASCADE`` all the way down, so deleting a
+    #: user is one DELETE and needs no cascade handling in Python — the same
+    #: property delete_entry has relied on since Phase 4.
+    sa.Column(
+        "user_id",
+        sa.Uuid(as_uuid=False),
+        sa.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     # CURRENT_TIMESTAMP rather than sa.func.now(), which renders as now() on
     # Postgres and CURRENT_TIMESTAMP on SQLite. Spelling it literally means the
     # metadata and the migrations produce the same default on both dialects,
@@ -59,6 +102,9 @@ workout_entry = sa.Table(
         server_default=sa.text("CURRENT_TIMESTAMP"),
     ),
     sa.Index("idx_workout_entry_date", "entry_date"),
+    # Every query in models.py now filters on user_id first and ranges on
+    # entry_date second, which is the order this index is built in.
+    sa.Index("idx_workout_entry_user_date", "user_id", "entry_date"),
     # Preserves the AUTOINCREMENT the hand-written schema had: without it SQLite
     # reuses the ids of deleted rows. Ignored by every other dialect.
     sqlite_autoincrement=True,

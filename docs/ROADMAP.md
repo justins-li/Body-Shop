@@ -180,3 +180,40 @@ Phase 5 gates ownership and account deletion, and picks up the one loose end Pha
 left: the trainer setup is a `localStorage` preference sent with each request, and it
 becomes a column on the user row. Phase 7 gates launch. Phase 8 is the competitive parity floor. Phase 9
 depends on actual usage. Phase 10 depends on all of the above.
+
+---
+
+## Phase 5 — what shipped, and where it diverged
+
+Shipped: Supabase Auth with bearer tokens, a mirrored `user` table, `user_id` on
+every entry query, five bare auth pages, `GET /api/me` and `DELETE /api/account`.
+
+**Three divergences from this document's own SQL sketch**, all forced by
+choosing a provider over self-hosting:
+
+| Sketch | Shipped | Why |
+| --- | --- | --- |
+| `id INTEGER PRIMARY KEY` | `Uuid(as_uuid=False)` | It is not our id. It is `auth.users.id`, a UUID. |
+| `password_hash TEXT NOT NULL` | absent | Supabase holds it. A local copy is a credential we chose not to own. |
+| `verified_at TEXT` | absent | Supabase's `email_confirmed_at` is the truth; a mirrored copy drifts invisibly. |
+
+**A cost this phase's estimate had not priced in:** the suite runs offline
+against per-test SQLite files, and an external issuer in the middle of every
+authenticated test would have ended that. Bought back with the dual key
+resolver — testing config pins `SUPABASE_JWT_SECRET`, so the HS256 branch always
+wins and tokens are minted in-process.
+
+**Open decisions closed:** 3 (auth provider → Supabase, bearer tokens);
+2 (mobile → token auth ✓, in-app deletion ✓); 5 (existing data → wiped by
+revision `0005`, irreversibly).
+
+**Deliberately not built:** Flask-Limiter and Redis (Supabase rate-limits its own
+endpoints; ours is bearer-only with no credential to brute-force), CSRF
+(dissolved by the token choice — no cookies anywhere), server-side page gating
+(Flask cannot read a header the browser does not send on a navigation), and
+enumeration hygiene, lockout and password strength (all Supabase dashboard
+settings).
+
+Phase 7's `body_metric` and Phase 8's `custom_exercise` inherit the pattern: a
+FK to `"user"(id)` with `ON DELETE CASCADE`, and `DELETE /api/account` keeps
+working with no change.

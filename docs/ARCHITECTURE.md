@@ -803,7 +803,9 @@ which is the difference between seconds and minutes against a hosted database.
 
 ## Deliberate limitations
 
-- **Single user.** There is no auth and no `user_id` column; the database is
+- ~~**Single user.**~~ **Reversed by Phase 5.** Every row carries a `user_id`
+  and the account lives in a mirrored `user` table. What follows described the
+  pre-Phase-5 shape: there was no auth and no `user_id` column; the database was
   whoever's machine it runs on. Adding accounts means a `user` table and a foreign
   key on `workout_entry`.
 - **No connection pooling of our own on Postgres.** `NullPool` is deliberate: both

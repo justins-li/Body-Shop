@@ -17,6 +17,7 @@ from datetime import date, timedelta
 import pytest
 
 from app.exercises import MUSCLE_GROUPS
+from conftest import TEST_USER_ID
 from app.services.graph import (
     DEFAULT_WINDOW,
     SPARSE_GRAPH_NODES,
@@ -74,7 +75,7 @@ def test_nodes_carry_volume_sessions_and_recency(app, add):
     add(iso(3), "Barbell_Squat", 2)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     node = next(n for n in graph["nodes"] if n["exercise_id"] == "Barbell_Squat")
     assert node["sets"] == 5
@@ -89,7 +90,7 @@ def test_warmup_only_entries_never_become_nodes(app, add):
     add(iso(1), "Barbell_Bench_Press_-_Medium_Grip", 3)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     assert [n["exercise_id"] for n in graph["nodes"]] == [
         "Barbell_Bench_Press_-_Medium_Grip"
@@ -107,7 +108,7 @@ def test_edges_only_ever_join_movements_that_are_nodes(app, add):
     add(iso(1), "Barbell_Deadlift", 3)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     known = {n["exercise_id"] for n in graph["nodes"]}
     assert known == {"Barbell_Bench_Press_-_Medium_Grip", "Barbell_Deadlift"}
@@ -123,7 +124,7 @@ def test_an_edge_counts_the_days_two_movements_shared(app, add):
     add(iso(7), "Barbell_Squat", 2)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     edge = next(
         e for e in graph["edges"]
@@ -138,7 +139,7 @@ def test_each_pair_appears_once_and_nothing_links_to_itself(app, add):
     add(iso(1), "Leg_Press", 2)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     pairs = [frozenset((e["source"], e["target"])) for e in graph["edges"]]
     assert len(pairs) == len(set(pairs)) == 3
@@ -150,8 +151,8 @@ def test_the_window_excludes_older_training(app, add):
     add(iso(120), "Barbell_Deadlift", 3)
 
     with app.app_context():
-        recent = training_graph("8w", TODAY)
-        everything = training_graph("all", TODAY)
+        recent = training_graph(TEST_USER_ID, "8w", TODAY)
+        everything = training_graph(TEST_USER_ID, "all", TODAY)
 
     assert {n["exercise_id"] for n in recent["nodes"]} == {"Barbell_Squat"}
     assert {n["exercise_id"] for n in everything["nodes"]} == {
@@ -166,7 +167,7 @@ def test_colour_comes_from_the_current_week_not_the_window(app, add):
     add(iso(1), "Barbell_Squat", 3)
 
     with app.app_context():
-        graph = training_graph("all", TODAY)
+        graph = training_graph(TEST_USER_ID, "all", TODAY)
 
     assert set(graph["coverage"]) == set(MUSCLE_GROUPS)
     assert graph["coverage"]["quads"]["state"] == "trained"
@@ -185,7 +186,7 @@ def test_a_thin_history_still_draws_and_says_it_is_early(app, add):
     add(iso(1), "Barbell_Squat", 3)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     assert len(graph["nodes"]) == 1
     assert graph["sparse"] is True
@@ -197,7 +198,7 @@ def test_a_thin_history_still_draws_and_says_it_is_early(app, add):
 def test_every_window_is_servable(app, add, window):
     add(iso(1), "Barbell_Squat", 3)
     with app.app_context():
-        assert training_graph(window, TODAY)["window"] == window
+        assert training_graph(TEST_USER_ID, window, TODAY)["window"] == window
 
 
 # ---- Personal bests on the nodes (Phase 6.7) -------------------------------
@@ -210,7 +211,7 @@ def test_a_node_carries_the_best_its_sets_support(app, add):
     ])
 
     with app.app_context():
-        node = training_graph("8w", TODAY)["nodes"][0]
+        node = training_graph(TEST_USER_ID, "8w", TODAY)["nodes"][0]
 
     # 100 x 5 estimates to ~117, which beats the 110 single.
     assert node["best"]["one_rep_max"] == 116.7
@@ -224,7 +225,7 @@ def test_a_movement_with_no_load_has_no_best(app, add):
     add(iso(3), "Pullups", 4)
 
     with app.app_context():
-        node = training_graph("8w", TODAY)["nodes"][0]
+        node = training_graph(TEST_USER_ID, "8w", TODAY)["nodes"][0]
 
     assert node["best"] is None
     # The client uses this to say *why* there is no number.
@@ -240,7 +241,7 @@ def test_warm_ups_never_become_a_personal_best(app, add):
     ])
 
     with app.app_context():
-        node = training_graph("8w", TODAY)["nodes"][0]
+        node = training_graph(TEST_USER_ID, "8w", TODAY)["nodes"][0]
 
     assert node["best"]["weight"] == 100.0
 
@@ -252,7 +253,7 @@ def test_measured_counts_the_sizeable_nodes(app, add):
     add(iso(3), "Pullups", 3)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     assert len(graph["nodes"]) == 2
     assert graph["measured"] == 1
@@ -266,8 +267,8 @@ def test_bests_are_scoped_to_the_window(app, add):
     add(iso(3), "Barbell_Squat", [{"weight": 100, "reps": 5}])
 
     with app.app_context():
-        recent = training_graph("8w", TODAY)["nodes"][0]
-        lifetime = training_graph("all", TODAY)["nodes"][0]
+        recent = training_graph(TEST_USER_ID, "8w", TODAY)["nodes"][0]
+        lifetime = training_graph(TEST_USER_ID, "all", TODAY)["nodes"][0]
 
     assert recent["best"]["weight"] == 100.0
     assert lifetime["best"]["weight"] == 200.0
@@ -279,7 +280,7 @@ def test_the_graph_draws_from_a_single_movement(app, add):
     add(iso(1), "Barbell_Squat", 1)
 
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
 
     assert len(graph["nodes"]) == 1
     assert graph["sparse"] is True
@@ -287,7 +288,7 @@ def test_the_graph_draws_from_a_single_movement(app, add):
 
 def test_an_empty_window_is_the_only_case_with_no_nodes(app):
     with app.app_context():
-        graph = training_graph("8w", TODAY)
+        graph = training_graph(TEST_USER_ID, "8w", TODAY)
     assert graph["nodes"] == []
     assert graph["measured"] == 0
     assert graph["sparse"] is True
