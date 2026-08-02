@@ -15,10 +15,10 @@
  * none of the ramp's colours — see `renderRegions` and docs/VOLUME_SCIENCE.md.
  */
 
-import { fetchWeeklySummary } from "./api.js";
+import { fetchWeeklySummary, saveProfile } from "./api.js";
 import {
   $, addDays, formatDate, formatSets, loadProfile, renderEntries, retargetLinks,
-  saveProfile, syncUrlDate, toast,
+  syncUrlDate, toast,
 } from "./ui.js";
 import { initWeekStrip, setWeekStripDate } from "./weekstrip.js";
 import { turnTo } from "./pageturn.js";
@@ -346,11 +346,19 @@ function renderSetupEffect(profile) {
 }
 
 async function onSetupChange() {
-  saveProfile(readSetup());
+  try {
+    // The setup is on the account, so changing it is a write. `load()` then
+    // re-fetches: targets are graded server-side, so a new setup has always
+    // meant a new request rather than a re-render — the states, the ramp
+    // positions and the readouts all move with it.
+    await saveProfile(readSetup());
+  } catch (err) {
+    // The controls stay where the user put them; the week below is still the
+    // one that was graded against the old setup, which is what is on screen.
+    toast(err.message, "error");
+    return;
+  }
   renderBlurb();
-  // Targets are graded server-side, so a new setup is a new request rather than
-  // a re-render: the states, the ramp positions and the readouts all move with
-  // it, and recomputing any of them here would be a second grader.
   await load();
 }
 

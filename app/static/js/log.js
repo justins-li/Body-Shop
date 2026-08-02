@@ -26,7 +26,7 @@
 
 import {
   createEntry, deleteEntry, fetchEntriesForDate, fetchExerciseDetail,
-  fetchExercises, fetchLastSets, fetchRecentExercises,
+  fetchExercises, fetchLastSets, fetchProfile, fetchRecentExercises,
 } from "./api.js";
 import {
   $, formatDate, loadUnit, renderEntries, retargetLinks, saveUnit,
@@ -561,9 +561,22 @@ export async function initLog(initialIso) {
     tab.addEventListener("click", () => showTab(tab.dataset.tab));
   });
 
+  // The profile before the grid, not merely before the catalog: `createSetGrid`
+  // reads the cached setup to decide the RPE column and renders its first rows
+  // during the mount itself, so on a browser with a cold cache mounting first
+  // would draw the wrong columns for an advanced lifter and correct them a
+  // moment later. One small request buys a first paint that is already right.
+  try {
+    await fetchProfile();
+  } catch {
+    // Offline, or signed out — api.js is already redirecting on a 401. The
+    // cached setup (or the default) stands, which is what the grid drew from
+    // before this fetch existed.
+  }
+
   // The grid builds its own markup, including the header and the added-weight
-  // toggle — see setgrid.js. Mounted before the catalog lands so the page has
-  // its shape immediately.
+  // toggle — see setgrid.js. Still mounted before the catalog lands, so the
+  // page has its shape while the 873 movements are on the wire.
   grid = createSetGrid($("#set-grid-mount"), { onError: showError });
 
   const unitSelect = $("#weight-unit");

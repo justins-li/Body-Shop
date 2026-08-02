@@ -24,14 +24,21 @@
  * a genuine one-time decision wants. `Escape` counts as skipping.
  */
 
-import { $, loadProfile, saveProfile } from "./ui.js";
+import { $, loadProfile } from "./ui.js";
+import { fetchProfile, saveProfile } from "./api.js";
 
 /**
- * Whether the question has been put to this browser.
+ * Whether the question has been put to *this browser*.
  *
- * Deliberately separate from the stored profile. If it were the same key, a
- * user who skipped would be asked again on every visit, and one who cleared
- * only their preferences would never be asked again — both backwards.
+ * There are now two gates, and they answer different questions. The account's
+ * stored setup says whether anyone has answered — so a user who set up on their
+ * phone is never interviewed again on their laptop. This flag says whether this
+ * browser has been asked, which is what makes skipping stick: skipping writes
+ * nothing to the server, deliberately, because nobody has answered yet.
+ *
+ * It is also separate from the cached profile. If it were the same key, a user
+ * who skipped would be asked again on every visit, and one who cleared only
+ * their preferences would never be asked again — both backwards.
  */
 const ASKED_KEY = "bodyshop:onboarded";
 
@@ -70,30 +77,55 @@ function selectLevel(dialog, key) {
  * @param {HTMLDialogElement|null} dialog - The shell from `base.html`.
  * @param {string} page - The current page's `data-page` value.
  */
-export function initOnboarding(dialog, page) {
+export async function initOnboarding(dialog, page) {
   if (!dialog || !APP_PAGES.has(page) || hasBeenAsked()) return;
+
+  // Only now is a request worth making. A browser that has already been asked
+  // must not pay for a fetch on every navigation.
+  let profile = loadProfile();
+  try {
+    const payload = await fetchProfile();
+    if (payload.configured) {
+      // The account has answered, on some other device. This browser now knows,
+      // and the cache `fetchProfile` just wrote is what the page will render.
+      markAsked();
+      return;
+    }
+    profile = payload.profile;
+  } catch {
+    // Offline, or signed out — `api.js` is already handling a 401 by redirecting.
+    // Treat it as unanswered and fall through to the local flag alone: a dialog
+    // is not worth an error, and asking twice is better than never asking.
+  }
 
   const sessions = $("#first-run-sessions", dialog);
   const minutes = $("#first-run-minutes", dialog);
 
   // Start on whatever the app would have used anyway, so skipping and
   // submitting-untouched land in the same place.
-  const current = loadProfile();
-  selectLevel(dialog, current.experience);
-  sessions.value = current.sessions_per_week;
-  minutes.value = current.minutes_per_session;
+  selectLevel(dialog, profile.experience);
+  sessions.value = profile.sessions_per_week;
+  minutes.value = profile.minutes_per_session;
 
   dialog.querySelectorAll(".first-run-level").forEach((button) => {
     button.addEventListener("click", () => selectLevel(dialog, button.dataset.level));
   });
 
-  // Both exits mark the question asked; only this one records an answer.
-  $("#first-run-start", dialog).addEventListener("click", () => {
-    saveProfile({
-      experience: dialog.dataset.level,
-      sessions_per_week: Number(sessions.value),
-      minutes_per_session: Number(minutes.value),
-    });
+  // Both exits mark the question asked; only this one records an answer, and
+  // only this one reaches the account.
+  $("#first-run-start", dialog).addEventListener("click", async () => {
+    try {
+      await saveProfile({
+        experience: dialog.dataset.level,
+        sessions_per_week: Number(sessions.value),
+        minutes_per_session: Number(minutes.value),
+      });
+    } catch {
+      // The answer did not reach the account. Leave the flag unset so the
+      // question survives to the next visit rather than being silently lost.
+      dialog.close();
+      return;
+    }
     markAsked();
     dialog.close();
     // The page fetched its data before this was answered, so anything graded

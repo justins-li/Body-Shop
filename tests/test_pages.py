@@ -764,3 +764,17 @@ def test_no_module_sends_the_trainer_setup_on_a_query_string():
         if "profileQuery" in path.read_text(encoding="utf-8")
     ]
     assert offenders == []
+
+
+def test_no_module_imports_saveProfile_from_ui():
+    """`saveProfile` writes to the account and lives in api.js. The ui.js
+    function is `cacheProfile`, and api.js is its only caller."""
+    from pathlib import Path
+
+    js = Path(__file__).resolve().parent.parent / "app" / "static" / "js"
+    for path in js.glob("*.js"):
+        source = path.read_text(encoding="utf-8")
+        for imported in re.findall(r"import\s*\{([^}]*)\}\s*from\s*\"\./ui\.js\"", source):
+            assert "saveProfile" not in imported, f"{path.name} imports it from ui.js"
+        if "cacheProfile" in source:
+            assert path.name in {"ui.js", "api.js"}, f"{path.name} caches the profile"
