@@ -13,8 +13,13 @@ from uuid import uuid4
 import sqlalchemy as sa
 
 from app.db import get_db
-from app.models import loaded_sets, recent_exercise_ids
-from conftest import TEST_USER_ID
+from app.models import (
+    get_trainer_setup,
+    loaded_sets,
+    recent_exercise_ids,
+    set_trainer_setup,
+)
+from conftest import OTHER_USER_ID, TEST_USER_ID
 from app.tables import workout_entry, workout_set
 
 SQUAT = "Barbell_Squat"
@@ -108,3 +113,39 @@ def test_loaded_sets_respects_the_range(app, add):
         rows = loaded_sets(TEST_USER_ID, date(2026, 7, 1), date(2026, 7, 31))
 
     assert [row[1] for row in rows] == [100.0]
+
+
+# ---- The trainer setup on the user row (Phase 5 carryover) ------------------
+
+
+def test_trainer_setup_is_unset_for_a_fresh_account(app, client):
+    """None, not a dict of Nones: "never chosen" is one check at the call site."""
+    with app.app_context():
+        assert get_trainer_setup(TEST_USER_ID) is None
+
+
+def test_trainer_setup_round_trips(app, client):
+    with app.app_context():
+        set_trainer_setup(TEST_USER_ID, "beginner", 3, 45)
+        assert get_trainer_setup(TEST_USER_ID) == {
+            "experience": "beginner",
+            "sessions_per_week": 3,
+            "minutes_per_session": 45,
+        }
+
+
+def test_setting_the_trainer_setup_twice_overwrites(app, client):
+    with app.app_context():
+        set_trainer_setup(TEST_USER_ID, "beginner", 3, 45)
+        set_trainer_setup(TEST_USER_ID, "advanced", 6, 90)
+        assert get_trainer_setup(TEST_USER_ID)["experience"] == "advanced"
+        assert get_trainer_setup(TEST_USER_ID)["sessions_per_week"] == 6
+
+
+def test_the_trainer_setup_is_scoped_to_its_account(app, client, other_client):
+    """Two accounts, two setups. A missing WHERE shows up here."""
+    with app.app_context():
+        set_trainer_setup(TEST_USER_ID, "beginner", 3, 45)
+        set_trainer_setup(OTHER_USER_ID, "advanced", 6, 90)
+        assert get_trainer_setup(TEST_USER_ID)["experience"] == "beginner"
+        assert get_trainer_setup(OTHER_USER_ID)["experience"] == "advanced"

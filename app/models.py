@@ -177,6 +177,61 @@ def get_user(user_id: str) -> dict | None:
     return {"id": str(row.id), "email": row.email}
 
 
+def get_trainer_setup(user_id: str) -> dict | None:
+    """The account's stored trainer setup, or ``None`` if it has never chosen one.
+
+    ``None`` rather than a dict of ``None``s so "never chosen" is a single check
+    at the call site instead of three — the first-run dialog turns on exactly
+    this distinction, and it is why the columns are nullable and unbackfilled.
+
+    The values are returned raw, exactly as stored.
+    :func:`app.training.resolve_profile` is what clamps and falls back, and it
+    does so identically for a missing value and a nonsense one.
+    """
+    row = get_db().execute(
+        sa.select(
+            user.c.experience, user.c.sessions_per_week, user.c.minutes_per_session
+        ).where(user.c.id == user_id)
+    ).first()
+    if row is None or (
+        row.experience is None
+        and row.sessions_per_week is None
+        and row.minutes_per_session is None
+    ):
+        return None
+    return {
+        "experience": row.experience,
+        "sessions_per_week": row.sessions_per_week,
+        "minutes_per_session": row.minutes_per_session,
+    }
+
+
+def set_trainer_setup(
+    user_id: str,
+    experience: str,
+    sessions_per_week: int,
+    minutes_per_session: int,
+) -> None:
+    """Store the account's trainer setup, replacing whatever was there.
+
+    The row is guaranteed to exist: every authenticated request runs
+    ``ensure_user`` first. Callers are expected to pass values that have already
+    been through :func:`app.training.resolve_profile`, so the column never holds
+    a setup the app would refuse to use.
+    """
+    db = get_db()
+    db.execute(
+        sa.update(user)
+        .where(user.c.id == user_id)
+        .values(
+            experience=experience,
+            sessions_per_week=sessions_per_week,
+            minutes_per_session=minutes_per_session,
+        )
+    )
+    db.commit()
+
+
 def delete_user(user_id: str) -> bool:
     """Delete an account and, by cascade, everything it owns.
 
