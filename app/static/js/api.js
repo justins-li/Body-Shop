@@ -12,7 +12,7 @@
  */
 
 import { accessToken, clearSession, refresh } from "./auth.js";
-import { profileQuery } from "./ui.js";
+import { cacheProfile } from "./ui.js";
 
 const BASE = "/api";
 
@@ -170,28 +170,24 @@ export async function fetchMonth(year, month) {
 /**
  * Weekly muscle-coverage summary for the week containing `isoDate`.
  *
- * Carries the trainer setup, which is what decides each group's target. The
- * response echoes the profile the server resolved, so the page renders the
- * targets it was actually graded against rather than its own idea of them.
+ * Targets come from the account's stored trainer setup, so nothing about it is
+ * sent. The response echoes the profile the server graded against, and that is
+ * what refreshes the local cache — see `cacheProfile`.
  */
 export async function fetchWeeklySummary(isoDate) {
-  const query = `date=${encodeURIComponent(isoDate)}&${profileQuery()}`;
-  return request(`/summary/week?${query}`);
+  const payload = await request(`/summary/week?date=${encodeURIComponent(isoDate)}`);
+  if (payload && payload.profile) cacheProfile(payload.profile);
+  return payload;
 }
 
 /**
  * The training graph: movements as nodes, same-day pairings as edges.
  *
- * The trainer setup rides along for the same reason it does above: node colour
- * *is* the body map's grading, so a graph fetched without it would disagree
- * with `/summary` about the same week.
- *
  * @param {"8w"|"6m"|"all"} window
  * @param {string} isoDate - Anchors both the window and the colouring week.
  */
 export async function fetchTrainingGraph(window, isoDate) {
-  const query = `window=${encodeURIComponent(window)}&date=${encodeURIComponent(isoDate)}`
-    + `&${profileQuery()}`;
+  const query = `window=${encodeURIComponent(window)}&date=${encodeURIComponent(isoDate)}`;
   return request(`/progress/graph?${query}`);
 }
 
@@ -200,6 +196,43 @@ export async function fetchTrainingGraph(window, isoDate) {
 export async function fetchMe() {
   const data = await request("/me");
   return data.user;
+}
+
+/**
+ * The account's trainer setup, and whether it has ever chosen one.
+ *
+ * Caching here rather than in each page module is what makes the cache
+ * impossible to forget: this file is the only place our own API is called, so
+ * every payload carrying a profile passes through exactly one function that
+ * stores it.
+ *
+ * @returns {Promise<{profile: Object, configured: boolean}>}
+ */
+export async function fetchProfile() {
+  const payload = await request("/profile");
+  if (payload && payload.profile) cacheProfile(payload.profile);
+  return payload;
+}
+
+/**
+ * Store the account's trainer setup.
+ *
+ * Values are sent unvalidated on purpose — the server clamps to the same bounds
+ * the inputs carry and echoes what it stored, so a corrected value corrects
+ * itself on screen instead of being validated twice.
+ *
+ * @param {{experience: string, sessions_per_week: number,
+ *          minutes_per_session: number}} profile
+ * @returns {Promise<{profile: Object, configured: boolean}>}
+ */
+export async function saveProfile(profile) {
+  const payload = await request("/profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(profile),
+  });
+  if (payload && payload.profile) cacheProfile(payload.profile);
+  return payload;
 }
 
 /**

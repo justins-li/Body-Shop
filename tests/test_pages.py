@@ -749,3 +749,18 @@ def test_auth_js_refuses_to_run_unconfigured():
     assert "function requireConfig()" in js
     # Both request helpers must be guarded, not just one.
     assert js.count("requireConfig();") == 2, "every fetch helper needs the guard"
+
+
+def test_no_module_sends_the_trainer_setup_on_a_query_string():
+    """The setup lives on the user row. A client that still sent it would be
+    asking to be graded against something other than its own account's setup,
+    and the server would ignore it — silently."""
+    from pathlib import Path
+
+    js = Path(__file__).resolve().parent.parent / "app" / "static" / "js"
+    offenders = [
+        path.name
+        for path in js.glob("*.js")
+        if "profileQuery" in path.read_text(encoding="utf-8")
+    ]
+    assert offenders == []

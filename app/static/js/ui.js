@@ -69,18 +69,21 @@ export function saveUnit(unit) {
 }
 
 /**
- * The trainer setup — Phase 6.
+ * The trainer setup — Phase 6, given a home on the user row in the Phase 5
+ * carryover.
  *
- * Which experience level the user picked and how much time they intend to
- * spend, which together decide every muscle group's weekly target. It lives
- * beside the unit preference because it is the same kind of thing: a per-browser
- * choice with no user to hang off until Phase 5 lands.
+ * **The server owns this. What is stored here is a cache of its answer**, so
+ * that `loadProfile()` can stay synchronous: `setgrid.js` decides whether to
+ * draw the RPE column while it is building markup, and making that await a
+ * fetch means the column flickers in after the grid has already painted.
  *
- * **The client never computes a target from this.** It sends the three values
- * with the request and the server sends back the targets it graded against
- * (`profile.targets` on the weekly summary). Deriving them here as well would be
- * two implementations of one rule, which is the disagreement this codebase's
- * layering exists to prevent.
+ * Nothing writes this cache except `api.js`, from a payload that carried a
+ * resolved profile. Treating it as a store is what this change ended — a second
+ * device would go on grading you against whatever that browser last chose.
+ *
+ * **The client never computes a target from it.** The server sends back the
+ * targets it graded against (`profile.targets` on the weekly summary), and
+ * deriving them here as well would be two implementations of one rule.
  */
 const PROFILE_KEY = "bodyshop:trainer-profile";
 
@@ -109,28 +112,17 @@ export function loadProfile() {
   }
 }
 
-/** Remember the trainer setup. Silently does nothing if storage is blocked. */
-export function saveProfile(profile) {
+/**
+ * Remember the server's resolved profile. Silently does nothing if storage is
+ * blocked — the setup is on the account either way, and the next response
+ * carries it again.
+ */
+export function cacheProfile(profile) {
   try {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
   } catch {
-    // The choice just won't persist; this request still carries it.
+    // The cache just won't persist; the next response carries it again.
   }
-}
-
-/**
- * The trainer setup as query parameters, for any endpoint that grades a week.
- *
- * Values are sent unvalidated on purpose — `resolve_profile` on the server
- * clamps and falls back, so a stale key shows the usual targets rather than an
- * error. Returns a `URLSearchParams`-ready string with no leading separator.
- */
-export function profileQuery(profile = loadProfile()) {
-  return new URLSearchParams({
-    experience: profile.experience,
-    sessions: String(profile.sessions_per_week),
-    minutes: String(profile.minutes_per_session),
-  }).toString();
 }
 
 /** A displayed value in `unit` → kilograms, for sending to the API. */
