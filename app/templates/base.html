@@ -222,6 +222,22 @@
   </div>
   {% endif %}
 
+  {#
+    Account and sign out. Docked above the theme toggle, and **only rendered on
+    the chapters** — the bare auth pages have nothing to sign out of.
+
+    `data-auth-when="in"` hides the whole dock for a signed-out reader, using
+    the same before-first-paint stamp the landing page's split uses, so it never
+    flashes. Without this, `/account` was unreachable from anywhere in the UI:
+    sign-out and delete-account both lived on a page with no link to it.
+  #}
+  {% if not bare %}
+    <div class="account-dock" data-auth-when="in">
+      <a class="dock-link type-label" href="{{ url_for('views.account_page') }}">Account</a>
+      <button type="button" class="dock-link type-label" id="sign-out">Sign out</button>
+    </div>
+  {% endif %}
+
   {# Light/dark. The label names the *current* theme; the icon shows it too, so
      the control reads correctly whether you scan the word or the glyph. #}
   <button type="button" class="theme-toggle" id="theme-toggle"
@@ -349,6 +365,18 @@
     initThemeToggle(document.getElementById("theme-toggle"));
     initOnboarding(document.getElementById("first-run"), {{ page | tojson }});
     initPageTurn(document.getElementById("page-veil"));
+
+    // Sign out clears the session whatever Supabase says — a failed revoke must
+    // not leave someone still signed in on the device in front of them.
+    const signOutButton = document.getElementById("sign-out");
+    if (signOutButton) {
+      const { signOut } = await import("{{ url_for('static', filename='js/auth.js') }}");
+      signOutButton.addEventListener("click", async () => {
+        signOutButton.disabled = true;
+        await signOut();
+        window.location.assign("/");
+      });
+    }
   </script>
 
   {#

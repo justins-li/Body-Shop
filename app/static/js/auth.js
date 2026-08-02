@@ -17,6 +17,30 @@
 const CONFIG = window.BODYSHOP_SUPABASE || { url: "", anon_key: "" };
 const BASE = `${CONFIG.url.replace(/\/$/, "")}/auth/v1`;
 
+/**
+ * Refuse to talk to a Supabase we have not been told about.
+ *
+ * Unconfigured, `CONFIG.url` is `""` and `BASE` becomes the *relative* path
+ * `/auth/v1` — so every sign-up posts to our own Flask server, which has no
+ * such route and answers **404**. That points the reader at Flask, which is the
+ * one place the bug is not. It cost a real debugging session; anyone who clones
+ * this repo without a `.env` hits it, and so does a deploy with a missing
+ * environment variable.
+ *
+ * Called from the request helpers rather than at module load: a module-level
+ * throw would take `base.html`'s boot script down with it and break pages that
+ * need no Supabase at all.
+ */
+function requireConfig() {
+  if (!CONFIG.url || !CONFIG.anon_key) {
+    throw new Error(
+      "Supabase is not configured. Set BODYSHOP_SUPABASE_URL and " +
+        "BODYSHOP_SUPABASE_ANON_KEY in .env, then restart the server — the " +
+        "config is read once at start-up."
+    );
+  }
+}
+
 /** Where the session is kept. The inline script in `base.html` reads this same
  *  literal to set `data-auth` before first paint — keep the two in step. */
 export const STORAGE_KEY = "bodyshop.auth";
@@ -47,6 +71,7 @@ function messageFrom(payload, status) {
  * @returns {Promise<any>}
  */
 async function post(path, body, extraHeaders = {}) {
+  requireConfig();
   const response = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: headers(extraHeaders),
@@ -180,6 +205,7 @@ export async function requestPasswordReset(email, redirectTo) {
 
 /** Set a new password, using the recovery token from the emailed link. */
 export async function updatePassword(newPassword, token) {
+  requireConfig();
   const response = await fetch(`${BASE}/user`, {
     method: "PUT",
     headers: headers({ Authorization: `Bearer ${token}` }),

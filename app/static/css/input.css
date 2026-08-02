@@ -988,6 +988,46 @@
   /* Theme toggle. Docked bottom-left with the rest readout — the reference
      puts its language selector in the same corner, and with no header these
      are the only two persistent controls in the app. */
+  /* Account and sign out, stacked above the theme toggle. The bottom-left
+     column reads rest dock (1rem) → theme toggle (4rem) → account (7rem), so
+     nothing overlaps and the order is stable across pages.
+
+     **No `display` here on purpose.** `:root[data-auth] [data-auth-when]` owns
+     it: the dock is `display: none` signed out and `flex` signed in, stamped
+     before first paint. Setting `display: flex` here would tie that rule on
+     specificity and re-open the bug the landing page just had. */
+  .account-dock {
+    position: fixed;
+    left: 1rem;
+    bottom: 7rem;
+    z-index: 60;
+    flex-direction: column;
+    gap: 0.35rem;
+    align-items: stretch;
+  }
+
+  /* Outlined, never filled — a filled red area means volume past target, and
+     an action must not borrow that. 44pt like every other target in the app. */
+  .dock-link {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--color-base-content) 16%, transparent);
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+  .dock-link:hover {
+    border-color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
+  }
+  .dock-link:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   .theme-toggle {
     position: fixed;
     left: 1rem;
@@ -1019,6 +1059,9 @@
 
   @media (width < 64rem) {
     .theme-toggle { bottom: 7.75rem; }
+    /* Keeps the same 3rem rhythm above the toggle once the tab bar claims the
+       bottom of the screen. */
+    .account-dock { bottom: 10.75rem; }
   }
 
   /* The rest timer used to sit in the header. With the header gone it docks in

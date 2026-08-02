@@ -698,3 +698,54 @@ def test_the_auth_split_rules_outrank_home_actions():
     )
     assert ":root[data-auth=out] [data-auth-when=out]" in css
     assert ":root[data-auth=in] [data-auth-when=in]" in css
+
+
+def test_chapters_carry_a_reachable_account_and_sign_out(client):
+    """`/account` must be linked from somewhere, or sign-out is unreachable.
+
+    It shipped with no link to it at all: both sign-out and delete-account lived
+    on a page nothing pointed at. The dock is hidden for a signed-out reader by
+    `data-auth-when`, but it has to be *in the markup* so the stamp can reveal it
+    without a round trip.
+    """
+    for page in ("/routines", "/log", "/summary", "/progress"):
+        body = client.get(page).data.decode()
+        assert 'class="account-dock" data-auth-when="in"' in body, page
+        assert 'href="/account"' in body, page
+        assert 'id="sign-out"' in body, page
+
+
+def test_auth_pages_carry_no_account_dock(client):
+    """There is nothing to sign out of on the sign-in page."""
+    for path in ("/login", "/signup", "/reset-password", "/verify", "/account"):
+        body = client.get(path).data.decode()
+        assert "account-dock" not in body, path
+
+
+def test_the_account_dock_never_sets_its_own_display():
+    """`data-auth-when` owns the dock's display, and a tie would re-open the bug.
+
+    `.account-dock` setting `display: flex` would tie `:root[data-auth]
+    [data-auth-when]` on specificity and win on source order, showing the dock
+    to signed-out readers — exactly what went wrong on the landing page.
+    """
+    from pathlib import Path
+
+    css = Path("app/static/css/styles.css").read_text()
+    rule = css.split(".account-dock{")[1].split("}")[0]
+    assert "display:" not in rule, f"account-dock must not set display: {rule}"
+
+
+def test_auth_js_refuses_to_run_unconfigured():
+    """An empty Supabase URL made `BASE` relative, so signup 404'd against Flask.
+
+    The 404 named Flask, which is the one place the bug was not. Guarded at call
+    time rather than module load: a module-level throw would take base.html's
+    boot script down and break pages needing no Supabase at all.
+    """
+    from pathlib import Path
+
+    js = Path("app/static/js/auth.js").read_text()
+    assert "function requireConfig()" in js
+    # Both request helpers must be guarded, not just one.
+    assert js.count("requireConfig();") == 2, "every fetch helper needs the guard"
