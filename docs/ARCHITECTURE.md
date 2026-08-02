@@ -442,17 +442,19 @@ What is sourced and what is convention:
 | `SESSION_OVERHEAD_MINUTES = 10` | Judgement. Fixed per session, which is why 2 × 30 holds fewer working sets than 1 × 60 |
 | `REFERENCE_PLAN` (5 × 75) | Derived, and the arithmetic is in the docstring: 180 weighted units ÷ ~2.0 per set ≈ 90 sets ≈ 315 working minutes |
 
-**Still no ownership, and this is the one thing Phase 5 did not finish.** Accounts exist,
-but the setup is a `localStorage` preference sent with each request
-(`experience`/`sessions`/`minutes`), so it is per-browser rather than per-account.
-`resolve_profile` treats every input as untrusted — falling back and clamping rather than
-raising, the same discipline `window` follows on the graph. Moving it onto the user row is
-a column, a default and a migration; the API shape does not change, which is why it could
-be deferred. See the carryover item at the top of [ROADMAP.md](ROADMAP.md).
+**The setup lives on the user row**, as of the Phase 5 carryover: three nullable columns
+on `user`, where all three NULL means the account has never chosen — read through
+`api._user_profile` and written by `PUT /api/profile`. `localStorage` still holds a copy,
+but only as a cache of the server's answer, which is what keeps `loadProfile()`
+synchronous for `setgrid.js`'s RPE gate. `resolve_profile` treats every input as
+untrusted — falling back and clamping rather than raising, the same discipline `window`
+follows on the graph — because a stored value predates any tuning of the bounds and a
+settings control can send anything.
 
-**The client never computes a target.** It sends the three values and renders
-`profile.targets` from the response. `/progress` sends them too, because node colour *is*
-the body map's grading and the two pages must not disagree about one week.
+**The client never computes a target.** It renders `profile.targets` from the response,
+and sends nothing about the setup: `/summary/week` and `/progress/graph` both resolve it
+from the row, so node colour — which *is* the body map's grading — cannot be made to
+disagree with the map about one week.
 
 ### Asking once, on first run
 
@@ -701,7 +703,8 @@ rows; there is no per-day "workout" record, which keeps logging a single insert
 and makes range queries trivial.
 
 ```sql
-user(id UUID, email TEXT UNIQUE, created_at TIMESTAMPTZ)
+user(id UUID, email TEXT UNIQUE, created_at TIMESTAMPTZ,
+     experience TEXT, sessions_per_week INTEGER, minutes_per_session INTEGER)
 workout_entry(id, user_id -> user ON DELETE CASCADE,
               entry_date DATE, exercise_id TEXT, created_at TIMESTAMPTZ)
 workout_set(id UUID, entry_id -> workout_entry ON DELETE CASCADE,
@@ -773,6 +776,7 @@ own autogenerate diff and fails if a revision is missing.
 | `0003` | `entry_date` → `DATE`, `created_at` → `TIMESTAMPTZ`. |
 | `0004` | Splits the `sets` integer column into `workout_set` rows, backfilling one row per counted set. |
 | `0005` | Adds `user` and `workout_entry.user_id`. **Destructive and irreversible** — it deletes every existing entry and set first, rather than backfilling development history onto a seed account and leaving a permanent "who is user 1" behind. `downgrade()` restores the schema, never the rows. |
+| `0006` | Gives the trainer setup a home on `user`: `experience`, `sessions_per_week`, `minutes_per_session`, all nullable and **not backfilled** — three NULLs means "never chosen", which the first-run dialog reads and a backfill would destroy. |
 
 `0003` is worth reading before writing another type change. It **cannot** use
 Alembic's `batch_alter_table`: `SQLiteImpl.cast_for_batch_migrate` adds a `CAST` to
@@ -861,10 +865,6 @@ which is the difference between seconds and minutes against a hosted database.
 - ~~**Single user.**~~ **Reversed by Phase 5.** Every row carries a `user_id`
   and the account lives in a mirrored `user` table. What it replaced: there was no
   auth and no `user_id` column, and the database was whoever's machine it ran on.
-- **The trainer setup is per-browser, not per-account.** It is still the
-  `localStorage` preference Phase 6 shipped, so signing in on a second device shows
-  the default targets and clearing site data resets them. The carryover at the top
-  of [ROADMAP.md](ROADMAP.md).
 - **No rate limiting of our own.** Supabase rate-limits the endpoints that take a
   credential; ours are bearer-only, with nothing to brute-force. Deliberate, and
   worth revisiting only if the API itself becomes the target.

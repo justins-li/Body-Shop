@@ -6,37 +6,35 @@ multi-user product.
 This file now tracks only the current, prioritized path forward. The implementation
 history and retired tradeoffs live in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Current state: **Phases 1, 2, 3, 4, 4.5, 5, 6, 6.5, 6.7 and 8.1–8.3 are done**, and
+Current state: **Phases 1, 2, 3, 4, 4.5, 5 (including its carryover), 6, 6.5, 6.7 and
+8.1–8.3 are done**, and
 **Phase 9 was absorbed into Phase 2**. The app already has Tailwind v4 + daisyUI, 873
 exercises with images across 12 muscle groups, Alembic migrations on SQLite/Postgres,
 per-set weight/reps/RPE, the `/progress` training graph, trainer presets that scale the
 weekly targets, equipment-aware logging, personal bests estimated from the user's own
-sets, Supabase-backed accounts with `user_id` on every row, suggested routines, one
-shared set grid, and the calendar folded into `/summary`.
-
-Phase 6 shipped **ahead of** Phase 5, which the dependency graph put first. The trainer
-setup needed somewhere per-user to live and there was no user yet, so it lives in
-`localStorage` and rides along with the request. Phase 5 landed the user row but **did
-not move it** — that is the one carryover below, and it is still a column plus a
-default rather than a reshape.
+sets, Supabase-backed accounts with `user_id` on every row and the trainer setup stored
+against them, suggested routines, one shared set grid, and the calendar folded into
+`/summary`.
 
 ## Prioritized roadmap
 
-### 1. Phase 5 carryover — the trainer setup's home
+**Phase 5 carryover — the trainer setup's home. ✅ shipped.**
+The Phase 6 setup moved off `localStorage` and onto three nullable columns on `user`,
+read through `api._user_profile` and written by `GET`/`PUT /api/profile`. The
+`experience`/`sessions`/`minutes` query parameters are gone from `/api/summary/week`
+and `/api/progress/graph`: two sources of truth let a stale client be graded against
+something other than its account's setup, invisibly, since both answers render
+correctly.
 
-Phase 5 shipped (see the postscript at the foot of this file for what diverged and
-why), except for one bullet:
+The one thing worth knowing: **the columns are nullable and were not backfilled**, so
+all three NULL still means *never chosen* — which is not the same fact as chose-the-
+defaults, and is exactly what the first-run dialog reads to decide whether this account
+has already answered. `localStorage` survives as a cache of the server's answer, which
+is what keeps `loadProfile()` synchronous for `setgrid.js`'s RPE gate. The roadmap
+predicted "the API shape does not change"; the payloads did not, but something had to
+write the column.
 
-- Move the Phase 6 trainer setup off `localStorage` and onto the user row. The API
-  already resolves it per request (`experience`/`sessions`/`minutes`) and
-  `resolve_profile` clamps every input, so this is a column, a default, and a
-  migration — the API shape does not change.
-- Until it moves, the setup is per-browser rather than per-account: signing in on a
-  second device shows a stranger's default targets, and clearing site data resets
-  them. That is the argument for doing it before deployment puts real accounts on
-  more than one device.
-
-### 2. Phase 7 — Stack decision and deployment
+### 1. Phase 7 — Stack decision and deployment
 
 Deploy the current Flask app before adding more product surface.
 
@@ -46,7 +44,7 @@ Deploy the current Flask app before adding more product surface.
   and CSV export.
 - Keep production gated on the Postgres CI job.
 
-### 3. Phase 8 — Training essentials
+### 2. Phase 8 — Training essentials
 
 This is the parity phase. It should make the app feel complete next to mature trackers.
 Broken into steps that can each ship on their own, roughly in dependency order.
@@ -106,7 +104,7 @@ One movement over time, rather than the whole constellation.
 Throughout: keep the volume-coverage model intact. None of this may turn the app into
 a strength-standards tracker (see docs/VOLUME_SCIENCE.md §3.5).
 
-### 4. Phase 9 — AI-assisted custom exercises
+### 3. Phase 9 — AI-assisted custom exercises
 
 Only build this after the catalog has been in front of real users long enough to show
 what it misses.
@@ -116,7 +114,7 @@ what it misses.
 - Require user review before saving any AI suggestion.
 - Log corrections so the prompt can be tuned against real misses.
 
-### 5. Phase 10 — Mobile, watch, and store distribution
+### 4. Phase 10 — Mobile, watch, and store distribution
 
 This is last because it consumes the earlier phases.
 
@@ -180,8 +178,8 @@ The live chain is simple:
 
 ```mermaid
 graph TD
-  P5[Phase 5: Secure user login ✓] -.trainer setup still on localStorage.-> P5a[Phase 5 carryover: setup onto the user row]
-  P6[Phase 6: Trainer setups ✓] -.moves onto the user row.-> P5a
+  P5[Phase 5: Secure user login ✓] --> P5a[Phase 5 carryover: setup on the user row ✓]
+  P6[Phase 6: Trainer setups ✓] --> P5a
   P67[Phase 6.7: Graph ✓] -.PR detection.-> P8
   P5 --> P7[Phase 7: Stack decision and deployment]
   P5a --> P7
@@ -193,8 +191,8 @@ graph TD
 ```
 
 Phase 5 gated ownership and account deletion, and it has landed; the one loose end
-Phase 6 left is still open — the trainer setup is a `localStorage` preference sent with
-each request, and it becomes a column on the user row. Phase 7 gates launch. Phase 8 is
+Phase 6 left — the trainer setup living in `localStorage` rather than on the account —
+is closed too. Phase 7 gates launch. Phase 8 is
 the competitive parity floor, and 8.1–8.3 of it are already in. Phase 9 depends on
 actual usage. Phase 10 depends on all of the above.
 

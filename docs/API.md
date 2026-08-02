@@ -56,6 +56,8 @@ request carrying a `sub` we have not seen; there is no signup webhook.
 | `GET /api/summary/week` | bearer |
 | `GET /api/progress/graph` | bearer |
 | `GET /api/me` | bearer |
+| `GET /api/profile` | bearer |
+| `PUT /api/profile` | bearer |
 | `DELETE /api/account` | bearer |
 
 The three public endpoints are public deliberately: the catalog is public-domain
@@ -516,15 +518,13 @@ today). This is the endpoint that drives the body map.
 | Query param | Default | Notes |
 | --- | --- | --- |
 | `date` | Today | Any day inside the week wanted. |
-| `experience` | `experienced` | `beginner`, `experienced` or `advanced`. |
-| `sessions` | `5` | Sessions a week, clamped to 1–14. |
-| `minutes` | `75` | Minutes a session, clamped to 15–240. |
 
-The last three are the **trainer setup** (Phase 6) and they decide every group's
-`target`. See [Trainer setup](#trainer-setup) below. **None of them 400 on a bad
-value** — they arrive from a view control, so an unknown level falls back to the
-default and out-of-range numbers are clamped, the same rule `window` follows on the
-graph endpoint.
+Targets come from the account's stored **trainer setup** — see
+[`GET /api/profile`](#get-apiprofile). It used to travel on this query string as
+`experience`/`sessions`/`minutes`; those parameters are gone, and a client still
+sending them is ignored rather than 400ed. Two sources of truth meant a stale
+client could be graded against something other than its own account's setup, and
+because both answers render correctly the disagreement was invisible.
 
 Example below: 12 sets of barbell bench press (primary chest; secondary shoulders and
 triceps). Groups omitted for brevity all look like `abs`.
@@ -688,7 +688,6 @@ added.
 | --- | --- | --- |
 | `window` | `8w` | `8w`, `6m`, `all` |
 | `date` | Today | Anchors both ends of the window *and* the colouring week |
-| `experience`, `sessions`, `minutes` | See above | The trainer setup, which decides the targets `coverage` is graded against |
 
 ```json
 {
@@ -755,9 +754,10 @@ nodes, so the graph and the body map cannot say different things about the same 
 Note it is the week containing `date`, *not* the whole window: the question the page
 answers is what this training is feeding now.
 
-That is also why the trainer setup has to be sent here too. Node colour *is* the body
-map's grading, so a graph fetched without the profile the summary page is using would
-be graded against different targets and the two pages would disagree about one week.
+Node colour *is* the body map's grading, so this endpoint resolves the account's
+trainer setup exactly as `GET /api/summary/week` does. Neither is told the setup by
+its caller any more, which is what makes it impossible for the two pages to disagree
+about one week.
 
 `orphan` marks a movement that has fallen out of the training — logged fewer than
 three times, or nothing in eight weeks. Both thresholds are **judgement, not
@@ -838,6 +838,61 @@ than trusting its own decode of it.
 
 `id` is the Supabase `auth.users` id — the token's `sub` — and the value every
 `workout_entry` row is owned by.
+
+---
+
+## `GET /api/profile`
+
+The account's trainer setup, resolved, with the targets it produces.
+
+```json
+{
+  "profile": {
+    "experience": "beginner",
+    "label": "Beginner",
+    "shows_rpe": false,
+    "volume_scale": 0.6,
+    "limited_by": "experience",
+    "sessions_per_week": 6,
+    "minutes_per_session": 90,
+    "targets": { "chest": 12, "abs": 6, "...": 0 }
+  },
+  "configured": true
+}
+```
+
+`profile` is the same shape `GET /api/summary/week` echoes, specified under
+[Trainer setup](#trainer-setup).
+
+`configured` is `false` when the account has never chosen a setup — the three
+columns are NULL and `profile` is the app's default, which is the pre-Phase-6
+grading exactly. It is a fact about storage rather than about training, which is
+why it sits beside the profile rather than inside it. **The first-run dialog is
+its one reader:** an account that has answered is never asked again, on any
+device.
+
+---
+
+## `PUT /api/profile`
+
+Stores the account's trainer setup.
+
+```json
+{"experience": "beginner", "sessions_per_week": 6, "minutes_per_session": 90}
+```
+
+Responds with the same shape `GET /api/profile` returns, and `configured: true`.
+
+**Nothing here 400s.** An unknown experience level falls back to `experienced`
+and out-of-range numbers are clamped to 1–14 sessions and 15–240 minutes — the
+same rule `window` follows on the graph endpoint, and for the same reason: these
+arrive from a settings control, and the honest response to an out-of-range number
+is the nearest one that works.
+
+**The stored values are the resolved ones**, not what was submitted, so the column
+can never hold a setup the app would refuse to use. The echo is therefore what the
+client's controls should settle on: a value corrected on the way in corrects itself
+on screen rather than sitting there disagreeing with the grading it produced.
 
 ---
 
