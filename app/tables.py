@@ -64,6 +64,21 @@ user = sa.Table(
         nullable=False,
         server_default=sa.text("CURRENT_TIMESTAMP"),
     ),
+    # The Phase 6 trainer setup, moved off localStorage in the Phase 5
+    # carryover. **All three NULL means "never chosen"**, which is a different
+    # fact from "chose the defaults": it is what the first-run dialog reads to
+    # decide whether this account has already answered, and it is what keeps
+    # DEFAULT_EXPERIENCE / REFERENCE_PLAN meaning *today's* default rather than
+    # being frozen into every row.
+    #
+    # No CHECK constraints. `training.resolve_profile` clamps every value on the
+    # way in, so the column can only receive something in range; a check
+    # duplicating MIN_SESSIONS/MAX_MINUTES would add a migration to every future
+    # tuning of what are documented as conventions, and a check on `experience`
+    # would need rewriting to add a fourth level.
+    sa.Column("experience", sa.Text, nullable=True),
+    sa.Column("sessions_per_week", sa.Integer, nullable=True),
+    sa.Column("minutes_per_session", sa.Integer, nullable=True),
 )
 
 #: One logged movement on a given day; its sets live in ``workout_set``.

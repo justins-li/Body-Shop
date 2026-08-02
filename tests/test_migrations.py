@@ -412,3 +412,32 @@ def test_revision_0004_preserves_dates_through_the_sqlite_rebuild(migrated):
     with engine.connect() as connection:
         row = connection.execute(sa.select(entry_at_0004)).one()
     assert row.entry_date == date(2026, 7, 28)
+
+
+def test_revision_0006_leaves_existing_accounts_unset(migrated):
+    """A row that predates the trainer setup must read as "never chosen".
+
+    Not backfilled with the defaults: the first-run dialog reads NULL to decide
+    whether this account has answered, and a backfill would tell it everyone had.
+    """
+    application, to = migrated
+    engine = to("0005")
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.insert(sa.table("user", sa.column("id"), sa.column("email"))).values(
+                id="33333333-3333-4333-8333-333333333333",
+                email="before@example.com",
+            )
+        )
+
+    to("0006")
+
+    with engine.connect() as connection:
+        row = connection.execute(
+            sa.select(
+                user.c.experience, user.c.sessions_per_week, user.c.minutes_per_session
+            )
+        ).one()
+
+    assert row == (None, None, None)
