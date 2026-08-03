@@ -9,7 +9,7 @@ from __future__ import annotations
 import functools
 from datetime import date
 
-from flask import Blueprint, current_app, g, jsonify, request
+from flask import Blueprint, Response, current_app, g, jsonify, request
 
 from .exercises import all_exercises, get_exercise
 from .routines import all_routines, get_routine
@@ -29,6 +29,7 @@ from .models import (
     sets_by_date,
 )
 from .services.auth import AuthError, decode_token, delete_auth_user
+from .services.export import entries_to_csv, export_filename
 from .services.graph import DEFAULT_WINDOW, training_graph
 from .services.summary import weekly_summary
 from .services.weeks import month_bounds, week_bounds
@@ -251,6 +252,34 @@ def get_entries():
 
     entries = list_entries(g.user_id, start, end)
     return jsonify({"entries": [entry.to_dict() for entry in entries]})
+
+
+@bp.get("/entries/export.csv")
+@require_user
+def export_entries():
+    """Every set this account has ever logged, as CSV.
+
+    No date filtering, deliberately. This is the "get your data out" half of
+    what ``/privacy`` promises — the other half being ``DELETE /api/account`` —
+    and an export that made you ask for a range would be a report rather than
+    your data. A spreadsheet filters dates by itself.
+
+    Bearer-authed like everything else. The browser cannot put an
+    ``Authorization`` header on a link it follows, so ``api.js`` fetches this
+    and triggers the download from a Blob rather than the app growing a signed
+    URL or a cookie for the sake of one endpoint.
+    """
+    body = entries_to_csv(list_entries(g.user_id))
+    return Response(
+        body,
+        mimetype="text/csv",
+        headers={
+            "Content-Type": "text/csv; charset=utf-8",
+            "Content-Disposition": (
+                f'attachment; filename="{export_filename(date.today())}"'
+            ),
+        },
+    )
 
 
 @bp.post("/entries")

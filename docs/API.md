@@ -505,6 +505,52 @@ Delete one entry.
 not exist. A 403 would confirm the id is real, which is the IDOR wearing a
 politeness mask.
 
+---
+
+## `GET /api/entries/export.csv`
+
+Every set this account has ever logged. **Not JSON** — `text/csv; charset=utf-8`,
+served as an attachment named `bodyshop-export-<today>.csv`.
+
+No query parameters and no date filtering. This is the "get your data out" half
+of what `/privacy` promises, and an export that made you ask for a range would
+be a report rather than your data.
+
+One row per set, **warm-ups included** — excluding them is a grading rule that
+keeps them off the muscle map, and a raw record that dropped a set would
+misstate the session. Ordered oldest first, then by entry, then by set number.
+
+```
+entry_id,date,exercise_id,exercise,set_number,set_type,weight_kg,reps,rpe
+41,2026-08-01,Barbell_Squat,Barbell Squat,1,warmup,60.0,5,
+41,2026-08-01,Barbell_Squat,Barbell Squat,2,normal,100.0,5,8.0
+42,2026-08-01,Sit-Up,Sit-Up,1,normal,,15,
+```
+
+| Column | Notes |
+| --- | --- |
+| `entry_id` | The `workout_entry` id — regroup sets by it. |
+| `date` | ISO-8601, as everywhere else at the API boundary. |
+| `exercise_id` | free-exercise-db's id; the join key back into the catalog. |
+| `exercise` | The display name, so the file reads without the catalog. |
+| `set_number` | 1-based, assigned from submission order. |
+| `set_type` | `normal` \| `warmup` \| `drop` \| `failure`. |
+| `weight_kg` | **Kilograms**, always. `kg`/`lb` is a display preference that lives only in `ui.js` and never reaches this file. |
+| `reps` | Whole number. |
+| `rpe` | 1–10, half-points allowed. |
+
+**An empty cell means "not recorded"; `0` means zero.** `weight`, `reps` and
+`rpe` are all nullable and `0` is a legitimate bodyweight entry, so the two are
+never collapsed.
+
+An account with no entries gets the header row and nothing else — 200, not 404.
+
+Requires a bearer token like every other endpoint. The browser cannot set one on
+a link it follows, so `api.js` fetches this and downloads it from a Blob; there
+is deliberately no signed URL and no cookie.
+
+---
+
 ## `GET /api/calendar`
 
 Total sets per day for a month — what the calendar dots are drawn from.

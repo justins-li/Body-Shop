@@ -160,3 +160,49 @@ class TestTheWriter:
 class TestTheFilename:
     def test_it_carries_the_date(self):
         assert export_filename(date(2026, 8, 3)) == "bodyshop-export-2026-08-03.csv"
+
+
+class TestTheEndpoint:
+    def test_it_returns_csv_as_an_attachment(self, client, add):
+        assert add("2026-08-01", "Barbell_Squat", 3).status_code == 201
+
+        response = client.get("/api/entries/export.csv")
+        assert response.status_code == 200
+        assert response.mimetype == "text/csv"
+        assert "attachment" in response.headers["Content-Disposition"]
+        assert "bodyshop-export-" in response.headers["Content-Disposition"]
+
+    def test_it_exports_the_whole_log_not_one_week(self, client, add):
+        """No date filtering: this is the "get my data out" obligation."""
+        assert add("2025-01-05", "Sit-Up", 1).status_code == 201
+        assert add("2026-08-01", "Barbell_Squat", 1).status_code == 201
+
+        rows = _rows(client.get("/api/entries/export.csv").data.decode())
+        assert [r["date"] for r in rows] == ["2025-01-05", "2026-08-01"]
+
+    def test_an_empty_log_still_downloads(self, client):
+        response = client.get("/api/entries/export.csv")
+        assert response.status_code == 200
+        assert response.data.decode().strip() == ",".join(EXPORT_COLUMNS)
+
+    def test_it_carries_the_recorded_numbers(self, client):
+        response = client.post(
+            "/api/entries",
+            json={
+                "date": "2026-08-01",
+                "exercise_id": "Barbell_Squat",
+                "sets": [
+                    {"weight": 60, "reps": 5, "set_type": "warmup"},
+                    {"weight": 100, "reps": 5, "rpe": 8},
+                ],
+            },
+        )
+        assert response.status_code == 201
+
+        rows = _rows(client.get("/api/entries/export.csv").data.decode())
+        assert [r["set_type"] for r in rows] == ["warmup", "normal"]
+        assert rows[0]["rpe"] == ""
+        assert rows[1]["rpe"] == "8.0"
+
+    def test_it_needs_a_bearer_token(self, app):
+        assert app.test_client().get("/api/entries/export.csv").status_code == 401
