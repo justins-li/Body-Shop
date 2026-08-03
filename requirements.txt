@@ -19,3 +19,9 @@ PyJWT[crypto]>=2.8,<3.0
 # Reads .env. Flask's CLI picks it up natively when installed, so
 # `flask --app app upgrade-db` sees the same configuration run.py does.
 python-dotenv>=1.0,<2.0
+
+# Production WSGI server. In the repository rather than "install it separately"
+# because there is a deployment now: render.yaml's build command installs this
+# file and its start command is `gunicorn wsgi:application`, so a build that
+# did not include gunicorn would succeed and then fail to boot.
+gunicorn>=22.0,<24.0

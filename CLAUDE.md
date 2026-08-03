@@ -15,7 +15,7 @@ BODYSHOP_TEST_DATABASE_URL=postgresql://... pytest   # same suite, against real 
 flask --app app upgrade-db            # apply migrations — the deploy step
 flask --app app init-db               # drop everything and migrate up (destroys data; dev only)
 flask --app app stamp-db 0001         # for a database that predates migrations
-gunicorn "wsgi:application"           # production entry point — NB: gunicorn is not in requirements.txt, install it separately
+gunicorn "wsgi:application"           # production entry point — Render's start command
 ```
 
 Migrations are plain Alembic, so its CLI works too and reads the same
