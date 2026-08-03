@@ -24,8 +24,17 @@ from __future__ import annotations
 
 from datetime import date
 
-from flask import Blueprint, current_app, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 
+from . import __version__
 from .exercises import (
     DEFAULT_MUSCLE_SCHEME,
     MUSCLE_GROUPS,
@@ -106,6 +115,25 @@ def home_page():
         selected_date=day,
         exercise_count=len(all_exercises()),
     )
+
+
+@bp.get("/healthz")
+def healthz():
+    """Liveness probe for the platform. **Touches no database, deliberately.**
+
+    Render restarts a service whose health check fails, so a check that queried
+    Postgres would convert a thirty-second database blip into a restart loop —
+    strictly worse than the blip. The only question the platform is asking is
+    whether this process is serving HTTP, and that is the only one answered
+    here. Database health is a Supabase dashboard concern and a Sentry alert.
+
+    A useful consequence when something is wrong: this answering while the app
+    returns 500s tells you the problem is the database rather than the deploy.
+
+    Unauthenticated, because a platform health check cannot carry a bearer
+    token, and outside ``/api`` because it is not part of the product's API.
+    """
+    return jsonify({"status": "ok", "version": __version__})
 
 
 @bp.get("/how-to-use")

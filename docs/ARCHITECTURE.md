@@ -64,7 +64,7 @@ once, and on a second 401 redirects to `/login?next=<path>`. One retry, never a 
 | `app/services/strength.py` | Estimating a one-rep max from the user's own sets, and reducing a window to one best per movement. | Query the database, or compare a user to anyone but themselves. |
 | `app/routines.py` | The suggested sessions, the athlete reconstructions and their attribution, and the time estimate derived from their sets. Editorial content, validated against the catalog at import. | Touch the database, state a duration that is not computed from the sets listed, or attribute a session to a real person without the `[experimental]` tag. |
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
-| `app/views.py` | Page shells and template context. | Contain business rules. |
+| `app/views.py` | Page shells and template context, plus `/healthz` — the one route here that renders no template and the one that must open **no** database connection. | Contain business rules, or let the health check touch the database. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
 | `app/static/js/api.js` | The only place *our own* API is called: attaching the bearer token, one silent refresh-and-retry on a 401, then `/login?next=…`. | Talk to Supabase, or retry twice. |
 | `app/static/js/auth.js` | The only place Supabase is called — sign-in, sign-up, reset, verify, sign-out, and the stored session. | Talk to our API, or let a password reach Flask. |

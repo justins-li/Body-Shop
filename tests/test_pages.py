@@ -5,6 +5,7 @@ import re
 
 import pytest
 
+from app import __version__
 from app.exercises import DEFAULT_MUSCLE_SCHEME, MUSCLE_GROUPS, MUSCLE_SCHEMES
 
 
@@ -778,3 +779,45 @@ def test_no_module_imports_saveProfile_from_ui():
             assert "saveProfile" not in imported, f"{path.name} imports it from ui.js"
         if "cacheProfile" in source:
             assert path.name in {"ui.js", "api.js"}, f"{path.name} caches the profile"
+
+
+class TestHealthCheck:
+    """Render restarts a service whose health check fails."""
+
+    def test_it_reports_ok_and_the_version(self, client):
+        response = client.get("/healthz")
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["status"] == "ok"
+        assert payload["version"] == __version__
+
+    def test_it_needs_no_bearer_token(self, app):
+        """A platform health check cannot carry one."""
+        assert app.test_client().get("/healthz").status_code == 200
+
+    def test_it_answers_with_the_database_unreachable(self):
+        """The load-bearing property, proved from outside.
+
+        A health check that queries Postgres converts a brief database outage
+        into a platform restart loop, which is strictly worse than the outage.
+        So: point an app at a database that cannot be reached and assert the
+        check still answers.
+
+        Black-box on purpose. Monkeypatching `app.db.get_db` would prove
+        nothing — `models.py` binds that name at import, so the patch would not
+        reach the call — whereas a dead URL breaks every path to the database
+        regardless of how anything imports anything.
+
+        It also relies on `create_app` opening no connection, which is itself an
+        invariant this repo holds: a failure at *construction* rather than at
+        the request means something has put a side effect back into the factory.
+        """
+        from app import create_app
+
+        unreachable = create_app(
+            "testing",
+            DATABASE_URL="postgresql+psycopg://nobody:nobody@127.0.0.1:1/nothing",
+        )
+        response = unreachable.test_client().get("/healthz")
+        assert response.status_code == 200
+        assert response.get_json()["status"] == "ok"

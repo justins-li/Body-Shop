@@ -52,6 +52,7 @@ request carrying a `sub` we have not seen; there is no signup webhook.
 | `GET /api/entries` | bearer |
 | `POST /api/entries` | bearer |
 | `DELETE /api/entries/<id>` | bearer |
+| `GET /api/entries/export.csv` | bearer |
 | `GET /api/calendar` | bearer |
 | `GET /api/summary/week` | bearer |
 | `GET /api/progress/graph` | bearer |
@@ -64,6 +65,24 @@ The three public endpoints are public deliberately: the catalog is public-domain
 data that ships in the repo, and week bounds are calendar arithmetic over a query
 parameter. Gating them would buy nothing and would leave `/login` unable to
 render anything.
+
+---
+
+## `GET /healthz`
+
+Liveness probe. **Outside `/api`, unauthenticated, and it opens no database
+connection** — a health check that queried Postgres would turn a brief database
+outage into a platform restart loop, which is worse than the outage.
+`render.yaml` points `healthCheckPath` at it.
+
+```json
+{ "status": "ok", "version": "0.1.0" }
+```
+
+Always 200 while the process is serving. There is no failure body: a process
+that cannot answer this does not answer at all. A useful consequence when
+something is wrong — this answering while the app returns 500s tells you the
+problem is the database rather than the deploy.
 
 ---
 
