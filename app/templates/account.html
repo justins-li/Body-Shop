@@ -15,6 +15,16 @@
   <button id="sign-out" type="button" class="auth-submit type-label">Sign out</button>
 
   <div class="flex flex-col gap-3 border-t border-base-content/15 pt-6">
+    <span class="type-label">Your data</span>
+    <p class="auth-note">
+      Every set you have logged, as a CSV file you can open in a spreadsheet.
+    </p>
+    <button id="export-data" type="button" class="auth-submit type-label">
+      Download my data
+    </button>
+  </div>
+
+  <div class="flex flex-col gap-3 border-t border-base-content/15 pt-6">
     <span class="type-label">Delete account</span>
     <p class="auth-note">
       This removes your account and every workout in it. It cannot be undone.
@@ -38,12 +48,13 @@
   import { signOut } from "{{ url_for('static', filename='js/auth.js') }}";
   // Goes through api.js rather than fetch directly, so it inherits the bearer
   // header and the refresh-once behaviour like every other call in the app.
-  import { deleteAccount, fetchMe }
+  import { deleteAccount, downloadExport, fetchMe }
     from "{{ url_for('static', filename='js/api.js') }}";
 
   const email = document.getElementById("account-email");
   const out = document.getElementById("sign-out");
   const del = document.getElementById("delete-account");
+  const exportButton = document.getElementById("export-data");
   const confirmField = document.getElementById("delete-confirm");
   const status = document.getElementById("account-status");
 
@@ -57,6 +68,18 @@
   out.addEventListener("click", async () => {
     await signOut();
     location.assign("/");
+  });
+
+  exportButton.addEventListener("click", async () => {
+    exportButton.disabled = true;
+    status.textContent = "";
+    try {
+      await downloadExport();
+    } catch (err) {
+      status.textContent = err.message;
+    } finally {
+      exportButton.disabled = false;
+    }
   });
 
   // Typing the address is the confirmation. This is the only irreversible

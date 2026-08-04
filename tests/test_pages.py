@@ -821,3 +821,9 @@ class TestHealthCheck:
         response = unreachable.test_client().get("/healthz")
         assert response.status_code == 200
         assert response.get_json()["status"] == "ok"
+
+
+def test_account_page_offers_an_export(client):
+    """Export and deletion are the same obligation from opposite ends."""
+    body = client.get("/account").data.decode()
+    assert 'id="export-data"' in body
