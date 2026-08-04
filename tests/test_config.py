@@ -16,13 +16,14 @@ from app.config import DEV_SECRET_KEY, ConfigError, normalise_database_url
 
 POSTGRES = "postgresql+psycopg://u:p@localhost:5432/bodyshop"
 
-#: The Supabase settings production also insists on, so the tests that assert a
-#: *successful* boot are not testing the Supabase checks by accident. Spread
-#: into create_app with ``**SUPABASE``.
-SUPABASE = {
+#: Everything production insists on, so the tests that assert a *successful*
+#: boot are not testing one of those checks by accident. Spread into create_app
+#: with ``**REQUIRED``.
+REQUIRED = {
     "SUPABASE_URL": "https://p.supabase.co",
     "SUPABASE_ANON_KEY": "anon",
     "SUPABASE_SERVICE_ROLE_KEY": "service",
+    "CONTACT_EMAIL": "hello@example.com",
 }
 
 
@@ -71,17 +72,18 @@ class TestProductionRefusesUnsafeConfig:
 
     def test_a_real_secret_and_postgres_boots(self):
         app = create_app("production", SECRET_KEY="real", DATABASE_URL=POSTGRES,
-                         **SUPABASE)
+                         **REQUIRED)
         assert app.config["DATABASE_URL"] == POSTGRES
 
     def test_a_missing_supabase_url_is_rejected(self):
         with pytest.raises(ConfigError, match="SUPABASE_URL"):
             create_app("production", SECRET_KEY="real", DATABASE_URL=POSTGRES,
-                       SUPABASE_URL=None)
+                       CONTACT_EMAIL="hello@example.com", SUPABASE_URL=None)
 
     def test_a_missing_anon_key_is_rejected(self):
         with pytest.raises(ConfigError, match="SUPABASE_ANON_KEY"):
             create_app("production", SECRET_KEY="real", DATABASE_URL=POSTGRES,
+                       CONTACT_EMAIL="hello@example.com",
                        SUPABASE_URL="https://p.supabase.co", SUPABASE_ANON_KEY=None)
 
     def test_a_missing_service_role_key_is_rejected(self):
@@ -89,12 +91,13 @@ class TestProductionRefusesUnsafeConfig:
         with pytest.raises(ConfigError, match="SERVICE_ROLE"):
             create_app("production", SECRET_KEY="real", DATABASE_URL=POSTGRES,
                        SUPABASE_URL="https://p.supabase.co",
-                       SUPABASE_ANON_KEY="anon", SUPABASE_SERVICE_ROLE_KEY=None)
+                       SUPABASE_ANON_KEY="anon", CONTACT_EMAIL="hello@example.com",
+                       SUPABASE_SERVICE_ROLE_KEY=None)
 
     def test_a_missing_jwt_secret_is_allowed(self):
         """Its absence is a valid configuration meaning "verify against JWKS"."""
         app = create_app("production", SECRET_KEY="real", DATABASE_URL=POSTGRES,
-                         SUPABASE_JWT_SECRET=None, **SUPABASE)
+                         SUPABASE_JWT_SECRET=None, **REQUIRED)
         assert app.config["SUPABASE_JWT_SECRET"] is None
 
     def test_an_instance_config_can_satisfy_the_check_but_not_bypass_it(self):
@@ -104,7 +107,7 @@ class TestProductionRefusesUnsafeConfig:
         check lives in ``create_app`` rather than on the class attribute.
         """
         app = create_app("production", SECRET_KEY="from-instance-file",
-                         DATABASE_URL=POSTGRES, **SUPABASE)
+                         DATABASE_URL=POSTGRES, **REQUIRED)
         assert app.config["SECRET_KEY"] == "from-instance-file"
 
 
@@ -127,3 +130,25 @@ class TestTestingConfigPinsSupabase:
         assert app.config["SUPABASE_URL"] == "https://test.supabase.co"
         assert app.config["SUPABASE_JWT_SECRET"] == "test-jwt-secret-not-a-real-one-0123456789"
         assert app.config["SUPABASE_ANON_KEY"] == "test-anon-key"
+
+
+class TestProductionNeedsAContactAddress:
+    def test_a_missing_contact_email_is_rejected(self):
+        """A privacy policy naming no way to reach anyone fails silently.
+
+        The other checks catch a deployment that would lose data or leak one.
+        This catches one that is *unreachable* — which nobody notices until
+        somebody needed to reach you and could not, and which Phase 10's store
+        requirements inherit.
+        """
+        with pytest.raises(ConfigError, match="CONTACT_EMAIL"):
+            create_app("production", SECRET_KEY="real", DATABASE_URL=POSTGRES,
+                       SUPABASE_URL="https://p.supabase.co",
+                       SUPABASE_ANON_KEY="anon",
+                       SUPABASE_SERVICE_ROLE_KEY="service",
+                       CONTACT_EMAIL=None)
+
+    def test_the_testing_config_pins_one(self):
+        """So the suite never depends on the developer's environment."""
+        app = create_app("testing", DATABASE_URL="sqlite:///x.db")
+        assert app.config["CONTACT_EMAIL"]

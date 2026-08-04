@@ -87,6 +87,9 @@ def inject_globals() -> dict:
         # Public by design: the anon key identifies the project to GoTrue and
         # grants nothing on its own. The service-role key is deliberately absent
         # from this dict and must stay that way.
+        # Rendered by /privacy only, but context-global because it is a
+        # property of the deployment rather than of one page.
+        "contact_email": current_app.config.get("CONTACT_EMAIL") or "",
         "supabase": {
             "url": current_app.config.get("SUPABASE_URL") or "",
             "anon_key": current_app.config.get("SUPABASE_ANON_KEY") or "",

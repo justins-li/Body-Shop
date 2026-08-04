@@ -72,6 +72,12 @@ class BaseConfig:
         "@b0eed061e1c832b3ed815fbaa4b45b3cdc14df49/exercises",
     )
 
+    #: Where someone reaches a human. Rendered into ``/privacy`` and nowhere
+    #: else. **Production refuses to boot without it** — a privacy policy that
+    #: names no contact route is the launch floor failing silently, and it is
+    #: also a store requirement Phase 10 inherits.
+    CONTACT_EMAIL = os.environ.get("BODYSHOP_CONTACT_EMAIL")
+
     #: Supabase project URL, e.g. ``https://abcdefgh.supabase.co``.
     #:
     #: Three things derive from it: the GoTrue base the browser posts to, the
@@ -117,6 +123,8 @@ class TestingConfig(BaseConfig):
     SUPABASE_ANON_KEY = "test-anon-key"
     SUPABASE_JWT_SECRET = "test-jwt-secret-not-a-real-one-0123456789"
     SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key"
+    # Pinned so the suite never depends on the developer's environment.
+    CONTACT_EMAIL = "test@example.com"
 
 
 class ProductionConfig(BaseConfig):
@@ -202,6 +210,13 @@ def validate(config: Mapping) -> None:
             "it — a user cannot delete their own auth record with the anon key, "
             "and shipping without in-app deletion fails Apple's Guideline "
             "5.1.1(v)."
+        )
+
+    if not config.get("CONTACT_EMAIL"):
+        raise ConfigError(
+            "BODYSHOP_CONTACT_EMAIL is unset. The privacy policy renders it, "
+            "and a policy naming no way to reach anyone is not one. See "
+            ".env.example."
         )
 
     # SUPABASE_JWT_SECRET is deliberately not required. Its absence is a valid
