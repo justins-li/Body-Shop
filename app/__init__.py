@@ -12,6 +12,11 @@ function whose filesystem is read-only, and because applying a schema at import
 time gives a fresh deployment an unversioned database. Migrations run when
 something asks for them — ``flask --app app upgrade-db``, or ``run.py`` in
 development.
+
+The one outward-facing thing it does is :func:`app.observability.init_sentry`,
+and only when a DSN is configured. That is not the same class of side effect:
+it opens no connection and touches no disk, which is what the rule above is
+actually about.
 """
 
 from __future__ import annotations
@@ -67,6 +72,14 @@ def create_app(config_name: str | None = None, **overrides) -> Flask:
     # Last, so that every layer above — including instance/config.py — has had
     # its say and none of them can bypass the check.
     validate_config(app.config)
+
+    # After validation, so a misconfigured production deploy fails on its own
+    # terms rather than reporting the failure to a service it may not have. A
+    # no-op unless SENTRY_DSN is set — see app/observability.py for why this is
+    # the one permitted exception to the factory's no-side-effects rule.
+    from .observability import init_sentry
+
+    init_sentry(app)
 
     from . import db
 

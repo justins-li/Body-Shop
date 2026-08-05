@@ -51,6 +51,13 @@ class TestReadsAreScoped:
         assert mine == {DAY: 3}
         assert theirs == {DAY: 2}
 
+    def test_the_csv_export(self, client, other_client, two_users):
+        """An export is a file someone keeps. A leak here is permanent."""
+        mine = client.get("/api/entries/export.csv").data.decode()
+        theirs = other_client.get("/api/entries/export.csv").data.decode()
+        assert MINE in mine and THEIRS not in mine
+        assert THEIRS in theirs and MINE not in theirs
+
     def test_the_weekly_summary(self, client, other_client, two_users):
         mine = client.get(f"/api/summary/week?date={DAY}").get_json()
         theirs = other_client.get(f"/api/summary/week?date={DAY}").get_json()

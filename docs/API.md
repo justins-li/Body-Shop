@@ -52,6 +52,7 @@ request carrying a `sub` we have not seen; there is no signup webhook.
 | `GET /api/entries` | bearer |
 | `POST /api/entries` | bearer |
 | `DELETE /api/entries/<id>` | bearer |
+| `GET /api/entries/export.csv` | bearer |
 | `GET /api/calendar` | bearer |
 | `GET /api/summary/week` | bearer |
 | `GET /api/progress/graph` | bearer |
@@ -64,6 +65,24 @@ The three public endpoints are public deliberately: the catalog is public-domain
 data that ships in the repo, and week bounds are calendar arithmetic over a query
 parameter. Gating them would buy nothing and would leave `/login` unable to
 render anything.
+
+---
+
+## `GET /healthz`
+
+Liveness probe. **Outside `/api`, unauthenticated, and it opens no database
+connection** — a health check that queried Postgres would turn a brief database
+outage into a platform restart loop, which is worse than the outage.
+`render.yaml` points `healthCheckPath` at it.
+
+```json
+{ "status": "ok", "version": "0.1.0" }
+```
+
+Always 200 while the process is serving. There is no failure body: a process
+that cannot answer this does not answer at all. A useful consequence when
+something is wrong — this answering while the app returns 500s tells you the
+problem is the database rather than the deploy.
 
 ---
 
@@ -485,6 +504,52 @@ Delete one entry.
 **Another user's entry returns `404`, not `403`** — identical to an id that does
 not exist. A 403 would confirm the id is real, which is the IDOR wearing a
 politeness mask.
+
+---
+
+## `GET /api/entries/export.csv`
+
+Every set this account has ever logged. **Not JSON** — `text/csv; charset=utf-8`,
+served as an attachment named `bodyshop-export-<today>.csv`.
+
+No query parameters and no date filtering. This is the "get your data out" half
+of what `/privacy` promises, and an export that made you ask for a range would
+be a report rather than your data.
+
+One row per set, **warm-ups included** — excluding them is a grading rule that
+keeps them off the muscle map, and a raw record that dropped a set would
+misstate the session. Ordered oldest first, then by entry, then by set number.
+
+```
+entry_id,date,exercise_id,exercise,set_number,set_type,weight_kg,reps,rpe
+41,2026-08-01,Barbell_Squat,Barbell Squat,1,warmup,60.0,5,
+41,2026-08-01,Barbell_Squat,Barbell Squat,2,normal,100.0,5,8.0
+42,2026-08-01,Sit-Up,Sit-Up,1,normal,,15,
+```
+
+| Column | Notes |
+| --- | --- |
+| `entry_id` | The `workout_entry` id — regroup sets by it. |
+| `date` | ISO-8601, as everywhere else at the API boundary. |
+| `exercise_id` | free-exercise-db's id; the join key back into the catalog. |
+| `exercise` | The display name, so the file reads without the catalog. |
+| `set_number` | 1-based, assigned from submission order. |
+| `set_type` | `normal` \| `warmup` \| `drop` \| `failure`. |
+| `weight_kg` | **Kilograms**, always. `kg`/`lb` is a display preference that lives only in `ui.js` and never reaches this file. |
+| `reps` | Whole number. |
+| `rpe` | 1–10, half-points allowed. |
+
+**An empty cell means "not recorded"; `0` means zero.** `weight`, `reps` and
+`rpe` are all nullable and `0` is a legitimate bodyweight entry, so the two are
+never collapsed.
+
+An account with no entries gets the header row and nothing else — 200, not 404.
+
+Requires a bearer token like every other endpoint. The browser cannot set one on
+a link it follows, so `api.js` fetches this and downloads it from a Blob; there
+is deliberately no signed URL and no cookie.
+
+---
 
 ## `GET /api/calendar`
 

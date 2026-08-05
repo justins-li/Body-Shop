@@ -1,0 +1,83 @@
+# Render blueprint. Import this from the Render dashboard: New → Blueprint,
+# point it at this repository, and fill in the values marked `sync: false`.
+#
+# Walkthrough, including the two ordering traps: docs/OPERATIONS.md.
+#
+# What is NOT here, deliberately:
+#
+#   database:   Postgres lives in the Supabase project that already holds auth.
+#               One vendor, one dashboard, one backup story — and app/db.py is
+#               already tuned for a connection pooler (NullPool,
+#               prepare_threshold=None), which is what Supabase puts in front.
+#               Render therefore holds no data at all, which is what makes this
+#               service disposable.
+#
+#   migrations: `preDeployCommand` is a paid-tier feature, and so is Shell. On
+#               the free plan migrations run from the operator's machine against
+#               Supabase's SESSION pooler (port 5432, not the transaction pooler
+#               on 6543 — DDL through a transaction-mode pooler is not something
+#               to rely on):
+#
+#                   DATABASE_URL=<session-pooler-url> flask --app app upgrade-db
+#
+#               On Starter, uncomment preDeployCommand below — pointed at the
+#               session pooler, not at the DATABASE_URL the web service uses.
+
+services:
+  - type: web
+    name: body-shop
+    runtime: python
+    region: oregon
+    plan: free
+    # `plan: starter` ($7/mo) is the one-line upgrade. The free instance sleeps
+    # after 15 minutes idle and the next request pays roughly a 50-second cold
+    # start — bad for a workout log, which is opened mid-set with a barbell on
+    # the floor. See docs/OPERATIONS.md § Upgrading off the free tier.
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:application
+    # preDeployCommand: flask --app app upgrade-db   # Starter and above only.
+    healthCheckPath: /healthz
+    envVars:
+      # Not redundant, despite wsgi.py hard-coding create_app("production") and
+      # winning over this: it is what the `flask --app app` CLI reads, so
+      # without it a preDeployCommand would migrate under development config.
+      - key: BODYSHOP_CONFIG
+        value: production
+
+      # Render mints this once and keeps it, which beats a human pasting one.
+      - key: BODYSHOP_SECRET_KEY
+        generateValue: true
+
+      # Supabase → Project Settings → Database → Connection string.
+      # Use the TRANSACTION pooler (port 6543) here: this is the app, and every
+      # web process holds connections. Migrations use the session pooler (5432).
+      - key: DATABASE_URL
+        sync: false
+
+      # Supabase → Project Settings → API.
+      - key: BODYSHOP_SUPABASE_URL
+        sync: false
+      - key: BODYSHOP_SUPABASE_ANON_KEY
+        sync: false
+
+      # SECRET. Used by DELETE /api/account and nowhere else — a user cannot
+      # delete their own auth record with the anon key.
+      - key: BODYSHOP_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+      # Optional: set only for older projects signing with the shared HS256
+      # secret. Unset means "verify against the published JWKS", which is a
+      # valid configuration rather than a missing one.
+      - key: BODYSHOP_SUPABASE_JWT_SECRET
+        sync: false
+
+      # Rendered into /privacy. Production refuses to boot without it: a
+      # privacy policy naming no way to reach anyone is the launch floor
+      # failing silently.
+      - key: BODYSHOP_CONTACT_EMAIL
+        sync: false
+
+      # Optional. Unset → Sentry is never initialised and nothing is reported.
+      - key: BODYSHOP_SENTRY_DSN
+        sync: false

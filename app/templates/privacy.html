@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Privacy — Body Shop{% endblock %}
+
+{#
+  Bare, like the auth pages. No new CSS: this reuses `.auth-shell`, `.auth-title`
+  and `.auth-note`, because the stylesheet is compiled and a page of prose does
+  not justify running the toolchain.
+
+  The rule for editing this file: it describes what the app actually does. If a
+  change makes one of these paragraphs false, the paragraph changes in the same
+  commit — a privacy policy that has drifted from the code is worse than none.
+
+  A corollary, learned the hard way: **do not enumerate what is absent unless
+  its absence is a decision rather than a not-yet.** "No bodyweight, no
+  measurements" was true when written and is on the roadmap to stop being true
+  (Phase 8.6), which would have turned this page into a broken promise on the
+  day the feature shipped. The claims kept here are the ones that are policy —
+  no analytics, no advertising, no background collection, nobody compared to
+  anybody — because those are things we have decided not to do rather than
+  things we have not got round to.
+#}
+
+{% block content %}
+<div class="auth-shell">
+  <h1 class="auth-title">Privacy</h1>
+
+  <p class="auth-note">
+    Body Shop is a workout log. It holds the sets you write down and the email
+    address you signed up with, and it is built so that there is very little
+    else to hold.
+  </p>
+
+  <div class="flex flex-col gap-3 border-t border-base-content/15 pt-6">
+    <span class="type-label">What is stored</span>
+    <p class="auth-note">
+      Your email address, and every set you log — the movement, the date, the
+      weight in kilograms, the reps, and the RPE if you record one.
+    </p>
+    <p class="auth-note">
+      Anything the app stores about you is something you typed into it. Nothing
+      is collected in the background, and if that list ever grows it grows here
+      too.
+    </p>
+  </div>
+
+  <div class="flex flex-col gap-3 border-t border-base-content/15 pt-6">
+    <span class="type-label">What is not stored</span>
+    <p class="auth-note">
+      No analytics, no advertising, no tracking pixels, and no third-party
+      scripts on any page. Your password is held by Supabase and never reaches
+      this app.
+    </p>
+    <p class="auth-note">
+      Nobody is compared to anybody. The estimated one-rep max on the progress
+      page is worked out from your own sets; the app holds no strength standards
+      and no population data to rank you against.
+    </p>
+  </div>
+
+  <div class="flex flex-col gap-3 border-t border-base-content/15 pt-6">
+    <span class="type-label">Who else sees it</span>
+    <p class="auth-note">
+      <strong>Supabase</strong> holds your email address, your password and the
+      database your workouts live in.
+      <strong>Render</strong> runs the app, so its logs record the requests your
+      browser makes, including your IP address.
+      <strong>Sentry</strong> receives a report when something breaks; it is
+      configured not to send personal data with one.
+    </p>
+    <p class="auth-note">
+      <strong>jsDelivr</strong> serves the exercise photographs. Your browser
+      fetches those images from their servers directly, which means they see
+      your IP address when it does. The images can be moved to our own origin by
+      configuration, and this paragraph will change when they are.
+    </p>
+  </div>
+
+  <div class="flex flex-col gap-3 border-t border-base-content/15 pt-6">
+    <span class="type-label">Your data is yours</span>
+    <p class="auth-note">
+      Download everything you have logged as a CSV file, any time, from
+      <a href="{{ url_for('views.account_page') }}">your account</a>. It is the
+      whole log, not a summary of it.
+    </p>
+    <p class="auth-note">
+      Delete your account from the same page. That removes the account and every
+      workout in it, including the sign-in record held by Supabase. It cannot be
+      undone, and nothing is kept back.
+    </p>
+  </div>
+
+  <div class="flex flex-col gap-3 border-t border-base-content/15 pt-6">
+    <span class="type-label">Contact</span>
+    {# Production refuses to boot without CONTACT_EMAIL, so the `else` branch is
+       reachable only in development. It says so rather than rendering an empty
+       mailto, which reads as a broken page instead of an unconfigured one. #}
+    {% if contact_email %}
+      <p class="auth-note">
+        Questions about any of this:
+        <a href="mailto:{{ contact_email }}" class="type-data">{{ contact_email }}</a>
+      </p>
+    {% else %}
+      <p class="auth-note">
+        No contact address is configured on this instance. Set
+        <span class="type-data">BODYSHOP_CONTACT_EMAIL</span> — production will
+        not start without it.
+      </p>
+    {% endif %}
+  </div>
+
+  <p class="auth-note">
+    <a href="{{ url_for('views.home_page') }}">Back to Body Shop</a>
+  </p>
+</div>
+{% endblock %}

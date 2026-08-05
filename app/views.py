@@ -24,8 +24,17 @@ from __future__ import annotations
 
 from datetime import date
 
-from flask import Blueprint, current_app, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 
+from . import __version__
 from .exercises import (
     DEFAULT_MUSCLE_SCHEME,
     MUSCLE_GROUPS,
@@ -75,6 +84,9 @@ def inject_globals() -> dict:
         "muscle_regions": MUSCLE_REGIONS,
         "region_labels": REGION_LABELS,
         "today": date.today(),
+        # Rendered by /privacy only, but context-global because it is a
+        # property of the deployment rather than of one page.
+        "contact_email": current_app.config.get("CONTACT_EMAIL") or "",
         # Public by design: the anon key identifies the project to GoTrue and
         # grants nothing on its own. The service-role key is deliberately absent
         # from this dict and must stay that way.
@@ -106,6 +118,25 @@ def home_page():
         selected_date=day,
         exercise_count=len(all_exercises()),
     )
+
+
+@bp.get("/healthz")
+def healthz():
+    """Liveness probe for the platform. **Touches no database, deliberately.**
+
+    Render restarts a service whose health check fails, so a check that queried
+    Postgres would convert a thirty-second database blip into a restart loop —
+    strictly worse than the blip. The only question the platform is asking is
+    whether this process is serving HTTP, and that is the only one answered
+    here. Database health is a Supabase dashboard concern and a Sentry alert.
+
+    A useful consequence when something is wrong: this answering while the app
+    returns 500s tells you the problem is the database rather than the deploy.
+
+    Unauthenticated, because a platform health check cannot carry a bearer
+    token, and outside ``/api`` because it is not part of the product's API.
+    """
+    return jsonify({"status": "ok", "version": __version__})
 
 
 @bp.get("/how-to-use")
@@ -230,8 +261,9 @@ def summary_page():
 
 #: Pages outside the book. No chapter number, no shelf, no tab bar — they are
 #: not sections of the product, and `sections` in base.html never learns about
-#: them. All five are public shells: bearer tokens mean Flask cannot read an
+#: them. All six are public shells: bearer tokens mean Flask cannot read an
 #: Authorization header on a navigation, so gating happens in the page's JS.
+#: Five are the auth flow; the sixth is the privacy policy.
 @bp.get("/login")
 def login_page():
     """Sign in. ``?next=`` carries where the browser was headed."""
@@ -281,4 +313,20 @@ def account_page():
     """
     return render_template(
         "account.html", page="account", bare=True, selected_date=_requested_date()
+    )
+
+
+@bp.get("/privacy")
+def privacy_page():
+    """What is collected, who else sees it, and how to leave.
+
+    Bare, like the auth pages: it is not a chapter of the product, so
+    ``sections`` in ``base.html`` never learns about it and the chapter
+    numbering is untouched. Linked from the three bare pages someone actually
+    passes through — login, signup and the account page — and deliberately
+    **not** from ``/``, which is pinned to one screen: anything new there has to
+    earn its height or replace something, and a privacy link does neither.
+    """
+    return render_template(
+        "privacy.html", page="privacy", bare=True, selected_date=_requested_date()
     )

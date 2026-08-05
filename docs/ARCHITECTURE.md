@@ -28,9 +28,11 @@ Which backend is in use is decided entirely by `DATABASE_URL`, and nothing above
 `lastrowid` versus `RETURNING`, `AUTOINCREMENT` versus `IDENTITY`, and how a
 `DATE` is stored, so `models.py` expresses queries once.
 
-`app/views.py` renders eleven server-side shells — six chapters (`/`, `/how-to-use`,
-`/routines`, `/log`, `/summary`, `/progress`) and, since Phase 5, five bare auth pages
-(`/login`, `/signup`, `/reset-password`, `/verify`, `/account`); everything dynamic is
+`app/views.py` renders twelve server-side shells — six chapters (`/`, `/how-to-use`,
+`/routines`, `/log`, `/summary`, `/progress`) and six bare pages: the five auth pages
+Phase 5 added (`/login`, `/signup`, `/reset-password`, `/verify`, `/account`) plus
+Phase 7's `/privacy`. It also serves `/healthz`, which renders no template at all.
+Everything dynamic is
 fetched by the page's JavaScript module from the same `/api` the tests exercise. That
 means the HTML never diverges from the API, and the API is testable without a browser.
 `/calendar` was a seventh chapter until Phase 8.3 folded it into `/summary`; it survives
@@ -62,9 +64,11 @@ once, and on a second 401 redirects to `/login?next=<path>`. One retry, never a 
 | `app/services/summary.py` | Turning entries into per-muscle coverage and grading it against each target. | Build HTTP responses, or decide what a target *is*. |
 | `app/services/graph.py` | The training graph's rules: what a window means, what makes a movement an orphan, and joining this week's coverage and personal bests onto the nodes. | Query the database, or invent a strength *standard* (see below). |
 | `app/services/strength.py` | Estimating a one-rep max from the user's own sets, and reducing a window to one best per movement. | Query the database, or compare a user to anyone but themselves. |
+| `app/services/export.py` | Rendering a list of entries as CSV: column order, ordering, and the null-versus-zero rule. | Query the database, apply a display unit, or drop a set because grading would. |
 | `app/routines.py` | The suggested sessions, the athlete reconstructions and their attribution, and the time estimate derived from their sets. Editorial content, validated against the catalog at import. | Touch the database, state a duration that is not computed from the sets listed, or attribute a session to a real person without the `[experimental]` tag. |
+| `app/observability.py` | Starting Sentry, and only when a DSN is configured. The one outward-facing thing `create_app` does. | Open a connection, touch disk, or run when no DSN is set. |
 | `app/api.py` | Request parsing, JSON shapes, status codes. | Contain business rules. |
-| `app/views.py` | Page shells and template context. | Contain business rules. |
+| `app/views.py` | Page shells and template context, plus `/healthz` — the one route here that renders no template and the one that must open **no** database connection. | Contain business rules, or let the health check touch the database. |
 | `app/static/js/*` | DOM rendering and user interaction. | Duplicate aggregation logic. |
 | `app/static/js/api.js` | The only place *our own* API is called: attaching the bearer token, one silent refresh-and-retry on a 401, then `/login?next=…`. | Talk to Supabase, or retry twice. |
 | `app/static/js/auth.js` | The only place Supabase is called — sign-in, sign-up, reset, verify, sign-out, and the stored session. | Talk to our API, or let a password reach Flask. |
@@ -860,6 +864,36 @@ this on a `postgres:16` service container. Isolation there is a `TRUNCATE` betwe
 tests rather than a fresh database: one round trip instead of a schema rebuild,
 which is the difference between seconds and minutes against a hosted database.
 
+## Deployment
+
+Render runs the web service; **Postgres lives in the Supabase project that already
+holds auth**, so there is one vendor, one dashboard and one backup story. The
+blueprint is [render.yaml](../render.yaml) and the runbook is
+[OPERATIONS.md](OPERATIONS.md).
+
+**Render therefore holds no data.** Every persistent thing is in Supabase, and
+production refuses to boot on a SQLite `DATABASE_URL` because a hosted filesystem
+is ephemeral. That is what makes the web service disposable: destroy it and
+re-create it from the blueprint without losing a set.
+
+**Migrations are not a deploy hook.** `preDeployCommand` is a paid-tier feature,
+and DDL through a transaction-mode pooler is not something to rely on, so they run
+from the operator's machine against the **session** pooler (5432) while the app
+uses the **transaction** pooler (6543). This is what `run.py`'s docstring has said
+since Phase 3 — *migrate deliberately, as a deploy step* — rather than a new rule.
+
+**`GET /healthz` opens no database connection, and that is the design.** Render
+restarts a service whose health check fails; a check that queried Postgres would
+convert a thirty-second Supabase blip into a restart loop, which is strictly worse
+than the blip. It answers the only question the platform is asking — is this
+process serving HTTP — and the split it creates is diagnostic: `/healthz` answering
+while the app 500s means the database, not the deploy.
+
+The one thing `create_app` does that reaches outside the process is
+`init_sentry`, and only when a DSN is configured. That does not violate the
+factory's no-side-effects rule, which exists because `ensure_db()` opened a
+connection and applied DDL on every boot: Sentry's `init` does neither.
+
 ## Deliberate limitations
 
 - ~~**Single user.**~~ **Reversed by Phase 5.** Every row carries a `user_id`
@@ -869,9 +903,19 @@ which is the difference between seconds and minutes against a hosted database.
   credential; ours are bearer-only, with nothing to brute-force. Deliberate, and
   worth revisiting only if the API itself becomes the target.
 - **No connection pooling of our own on Postgres.** `NullPool` is deliberate: both
-  Supabase and Neon put a pooler in front, and a second pool inside a serverless
-  function exhausts connection limits at trivial traffic. Under a long-lived
-  process (gunicorn) this trades a little latency for that safety.
+  Supabase and Neon put a pooler in front, and a second pool of our own exhausts
+  connection limits at trivial traffic. It was written for a serverless
+  deployment Phase 7 then declined — but it survives on merit rather than by
+  inertia, because a pooler is what Supabase serves Postgres through either way.
+  Under a long-lived process (gunicorn) it trades a little latency for that safety.
+- **The free Render instance sleeps.** After 15 minutes idle, and the next request
+  pays roughly a 50-second cold start — bad for an app opened mid-set. Documented
+  rather than hidden; `plan: starter` in `render.yaml` is the one-line fix. See
+  [OPERATIONS.md](OPERATIONS.md).
+- **Error monitoring is opt-in.** Sentry initialises only when `SENTRY_DSN` is set,
+  so a deployment without one reports nothing and finds out from a user. That is
+  what keeps the test suite offline and the factory side-effect-free, and it is the
+  right default for a dependency that phones out.
 - **No strength standard, and no bodyweight.** Phase 6.7 added an estimated one-rep
   max from your own sets, but the app still stores no bodyweight and compares you to
   no one — so it can say "you have pressed the equivalent of 98 kg" and cannot say

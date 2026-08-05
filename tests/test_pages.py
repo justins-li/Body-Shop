@@ -5,6 +5,7 @@ import re
 
 import pytest
 
+from app import __version__
 from app.exercises import DEFAULT_MUSCLE_SCHEME, MUSCLE_GROUPS, MUSCLE_SCHEMES
 
 
@@ -778,3 +779,96 @@ def test_no_module_imports_saveProfile_from_ui():
             assert "saveProfile" not in imported, f"{path.name} imports it from ui.js"
         if "cacheProfile" in source:
             assert path.name in {"ui.js", "api.js"}, f"{path.name} caches the profile"
+
+
+class TestHealthCheck:
+    """Render restarts a service whose health check fails."""
+
+    def test_it_reports_ok_and_the_version(self, client):
+        response = client.get("/healthz")
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["status"] == "ok"
+        assert payload["version"] == __version__
+
+    def test_it_needs_no_bearer_token(self, app):
+        """A platform health check cannot carry one."""
+        assert app.test_client().get("/healthz").status_code == 200
+
+    def test_it_answers_with_the_database_unreachable(self):
+        """The load-bearing property, proved from outside.
+
+        A health check that queries Postgres converts a brief database outage
+        into a platform restart loop, which is strictly worse than the outage.
+        So: point an app at a database that cannot be reached and assert the
+        check still answers.
+
+        Black-box on purpose. Monkeypatching `app.db.get_db` would prove
+        nothing — `models.py` binds that name at import, so the patch would not
+        reach the call — whereas a dead URL breaks every path to the database
+        regardless of how anything imports anything.
+
+        It also relies on `create_app` opening no connection, which is itself an
+        invariant this repo holds: a failure at *construction* rather than at
+        the request means something has put a side effect back into the factory.
+        """
+        from app import create_app
+
+        unreachable = create_app(
+            "testing",
+            DATABASE_URL="postgresql+psycopg://nobody:nobody@127.0.0.1:1/nothing",
+        )
+        response = unreachable.test_client().get("/healthz")
+        assert response.status_code == 200
+        assert response.get_json()["status"] == "ok"
+
+
+def test_account_page_offers_an_export(client):
+    """Export and deletion are the same obligation from opposite ends."""
+    body = client.get("/account").data.decode()
+    assert 'id="export-data"' in body
+
+
+class TestPrivacyPage:
+    def test_it_renders(self, client):
+        response = client.get("/privacy")
+        assert response.status_code == 200
+        assert b"Privacy" in response.data
+
+    def test_it_is_bare_and_not_a_chapter(self, client):
+        """Like the five auth pages: outside the book.
+
+        `sections` in base.html must never learn about it, or the chapter
+        numbering and the shelf-splitting tests start describing a book with a
+        privacy policy in it.
+        """
+        body = client.get("/privacy").data.decode()
+        assert "shelf-stack" not in body
+        assert "tab-bar" not in body
+        assert "01 Chp." not in body
+
+    def test_it_names_the_contact_address(self, client, app):
+        assert app.config["CONTACT_EMAIL"] in client.get("/privacy").data.decode()
+
+    def test_it_names_every_third_party_that_sees_you(self, client):
+        """Including jsDelivr, which most apps do not disclose.
+
+        An exercise photograph is a request to someone else's CDN, which means
+        that CDN sees your IP address. EXERCISE_IMAGE_BASE exists so this can be
+        ended by configuration; until it is, it gets said out loud.
+        """
+        body = client.get("/privacy").data.decode()
+        for party in ("Supabase", "Render", "Sentry", "jsDelivr"):
+            assert party in body, party
+
+    def test_it_links_to_export_and_deletion(self, client):
+        """Both live on /account, which is the page it has to send you to."""
+        assert "/account" in client.get("/privacy").data.decode()
+
+    @pytest.mark.parametrize("path", ["/login", "/signup", "/account"])
+    def test_the_bare_pages_link_to_it(self, client, path):
+        assert "/privacy" in client.get(path).data.decode()
+
+    def test_the_home_page_does_not_link_to_it(self, client):
+        """`/` is exactly one screen, and a privacy link does not earn height."""
+        assert "/privacy" not in client.get("/").data.decode()

@@ -34,12 +34,17 @@ function send(path, options, token) {
 }
 
 /**
- * Perform a request against the API.
+ * Send a request, refreshing once behind a 401.
+ *
+ * Split out of `request` so a response that is not JSON — the CSV export — can
+ * inherit the bearer header and the retry rather than reimplementing them.
+ * Returns the raw `Response`; the caller decides how to read it.
+ *
  * @param {string} path - Path below `/api`, e.g. `/entries`.
  * @param {RequestInit} [options]
- * @returns {Promise<any>} Parsed JSON body.
+ * @returns {Promise<Response>}
  */
-async function request(path, options = {}) {
+async function fetchWithRefresh(path, options = {}) {
   let response = await send(path, options, accessToken());
 
   if (response.status === 401) {
@@ -59,6 +64,18 @@ async function request(path, options = {}) {
       throw new Error("Sign in to continue.");
     }
   }
+
+  return response;
+}
+
+/**
+ * Perform a request against the API.
+ * @param {string} path - Path below `/api`, e.g. `/entries`.
+ * @param {RequestInit} [options]
+ * @returns {Promise<any>} Parsed JSON body.
+ */
+async function request(path, options = {}) {
+  const response = await fetchWithRefresh(path, options);
 
   let payload = null;
   try {
@@ -243,4 +260,41 @@ export async function saveProfile(profile) {
  */
 export async function deleteAccount() {
   return request("/account", { method: "DELETE" });
+}
+
+/**
+ * Download every set this account has logged, as CSV.
+ *
+ * The browser cannot put an `Authorization` header on a link it follows, so
+ * this fetches the file and hands it to a synthetic anchor instead. That keeps
+ * the API bearer-only: no signed URL, no cookie, no second way in for the sake
+ * of one endpoint.
+ *
+ * The filename comes from the server's `Content-Disposition`, so the date in it
+ * is the server's rather than a guess made in a browser sitting in some other
+ * time zone.
+ *
+ * @returns {Promise<void>} Resolves once the download has been triggered.
+ */
+export async function downloadExport() {
+  const response = await fetchWithRefresh("/entries/export.csv", {
+    headers: { Accept: "text/csv" },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Export failed (${response.status})`);
+  }
+
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const url = URL.createObjectURL(await response.blob());
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = match ? match[1] : "bodyshop-export.csv";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // Revoking immediately can race the download in Safari; a tick is enough.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

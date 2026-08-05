@@ -147,20 +147,32 @@ read from the environment and from a gitignored `.env` — see `.env.example`.
 | `BODYSHOP_WEEK_STARTS_ON` | `1` (Monday) | ISO weekday the summary week begins on. |
 | `BODYSHOP_EXERCISE_IMAGE_BASE` | jsDelivr, pinned | Origin serving `<exercise_id>/<0\|1>.jpg`. Set this to self-host the images. |
 | `BODYSHOP_HOST` / `BODYSHOP_PORT` | `127.0.0.1` / `5000` | Dev server bind address. |
+| `BODYSHOP_CONTACT_EMAIL` | — | Rendered into `/privacy`. **Production refuses to boot without it** — a policy naming no way to reach anyone is not one. |
+| `BODYSHOP_SENTRY_DSN` | — | Optional. Set → errors go to Sentry, without personal data. Unset → the SDK is never initialised. |
 
 `BODYSHOP_DATABASE` (a bare SQLite path) was replaced by `DATABASE_URL` in Phase 3.
 
-For production, serve the WSGI app instead of `run.py` and migrate as a deploy step —
-`wsgi.py` deliberately does not, so that importing the app never changes a schema:
+## Deployment
+
+Body Shop runs on **Render** (the web service, from [render.yaml](render.yaml)) with
+**Postgres and auth in Supabase** — one vendor for the data, and Render holds none of
+it. Import the blueprint from the Render dashboard and fill in the values marked
+`sync: false`.
+
+**Migrations are a deliberate step, not a deploy hook**, and they run against
+Supabase's *session* pooler (port 5432) while the app uses the *transaction* pooler
+(6543). `wsgi.py` never migrates, so importing the app cannot change a schema:
 
 ```bash
-pip install gunicorn
 export BODYSHOP_CONFIG=production
 export BODYSHOP_SECRET_KEY=...            # python -c "import secrets; print(secrets.token_urlsafe(48))"
-export DATABASE_URL=postgresql://...
+export DATABASE_URL=postgresql://...      # session pooler for this
 flask --app app upgrade-db
 gunicorn "wsgi:application"
 ```
+
+The full runbook — first deploy, the two ordering traps, rollback, the restore drill
+and a diagnosis checklist — is [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Project layout
 
@@ -244,9 +256,9 @@ flask --app app upgrade-db
 
 ## Roadmap
 
-The full technical plan, in execution order — **per-set weight and reps**, accounts,
-Vercel hosting, routines and progress tracking, AI-assisted custom exercises,
-then mobile and watch — is in [docs/ROADMAP.md](docs/ROADMAP.md), along with the
+The full technical plan, in execution order — what remains is entry editing, PR
+detection, body metrics, per-exercise graphs, AI-assisted custom exercises, then
+mobile and watch — is in [docs/ROADMAP.md](docs/ROADMAP.md), along with the
 post-launch candidates (auto-progression, social, nutrition) and the reasoning for why
 each waits.
 

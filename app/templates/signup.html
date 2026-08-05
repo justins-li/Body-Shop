@@ -25,6 +25,13 @@
     <button class="auth-submit type-label" type="submit">Create account</button>
   </form>
 
+  {# Directly under the button: this is the moment someone is deciding whether
+     to hand over an address, which is when the policy is worth reading. #}
+  <p class="auth-note">
+    What we hold, and who else sees it:
+    <a href="{{ url_for('views.privacy_page') }}">Privacy</a>
+  </p>
+
   {# Password rules, lockout and enumeration hygiene are all Supabase's, set in
      its dashboard rather than here — so this page states no rule it does not
      enforce. #}
