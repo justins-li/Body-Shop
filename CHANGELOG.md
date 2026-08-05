@@ -43,9 +43,15 @@ All notable changes to Body Shop are documented here. This project follows
   because they are the same obligation from opposite ends.
 
 - **`/privacy`.** Names what is held (an email address and your sets), what is not (no
-  bodyweight, no analytics, no advertising, nobody compared to anybody), and every
-  third party that sees you — including **jsDelivr**, which serves the exercise
-  photographs and therefore sees your IP address. Most apps skip that one.
+  analytics, no advertising, nothing collected in the background, nobody compared to
+  anybody), and every third party that sees you — including **jsDelivr**, which serves
+  the exercise photographs and therefore sees your IP address. Most apps skip that one.
+
+  **It only claims absences that are policy, not absences that are not-yet.** An
+  earlier draft promised "no bodyweight, no measurements" — true when written, and on
+  the roadmap to stop being true at Phase 8.6, which would have made the page a broken
+  promise on the day that shipped. What it promises instead is that nothing is
+  collected in the background and that the list grows on this page when it grows.
 
 - **Error monitoring, opt-in.** Sentry initialises only when `BODYSHOP_SENTRY_DSN` is
   set, with `send_default_pii=False` because `/privacy` claims exactly that. The

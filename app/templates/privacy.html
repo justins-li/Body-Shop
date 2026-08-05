@@ -9,6 +9,15 @@
   The rule for editing this file: it describes what the app actually does. If a
   change makes one of these paragraphs false, the paragraph changes in the same
   commit — a privacy policy that has drifted from the code is worse than none.
+
+  A corollary, learned the hard way: **do not enumerate what is absent unless
+  its absence is a decision rather than a not-yet.** "No bodyweight, no
+  measurements" was true when written and is on the roadmap to stop being true
+  (Phase 8.6), which would have turned this page into a broken promise on the
+  day the feature shipped. The claims kept here are the ones that are policy —
+  no analytics, no advertising, no background collection, nobody compared to
+  anybody — because those are things we have decided not to do rather than
+  things we have not got round to.
 #}
 
 {% block content %}
@@ -25,17 +34,21 @@
     <span class="type-label">What is stored</span>
     <p class="auth-note">
       Your email address, and every set you log — the movement, the date, the
-      weight in kilograms, the reps, and the RPE if you record one. That is the
-      whole of it.
+      weight in kilograms, the reps, and the RPE if you record one.
+    </p>
+    <p class="auth-note">
+      Anything the app stores about you is something you typed into it. Nothing
+      is collected in the background, and if that list ever grows it grows here
+      too.
     </p>
   </div>
 
   <div class="flex flex-col gap-3 border-t border-base-content/15 pt-6">
     <span class="type-label">What is not stored</span>
     <p class="auth-note">
-      No bodyweight, no measurements, no photographs of you. No analytics, no
-      advertising, no tracking pixels, and no third-party scripts on any page.
-      Your password is held by Supabase and never reaches this app.
+      No analytics, no advertising, no tracking pixels, and no third-party
+      scripts on any page. Your password is held by Supabase and never reaches
+      this app.
     </p>
     <p class="auth-note">
       Nobody is compared to anybody. The estimated one-rep max on the progress
