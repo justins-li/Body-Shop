@@ -827,3 +827,48 @@ def test_account_page_offers_an_export(client):
     """Export and deletion are the same obligation from opposite ends."""
     body = client.get("/account").data.decode()
     assert 'id="export-data"' in body
+
+
+class TestPrivacyPage:
+    def test_it_renders(self, client):
+        response = client.get("/privacy")
+        assert response.status_code == 200
+        assert b"Privacy" in response.data
+
+    def test_it_is_bare_and_not_a_chapter(self, client):
+        """Like the five auth pages: outside the book.
+
+        `sections` in base.html must never learn about it, or the chapter
+        numbering and the shelf-splitting tests start describing a book with a
+        privacy policy in it.
+        """
+        body = client.get("/privacy").data.decode()
+        assert "shelf-stack" not in body
+        assert "tab-bar" not in body
+        assert "01 Chp." not in body
+
+    def test_it_names_the_contact_address(self, client, app):
+        assert app.config["CONTACT_EMAIL"] in client.get("/privacy").data.decode()
+
+    def test_it_names_every_third_party_that_sees_you(self, client):
+        """Including jsDelivr, which most apps do not disclose.
+
+        An exercise photograph is a request to someone else's CDN, which means
+        that CDN sees your IP address. EXERCISE_IMAGE_BASE exists so this can be
+        ended by configuration; until it is, it gets said out loud.
+        """
+        body = client.get("/privacy").data.decode()
+        for party in ("Supabase", "Render", "Sentry", "jsDelivr"):
+            assert party in body, party
+
+    def test_it_links_to_export_and_deletion(self, client):
+        """Both live on /account, which is the page it has to send you to."""
+        assert "/account" in client.get("/privacy").data.decode()
+
+    @pytest.mark.parametrize("path", ["/login", "/signup", "/account"])
+    def test_the_bare_pages_link_to_it(self, client, path):
+        assert "/privacy" in client.get(path).data.decode()
+
+    def test_the_home_page_does_not_link_to_it(self, client):
+        """`/` is exactly one screen, and a privacy link does not earn height."""
+        assert "/privacy" not in client.get("/").data.decode()

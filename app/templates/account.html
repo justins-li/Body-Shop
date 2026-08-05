@@ -39,7 +39,11 @@
     </button>
   </div>
 
-  <p class="auth-note"><a href="{{ url_for('views.home_page') }}">Back to Body Shop</a></p>
+  <p class="auth-note">
+    <a href="{{ url_for('views.privacy_page') }}">Privacy</a>
+    &nbsp;·&nbsp;
+    <a href="{{ url_for('views.home_page') }}">Back to Body Shop</a>
+  </p>
 </div>
 {% endblock %}
 

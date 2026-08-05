@@ -84,12 +84,12 @@ def inject_globals() -> dict:
         "muscle_regions": MUSCLE_REGIONS,
         "region_labels": REGION_LABELS,
         "today": date.today(),
-        # Public by design: the anon key identifies the project to GoTrue and
-        # grants nothing on its own. The service-role key is deliberately absent
-        # from this dict and must stay that way.
         # Rendered by /privacy only, but context-global because it is a
         # property of the deployment rather than of one page.
         "contact_email": current_app.config.get("CONTACT_EMAIL") or "",
+        # Public by design: the anon key identifies the project to GoTrue and
+        # grants nothing on its own. The service-role key is deliberately absent
+        # from this dict and must stay that way.
         "supabase": {
             "url": current_app.config.get("SUPABASE_URL") or "",
             "anon_key": current_app.config.get("SUPABASE_ANON_KEY") or "",
@@ -261,8 +261,9 @@ def summary_page():
 
 #: Pages outside the book. No chapter number, no shelf, no tab bar — they are
 #: not sections of the product, and `sections` in base.html never learns about
-#: them. All five are public shells: bearer tokens mean Flask cannot read an
+#: them. All six are public shells: bearer tokens mean Flask cannot read an
 #: Authorization header on a navigation, so gating happens in the page's JS.
+#: Five are the auth flow; the sixth is the privacy policy.
 @bp.get("/login")
 def login_page():
     """Sign in. ``?next=`` carries where the browser was headed."""
@@ -312,4 +313,20 @@ def account_page():
     """
     return render_template(
         "account.html", page="account", bare=True, selected_date=_requested_date()
+    )
+
+
+@bp.get("/privacy")
+def privacy_page():
+    """What is collected, who else sees it, and how to leave.
+
+    Bare, like the auth pages: it is not a chapter of the product, so
+    ``sections`` in ``base.html`` never learns about it and the chapter
+    numbering is untouched. Linked from the three bare pages someone actually
+    passes through — login, signup and the account page — and deliberately
+    **not** from ``/``, which is pinned to one screen: anything new there has to
+    earn its height or replace something, and a privacy link does neither.
+    """
+    return render_template(
+        "privacy.html", page="privacy", bare=True, selected_date=_requested_date()
     )
