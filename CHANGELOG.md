@@ -8,6 +8,55 @@ All notable changes to Body Shop are documented here. This project follows
 
 ### Added
 
+- **Phase 7 — the app is deployable, and deployed.** Flask on Render
+  ([render.yaml](render.yaml)), Postgres in the Supabase project that already held
+  auth. Vercel was declined on record: this is a long-lived WSGI process with a
+  migration step, and the serverless accommodations already in the codebase
+  (`NullPool`, `prepare_threshold=None`, a side-effect-free `create_app`) survive only
+  because they are also correct behind a connection pooler.
+
+  **`GET /healthz` opens no database connection, and that is the design.** Render
+  restarts a service whose health check fails, so a check that queried Postgres would
+  turn a thirty-second Supabase blip into a restart loop. The split it creates is also
+  the first diagnostic step: `/healthz` answering while the app 500s means the
+  database, not the deploy.
+
+  Migrations are deliberately **not** a deploy hook — `preDeployCommand` is paid-tier,
+  and DDL through a transaction-mode pooler is not something to rely on — so they run
+  from the operator's machine against the session pooler. [docs/OPERATIONS.md](docs/OPERATIONS.md)
+  is the runbook, including the two ordering traps that only bite once: migrate before
+  the first deploy, and update Supabase's redirect URLs after Render assigns a
+  hostname or every confirmation email points at `localhost`.
+
+  The free tier's 15-minute spin-down and ~50-second cold start are documented rather
+  than hidden; `plan: starter` is a one-line upgrade.
+
+- **`GET /api/entries/export.csv` — every set you have ever logged.** One row per set,
+  **warm-ups included**: excluding them is a grading rule that keeps them off the
+  muscle map, and a raw record that dropped a set would misstate the session. Weight
+  is kilograms and the header says so, because `kg`/`lb` is a display preference that
+  lives only in `ui.js`. An unrecorded value is an empty cell and `0` is `0` — 0 kg
+  added on a pull-up is a fact, a blank is the absence of one.
+
+  No date filtering. This is the "get your data out" obligation, and a spreadsheet
+  filters dates itself. The download button sits on `/account`, beside deletion,
+  because they are the same obligation from opposite ends.
+
+- **`/privacy`.** Names what is held (an email address and your sets), what is not (no
+  bodyweight, no analytics, no advertising, nobody compared to anybody), and every
+  third party that sees you — including **jsDelivr**, which serves the exercise
+  photographs and therefore sees your IP address. Most apps skip that one.
+
+- **Error monitoring, opt-in.** Sentry initialises only when `BODYSHOP_SENTRY_DSN` is
+  set, with `send_default_pii=False` because `/privacy` claims exactly that. The
+  testing config pins the DSN to `None`, so a DSN in a developer's environment cannot
+  make a test run — which raises exceptions on purpose — report to production.
+
+- **`BODYSHOP_CONTACT_EMAIL`, and production refuses to boot without it.** The four
+  existing checks catch a deployment that would lose data or leak one; this catches
+  one that is unreachable, which nobody notices until somebody needed to reach you and
+  could not.
+
 - **Five routines after famous athletes, all tagged `[experimental]`.** Reconstructions
   of what has been published about how Dwayne "The Rock" Johnson, Tom Brady, Michael
   Phelps, Usain Bolt and Serena Williams train — a hips-first leg day, a TB12 band

@@ -6,15 +6,16 @@ multi-user product.
 This file now tracks only the current, prioritized path forward. The implementation
 history and retired tradeoffs live in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Current state: **Phases 1, 2, 3, 4, 4.5, 5 (including its carryover), 6, 6.5, 6.7 and
+Current state: **Phases 1, 2, 3, 4, 4.5, 5 (including its carryover), 6, 6.5, 6.7, 7 and
 8.1–8.3 are done**, and
 **Phase 9 was absorbed into Phase 2**. The app already has Tailwind v4 + daisyUI, 873
 exercises with images across 12 muscle groups, Alembic migrations on SQLite/Postgres,
 per-set weight/reps/RPE, the `/progress` training graph, trainer presets that scale the
 weekly targets, equipment-aware logging, personal bests estimated from the user's own
 sets, Supabase-backed accounts with `user_id` on every row and the trainer setup stored
-against them, suggested routines, one shared set grid, and the calendar folded into
-`/summary`.
+against them, suggested routines, one shared set grid, the calendar folded into
+`/summary`, and a deployment on Render with the launch floor behind it — CSV export, a
+privacy policy, error monitoring and a documented restore drill.
 
 ## Prioritized roadmap
 
@@ -34,17 +35,35 @@ is what keeps `loadProfile()` synchronous for `setgrid.js`'s RPE gate. The roadm
 predicted "the API shape does not change"; the payloads did not, but something had to
 write the column.
 
-### 1. Phase 7 — Stack decision and deployment
+**Phase 7 — Stack decision and deployment. ✅ shipped.**
+Flask stayed and Render hosts it; Postgres lives in the Supabase project that
+already held auth, so there is one vendor and one backup story. The runbook is
+[OPERATIONS.md](OPERATIONS.md).
 
-Deploy the current Flask app before adding more product surface.
+**Vercel was declined on record**, which is what this phase asked for. This is a
+long-lived WSGI process with a migration step, and serverless buys nothing for it.
+Every accommodation the repo already carried for that shape — `NullPool`,
+`prepare_threshold=None`, a side-effect-free `create_app` — survives only because it
+is *also* correct behind a connection pooler, which is how Supabase serves Postgres.
 
-- Prefer Flask unless a measured constraint forces a rewrite.
-- Choose Vercel only if it wins on record; otherwise use a container host.
-- Add the launch floor: backups with tested restore, error monitoring, privacy policy,
-  and CSV export.
-- Keep production gated on the Postgres CI job.
+Two things worth knowing before touching the deployment:
 
-### 2. Phase 8 — Training essentials
+- **Migrations are not a deploy hook.** `preDeployCommand` is paid-tier, and DDL
+  through a transaction-mode pooler is not something to rely on, so they run from the
+  operator's machine against the session pooler (5432) while the app uses the
+  transaction pooler (6543). A service that boots against an unmigrated database
+  serves 500s from every authenticated route — and `/healthz` still answers 200,
+  because it deliberately opens no connection.
+- **The free tier sleeps after 15 minutes idle**, and the next request pays roughly a
+  50-second cold start. That is bad for an app opened mid-set, and it is documented
+  rather than hidden: `plan: starter` is a one-line upgrade in `render.yaml`.
+
+The launch floor landed with it: CSV export (`GET /api/entries/export.csv`, the whole
+log, one row per set), a privacy policy that names jsDelivr as well as the obvious
+vendors, Sentry behind an optional DSN with PII off, and a restore drill written down
+with a dated line recording when it was last run.
+
+### 1. Phase 8 — Training essentials
 
 This is the parity phase. It should make the app feel complete next to mature trackers.
 Broken into steps that can each ship on their own, roughly in dependency order.
@@ -104,7 +123,7 @@ One movement over time, rather than the whole constellation.
 Throughout: keep the volume-coverage model intact. None of this may turn the app into
 a strength-standards tracker (see docs/VOLUME_SCIENCE.md §3.5).
 
-### 3. Phase 9 — AI-assisted custom exercises
+### 2. Phase 9 — AI-assisted custom exercises
 
 Only build this after the catalog has been in front of real users long enough to show
 what it misses.
@@ -114,7 +133,7 @@ what it misses.
 - Require user review before saving any AI suggestion.
 - Log corrections so the prompt can be tuned against real misses.
 
-### 4. Phase 10 — Mobile, watch, and store distribution
+### 3. Phase 10 — Mobile, watch, and store distribution
 
 This is last because it consumes the earlier phases.
 
@@ -157,6 +176,13 @@ This is last because it consumes the earlier phases.
   recorded load draws as a hollow ring rather than a small node**, which is the rule
   `graph.py` wrote down before the data to break it existed. A strength *standard* is
   still out: no bodyweight is stored and no one is compared to anyone.
+- Phase 7: deployment. Flask on Render (`render.yaml`), Postgres in the Supabase
+  project that already held auth, and the launch floor with it — `GET
+  /api/entries/export.csv`, a `/privacy` page that names jsDelivr as well as the
+  obvious vendors, Sentry behind an optional DSN, and a restore drill in
+  [OPERATIONS.md](OPERATIONS.md). `GET /healthz` opens no database connection on
+  purpose: a health check that queried Postgres would turn an outage into a restart
+  loop. Vercel was declined on record.
 - Phase 8.1–8.3: suggested routines as editorial content in code, the set grid
   extracted into one component both `/log` and a routine's quick-log mount, and the
   calendar folded into a strip on `/summary` — `/calendar` is a 301 and the shelf it
@@ -181,7 +207,7 @@ graph TD
   P5[Phase 5: Secure user login ✓] --> P5a[Phase 5 carryover: setup on the user row ✓]
   P6[Phase 6: Trainer setups ✓] --> P5a
   P67[Phase 6.7: Graph ✓] -.PR detection.-> P8
-  P5 --> P7[Phase 7: Stack decision and deployment]
+  P5 --> P7[Phase 7: Deployment on Render ✓]
   P5a --> P7
   P7 --> P8[Phase 8.4+: Training essentials]
   P5 --> P9[Phase 9: AI custom exercises]
@@ -192,9 +218,11 @@ graph TD
 
 Phase 5 gated ownership and account deletion, and it has landed; the one loose end
 Phase 6 left — the trainer setup living in `localStorage` rather than on the account —
-is closed too. Phase 7 gates launch. Phase 8 is
+is closed too. Phase 7 gated launch and has landed, so the app is deployable and
+deployed rather than deployable in principle. Phase 8 is
 the competitive parity floor, and 8.1–8.3 of it are already in. Phase 9 depends on
-actual usage. Phase 10 depends on all of the above.
+actual usage. Phase 10 depends on all of the above — and inherits Phase 7's privacy
+policy and account deletion, which is two of its store requirements already met.
 
 ---
 
