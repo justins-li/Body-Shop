@@ -25,3 +25,7 @@ python-dotenv>=1.0,<2.0
 # file and its start command is `gunicorn wsgi:application`, so a build that
 # did not include gunicorn would succeed and then fail to boot.
 gunicorn>=22.0,<24.0
+
+# Error reporting. Initialised only when BODYSHOP_SENTRY_DSN is set, so
+# development and the test suite never load it and the suite stays offline.
+sentry-sdk[flask]>=2.0,<3.0

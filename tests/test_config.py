@@ -152,3 +152,25 @@ class TestProductionNeedsAContactAddress:
         """So the suite never depends on the developer's environment."""
         app = create_app("testing", DATABASE_URL="sqlite:///x.db")
         assert app.config["CONTACT_EMAIL"]
+
+
+class TestSentryIsOptional:
+    """An unset DSN must mean *nothing happens* — that is what keeps the suite
+    offline and the factory free of side effects in development."""
+
+    def test_no_dsn_means_no_initialisation(self):
+        from app.observability import init_sentry
+
+        app = create_app("testing", DATABASE_URL="sqlite:///x.db")
+        assert app.config.get("SENTRY_DSN") is None
+        assert init_sentry(app) is False
+
+    def test_the_testing_config_never_carries_a_dsn(self, monkeypatch):
+        """Even with one in the environment.
+
+        A developer with a DSN exported must not be able to make a test run —
+        which raises exceptions deliberately — report to production Sentry.
+        """
+        monkeypatch.setenv("BODYSHOP_SENTRY_DSN", "https://x@example.test/1")
+        app = create_app("testing", DATABASE_URL="sqlite:///x.db")
+        assert app.config.get("SENTRY_DSN") is None

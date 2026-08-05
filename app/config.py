@@ -72,6 +72,10 @@ class BaseConfig:
         "@b0eed061e1c832b3ed815fbaa4b45b3cdc14df49/exercises",
     )
 
+    #: Optional. Set → errors are reported to Sentry. Unset → nothing is
+    #: initialised and nothing is sent, which is the development and test case.
+    SENTRY_DSN = os.environ.get("BODYSHOP_SENTRY_DSN")
+
     #: Where someone reaches a human. Rendered into ``/privacy`` and nowhere
     #: else. **Production refuses to boot without it** — a privacy policy that
     #: names no contact route is the launch floor failing silently, and it is
@@ -125,6 +129,11 @@ class TestingConfig(BaseConfig):
     SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key"
     # Pinned so the suite never depends on the developer's environment.
     CONTACT_EMAIL = "test@example.com"
+
+    # Pinned to None for the same reason, but the stake is higher: a developer
+    # with a DSN exported would otherwise have every deliberately-raised test
+    # exception reported to production Sentry.
+    SENTRY_DSN = None
 
 
 class ProductionConfig(BaseConfig):
