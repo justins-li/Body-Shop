@@ -152,5 +152,5 @@ Full layer-ownership table and rationale live in [docs/ARCHITECTURE.md](docs/ARC
 - **Never add attribution trailers.** No `Co-Authored-By:`, no "Generated with" footers — GitHub renders co-authors as contributors on the PR, and the user does not want that.
 - **Work directly on `main`.** Justin asked for this on 2026-07-29; don't create a feature branch or open a PR unless he asks for one.
 - **Run the suite before committing.** CI only runs `pytest -q`, so a green local run is the whole signal.
-- **`gh` is not installed**, so PRs, issues and reviews cannot be created from here — say so rather than improvising, and offer `brew install gh` (macOS) or `winget install --id GitHub.cli` (Windows). Plain `git` works normally; `origin` is set.
+- **`gh` is installed and authenticated** (scopes: `repo`, `workflow`, `read:org`, `gist`), so PRs, issues and reviews can be created from here. `origin` is `justins-li/Body-Shop`. There is a PR template at [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) — follow it, and fill the checklist honestly rather than ticking it. Still **don't open a PR unless asked**: the default is committing straight to `main`, per the line above.
 - Rewriting published history needs the user's approval — the permission rules block it by default.
